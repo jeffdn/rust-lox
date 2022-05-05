@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenType {
     // Single-character tokens
@@ -58,6 +60,20 @@ pub enum Literal {
     Boolean(bool),
     Identifier(String),
     Nil,
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let output = match self {
+            Literal::String(string) => format!("'{}'", string),
+            Literal::Identifier(string) => string.clone(),
+            Literal::Boolean(boolean) => boolean.to_string(),
+            Literal::Number(number) => number.to_string(),
+            Literal::Nil => "nil".to_string(),
+        };
+
+        write!(f, "{}", output)
+    }
 }
 
 #[derive(Clone, Debug)]

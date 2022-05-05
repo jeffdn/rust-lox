@@ -1,5 +1,6 @@
 pub mod errors;
 pub mod expressions;
+pub mod interpreter;
 pub mod parser;
 pub mod scanner;
 pub mod tokens;
@@ -9,7 +10,7 @@ use std::fs;
 use std::io::{self, Write};
 
 use crate::errors::LoxError;
-use crate::expressions::{AstPrinter, Visitor};
+use crate::interpreter::Interpreter;
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 
@@ -21,8 +22,12 @@ fn eval(source: String) -> Result<(), LoxError> {
 
     match parse_output {
         Ok(output) => {
-            let printer = AstPrinter { };
-            println!("{}", printer.accept(output)?);
+            let interpreter = Interpreter { };
+
+            match interpreter.interpret(output) {
+                Ok(_) => {},
+                Err(e) => println!("{}", e),
+            };
         },
         Err(e) => {
             println!("parse errors:");
