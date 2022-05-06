@@ -1,8 +1,10 @@
+pub mod environment;
 pub mod errors;
 pub mod expressions;
 pub mod interpreter;
 pub mod parser;
 pub mod scanner;
+pub mod statements;
 pub mod tokens;
 
 use std::env;
@@ -22,7 +24,7 @@ fn eval(source: String) -> Result<(), LoxError> {
 
     match parse_output {
         Ok(output) => {
-            let interpreter = Interpreter { };
+            let mut interpreter = Interpreter::new(None);
 
             match interpreter.interpret(output) {
                 Ok(_) => {},

@@ -7,6 +7,7 @@ pub enum LoxError {
     ParseError(usize, String),
     TypeError(String),
     InputError(String),
+    RuntimeError(String),
     SyntaxError(usize, String),
 }
 
@@ -19,6 +20,7 @@ impl fmt::Display for LoxError {
             LoxError::TypeError(msg) => format!("type error: {}", msg),
             LoxError::InputError(msg) => msg.clone(),
             LoxError::SyntaxError(line, msg) => format!("error on line {}: {}", line, msg),
+            LoxError::RuntimeError(msg) => format!("runtime error: {}", msg),
         };
 
         write!(f, "{}", output)

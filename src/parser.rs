@@ -1,5 +1,6 @@
 use crate::errors::LoxError;
 use crate::expressions::Expression;
+use crate::statements::Statement;
 use crate::tokens::{Literal, Token, TokenType};
 
 pub struct Parser {
@@ -15,13 +16,148 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Expression, LoxError> {
-        // begin the recursive descent
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Statement>, LoxError> {
+        let mut statements: Vec<Statement> = Vec::new();
+
+        while !self.at_end() {
+            let statement = self.declaration_statement()?;
+
+            if let Some(stmt) = statement {
+                statements.push(stmt);
+            }
+        }
+
+        Ok(statements)
     }
 
     fn expression(&mut self) -> Result<Expression, LoxError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn statement(&mut self) -> Result<Statement, LoxError> {
+        if self.token_type_matches(&[TokenType::Print]) {
+            return self.print_statement();
+        } else if self.token_type_matches(&[TokenType::LeftBrace]) {
+            return Ok(
+                Statement::Block {
+                    statements: self.block()?,
+                }
+            );
+        }
+
+        self.expression_statement()
+    }
+
+    fn block(&mut self) -> Result<Vec<Statement>, LoxError> {
+        let mut statements: Vec<Statement> = Vec::new();
+
+        while !self.token_type_matches(&[TokenType::RightBrace]) && !self.at_end() {
+            match self.declaration_statement() {
+                Ok(Some(stmt)) => statements.push(stmt),
+                Ok(None) => continue,
+                Err(e) => return Err(e),
+            };
+        }
+
+        Ok(statements)
+    }
+
+    fn declaration_statement(&mut self) -> Result<Option<Statement>, LoxError> {
+        let statement = match self.token_type_matches(&[TokenType::Var]) {
+            true => self.var_declaration(),
+            false => self.statement(),
+        };
+
+        match statement {
+            Ok(stmt) => Ok(Some(stmt)),
+            Err(_) => {
+                self.synchronize();
+                Ok(None)
+            },
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<Statement, LoxError> {
+        let token: Token = self.consume(
+            &TokenType::Identifier,
+            "expected a variable name".to_string(),
+        )?;
+
+        let initializer = match self.token_type_matches(&[TokenType::Equal]) {
+            true => Some(self.expression()?),
+            false => None,
+        };
+
+        self.consume(
+            &TokenType::Semicolon,
+            "expected ';' after variable declaration".to_string(),
+        )?;
+
+        Ok(
+            Statement::Var {
+                name: token,
+                initializer: match initializer {
+                    Some(expr) => Some(Box::new(expr.clone())),
+                    None => None,
+                },
+            }
+        )
+
+    }
+
+    fn expression_statement(&mut self) -> Result<Statement, LoxError> {
+        let expr = self.expression()?;
+
+        self.consume(
+            &TokenType::Semicolon,
+            "expected ';' after expression".to_string(),
+        )?;
+
+        Ok(
+            Statement::Expression {
+                expression: Box::new(expr.clone()),
+            }
+        )
+    }
+
+    fn print_statement(&mut self) -> Result<Statement, LoxError> {
+        let expr = self.expression()?;
+
+        self.consume(
+            &TokenType::Semicolon,
+            "expected ';' after value".to_string(),
+        )?;
+
+        Ok(
+            Statement::Print {
+                expression: Box::new(expr.clone()),
+            }
+        )
+    }
+
+    fn assignment(&mut self) -> Result<Expression, LoxError> {
+        let expr = self.equality()?;
+
+        if self.token_type_matches(&[TokenType::Equal]) {
+            let equals = self.previous();
+            let value = self.assignment()?;
+
+            match expr {
+                Expression::Variable { name } => {
+                    return Ok(
+                        Expression::Assignment {
+                            name,
+                            expression: Box::new(value.clone()),
+                        }
+                    )
+                },
+                _ => return Err(
+                    self.error(&equals, "invalid assignment target".to_string())
+                ),
+            }
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expression, LoxError> {
@@ -33,7 +169,7 @@ impl Parser {
                 TokenType::EqualEqual,
             ]
         ) {
-            let operator = self.previous().clone();
+            let operator = self.previous();
             let right = self.comparison()?;
             let new_expr = Expression::Binary {
                 left: Box::new(expr.clone()),
@@ -59,7 +195,7 @@ impl Parser {
                 TokenType::LessEqual,
             ]
         ) {
-            let operator = self.previous().clone();
+            let operator = self.previous();
             let right = self.term()?;
             let new_expr = Expression::Binary {
                 left: Box::new(expr.clone()),
@@ -82,7 +218,7 @@ impl Parser {
                 TokenType::Plus,
             ]
         ) {
-            let operator = self.previous().clone();
+            let operator = self.previous();
             let right = self.term()?;
             let new_expr = Expression::Binary {
                 left: Box::new(expr.clone()),
@@ -105,7 +241,7 @@ impl Parser {
                 TokenType::Star,
             ]
         ) {
-            let operator = self.previous().clone();
+            let operator = self.previous();
             let right = self.unary()?;
             let new_expr = Expression::Binary {
                 left: Box::new(expr.clone()),
@@ -126,7 +262,7 @@ impl Parser {
                 TokenType::Minus,
             ]
         ) {
-            let operator = self.previous().clone();
+            let operator = self.previous();
             let right = self.unary()?;
             let new_expr = Expression::Unary {
                 operator,
@@ -169,6 +305,12 @@ impl Parser {
                     value: self.previous().literal.clone().unwrap(),
                 }
             );
+        } else if self.token_type_matches(&[TokenType::Identifier]) {
+            return Ok(
+                Expression::Variable {
+                    name: self.previous(),
+                }
+            );
         } else if self.token_type_matches(&[TokenType::LeftParen]) {
             let expr = self.expression()?;
             let _ = self.consume(
@@ -184,12 +326,12 @@ impl Parser {
             );
         }
 
-        Err(self.error("expect expression".to_string()))
-    }
-
-    fn error(&mut self, message: String) -> LoxError {
         let next_token = self.peek();
 
+        Err(self.error(&next_token, "expect expression".to_string()))
+    }
+
+    fn error(&mut self, next_token: &Token, message: String) -> LoxError {
         if next_token.token_type == TokenType::Eof {
             return LoxError::ParseError(next_token.line, format!("at end {}", message))
         }
@@ -217,7 +359,9 @@ impl Parser {
             return Ok(self.advance().clone());
         }
 
-        Err(self.error(message))
+        let next_token = self.peek();
+
+        Err(self.error(&next_token, message))
     }
 
     fn synchronize(&mut self) {
@@ -257,19 +401,19 @@ impl Parser {
         false
     }
 
-    fn peek(&mut self) -> &Token {
-        self.tokens.get(self.current).unwrap()
+    fn peek(&mut self) -> Token {
+        self.tokens.get(self.current).unwrap().clone()
     }
 
-    fn previous(&mut self) -> &Token {
-        self.tokens.get(self.current - 1).unwrap()
+    fn previous(&mut self) -> Token {
+        self.tokens.get(self.current - 1).unwrap().clone()
     }
 
     fn at_end(&mut self) -> bool {
         self.peek().token_type == TokenType::Eof
     }
 
-    fn advance(&mut self) -> &Token {
+    fn advance(&mut self) -> Token {
         if !self.at_end() {
             self.current += 1;
         }
