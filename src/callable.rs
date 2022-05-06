@@ -2,7 +2,7 @@ use crate::environment::Environment;
 use crate::errors::LoxError;
 use crate::interpreter::Interpreter;
 use crate::statements::Statement;
-use crate::tokens::{Literal, Token};
+use crate::tokens::Literal;
 
 #[derive(Clone, Debug)]
 pub enum LoxCallable {
@@ -19,13 +19,12 @@ impl LoxCallable {
         match self {
             LoxCallable::Function(statement) => match statement {
                 Statement::Function {
-                    name,
+                    name: _,
                     params,
                     body,
                 } => {
                     let mut environment = Environment::new_literal();
 
-                    println!("{:?}", params);
                     for (idx, param) in params.iter().enumerate() {
                         environment.define(
                             param.lexeme.clone(),
@@ -33,14 +32,13 @@ impl LoxCallable {
                         );
                     }
 
-                    interpreter.execute_block(
-                        body,
-                        environment,
-                        false,
-                    )?;
-
-
-                    Ok(Literal::Nil)
+                    match interpreter.execute_block(body, environment, false) {
+                        Ok(_) => Ok(Literal::Nil),
+                        Err(e) => match e {
+                            LoxError::FunctionReturn(val) => Ok(val),
+                            _ => Err(e),
+                        },
+                    }
                 },
                 _ => Err(
                     LoxError::RuntimeError(
@@ -60,9 +58,9 @@ impl LoxCallable {
         match self {
             LoxCallable::Function(statement) => match statement {
                 Statement::Function {
-                    name,
+                    name: _,
                     params,
-                    body,
+                    body: _,
                 } => Ok(params.len()),
                 _ => Err(
                     LoxError::RuntimeError(

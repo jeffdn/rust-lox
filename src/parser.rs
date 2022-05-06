@@ -301,8 +301,8 @@ impl Parser {
         let keyword = self.previous();
 
         let value: Expression = match self.check_current_token(&TokenType::Semicolon) {
-            true => self.expression()?,
-            false => Expression::Literal {
+            false => self.expression()?,
+            true => Expression::Literal {
                 value: Literal::Nil,
             },
         };

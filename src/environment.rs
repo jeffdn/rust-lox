@@ -4,7 +4,7 @@ use crate::callable::LoxCallable;
 use crate::errors::LoxError;
 use crate::tokens::Literal;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Environment<T> {
     pub values: HashMap<String, T>,
 }

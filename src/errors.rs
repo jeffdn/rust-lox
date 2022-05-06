@@ -24,7 +24,7 @@ impl fmt::Display for LoxError {
             LoxError::InputError(msg) => msg.clone(),
             LoxError::SyntaxError(line, msg) => format!("error on line {}: {}", line, msg),
             LoxError::RuntimeError(msg) => format!("runtime error: {}", msg),
-            LoxError::FunctionReturn(msg) => "you shouldn't see this!".to_string(),
+            LoxError::FunctionReturn(_) => "you shouldn't see this!".to_string(),
         };
 
         write!(f, "{}", output)
