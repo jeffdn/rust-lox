@@ -11,6 +11,7 @@ pub trait ExpressionVisitor<T> {
     fn visit_unary(&mut self, expr: &Expression) -> Result<T, LoxError>;
     fn visit_variable(&mut self, expr: &Expression) -> Result<T, LoxError>;
     fn visit_assignment(&mut self, expr: &Expression) -> Result<T, LoxError>;
+    fn visit_logical(&mut self, expr: &Expression) -> Result<T, LoxError>;
 }
 
 #[derive(Clone, Debug)]
@@ -25,6 +26,11 @@ pub enum Expression {
     },
     Literal {
         value: tokens::Literal,
+    },
+    Logical {
+        left: Box<Expression>,
+        operator: tokens::Token,
+        right: Box<Expression>,
     },
     Unary {
         operator: tokens::Token,

@@ -35,7 +35,9 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Statement, LoxError> {
-        if self.token_type_matches(&[TokenType::Print]) {
+        if self.token_type_matches(&[TokenType::If]) {
+            return self.if_statement();
+        } else if self.token_type_matches(&[TokenType::Print]) {
             return self.print_statement();
         } else if self.token_type_matches(&[TokenType::LeftBrace]) {
             return Ok(
@@ -60,6 +62,26 @@ impl Parser {
         }
 
         Ok(statements)
+    }
+
+    fn if_statement(&mut self) -> Result<Statement, LoxError> {
+        self.consume(&TokenType::LeftParen, "expect '(' after 'if'".to_string())?;
+        let condition = self.expression()?;
+        self.consume(&TokenType::RightParen, "expect ')' after 'if' condition".to_string())?;
+
+        let then_branch = self.statement()?;
+        let else_branch = match self.token_type_matches(&[TokenType::Else]) {
+            true => Some(self.statement()?),
+            false => None,
+        };
+
+        Ok(
+            Statement::If {
+                condition: Box::new(condition),
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+            }
+        )
     }
 
     fn declaration_statement(&mut self) -> Result<Option<Statement>, LoxError> {
@@ -136,7 +158,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expression, LoxError> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if self.token_type_matches(&[TokenType::Equal]) {
             let equals = self.previous();
@@ -155,6 +177,38 @@ impl Parser {
                     self.error(&equals, "invalid assignment target".to_string())
                 ),
             }
+        }
+
+        Ok(expr)
+    }
+
+    fn or(&mut self) -> Result<Expression, LoxError> {
+        let mut expr = self.and()?;
+
+        while self.token_type_matches(&[TokenType::Or]) {
+            let operator = self.previous();
+            let right = self.and()?;
+            expr = Expression::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Expression, LoxError> {
+        let mut expr = self.equality()?;
+
+        while self.token_type_matches(&[TokenType::And]) {
+            let operator = self.previous();
+            let right = self.and()?;
+            expr = Expression::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            };
         }
 
         Ok(expr)

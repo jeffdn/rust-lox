@@ -77,6 +77,11 @@ impl ExpressionVisitor<Literal> for Interpreter {
                 name: _,
                 expression: _,
             } => self.visit_assignment(expr),
+            Expression::Logical {
+                left: _,
+                operator: _,
+                right: _,
+            } => self.visit_logical(expr),
         }
     }
 
@@ -214,6 +219,30 @@ impl ExpressionVisitor<Literal> for Interpreter {
             _ => Err(LoxError::AstError),
         }
     }
+
+    fn visit_logical(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+        match expr {
+            Expression::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                let left = self.evaluate(&**left)?;
+                let truthy_left = self.is_truthy(
+                    &Expression::Literal {
+                        value: left.clone(),
+                    }
+                )?;
+
+                match (truthy_left, &operator.token_type) {
+                    (true, TokenType::Or) => Ok(left.clone()),
+                    (false, TokenType::And) => Ok(left.clone()),
+                    _ => Ok(self.evaluate(right)?),
+                }
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
 }
 
 impl StatementVisitor for Interpreter {
@@ -222,6 +251,11 @@ impl StatementVisitor for Interpreter {
             Statement::Expression {
                 expression: _,
             } => self.visit_expression(stmt),
+            Statement::If {
+                condition: _,
+                then_branch: _,
+                else_branch: _,
+            } => self.visit_if(stmt),
             Statement::Print {
                 expression: _,
             } => self.visit_print(stmt),
@@ -280,10 +314,7 @@ impl StatementVisitor for Interpreter {
         }
     }
 
-    fn visit_block(
-        &mut self,
-        stmt: &Statement,
-    ) -> Result<(), LoxError> {
+    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
         let mut tmp_environment = Rc::new(RefCell::new(Box::new(Environment::new())));
         (*(*Rc::get_mut(&mut tmp_environment).unwrap().borrow_mut())).set_enclosing(self.environment.clone());
         let mut tmp_interpreter = Interpreter::new(Some(tmp_environment));
@@ -295,6 +326,27 @@ impl StatementVisitor for Interpreter {
                 for statement in statements.iter() {
                     tmp_interpreter.execute(statement)?;
                 }
+
+                Ok(())
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_if(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                match self.is_truthy(&**condition)? {
+                    true => self.execute(then_branch)?,
+                    false => match **else_branch {
+                        Some(ref eb) => self.execute(eb)?,
+                        None => {},
+                    }
+                };
 
                 Ok(())
             },
