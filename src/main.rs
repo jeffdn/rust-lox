@@ -1,3 +1,4 @@
+pub mod callable;
 pub mod environment;
 pub mod errors;
 pub mod expressions;
@@ -24,7 +25,7 @@ fn eval(source: String) -> Result<(), LoxError> {
 
     match parse_output {
         Ok(output) => {
-            let mut interpreter = Interpreter::new(None);
+            let mut interpreter = Interpreter::new();
 
             match interpreter.interpret(output) {
                 Ok(_) => {},

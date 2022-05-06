@@ -6,6 +6,7 @@ use crate::tokens;
 pub trait ExpressionVisitor<T> {
     fn accept_expression(&mut self, expr: &Expression) -> Result<T, LoxError>;
     fn visit_binary(&mut self, expr: &Expression) -> Result<T, LoxError>;
+    fn visit_call(&mut self, expr: &Expression) -> Result<T, LoxError>;
     fn visit_grouping(&mut self, expr: &Expression) -> Result<T, LoxError>;
     fn visit_literal(&mut self, expr: &Expression) -> Result<T, LoxError>;
     fn visit_unary(&mut self, expr: &Expression) -> Result<T, LoxError>;
@@ -20,6 +21,11 @@ pub enum Expression {
         left: Box<Expression>,
         operator: tokens::Token,
         right: Box<Expression>,
+    },
+    Call {
+        callee: Box<Expression>,
+        paren: tokens::Token,
+        arguments: Vec<Expression>,
     },
     Grouping {
         expression: Box<Expression>,

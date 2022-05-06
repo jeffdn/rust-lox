@@ -35,10 +35,16 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Statement, LoxError> {
-        if self.token_type_matches(&[TokenType::If]) {
+        if self.token_type_matches(&[TokenType::For]) {
+            return self.for_statement();
+        } else if self.token_type_matches(&[TokenType::If]) {
             return self.if_statement();
         } else if self.token_type_matches(&[TokenType::Print]) {
             return self.print_statement();
+        } else if self.token_type_matches(&[TokenType::Return]) {
+            return self.return_statement();
+        } else if self.token_type_matches(&[TokenType::While]) {
+            return self.while_statement();
         } else if self.token_type_matches(&[TokenType::LeftBrace]) {
             return Ok(
                 Statement::Block {
@@ -64,6 +70,65 @@ impl Parser {
         Ok(statements)
     }
 
+    fn for_statement(&mut self) -> Result<Statement, LoxError> {
+        self.consume(&TokenType::LeftParen, "expect '(' after 'for'".to_string())?;
+
+        let initializer: Option<Statement> = match self.token_type_matches(&[TokenType::Semicolon]) {
+            true => None,
+            false => match self.token_type_matches(&[TokenType::Var]) {
+                true => Some(self.var_declaration()?),
+                false => Some(self.expression_statement()?),
+            },
+        };
+
+        let condition: Expression = match self.check_current_token(&TokenType::Semicolon) {
+            true => Expression::Literal {
+                value: Literal::Boolean(true),
+            },
+            false => self.expression()?,
+        };
+
+        self.consume(&TokenType::Semicolon, "expect ';' after loop condition".to_string())?;
+
+        let increment: Option<Expression> = match self.check_current_token(&TokenType::RightParen) {
+            true => None,
+            false => Some(self.expression()?),
+        };
+
+        self.consume(&TokenType::RightParen, "expect ')' after 'for' setup".to_string())?;
+
+        let mut body = self.statement()?;
+
+        body = match increment {
+            Some(increment) => Statement::Block {
+                statements: vec![
+                    body,
+                    Statement::Expression {
+                        expression: Box::new(increment),
+                    },
+                ],
+            },
+            None => body,
+        };
+
+        body = Statement::While {
+            condition: Box::new(condition),
+            body: Box::new(body),
+        };
+
+        match initializer {
+            None => Ok(body),
+            Some(initializer) => Ok(
+                Statement::Block {
+                    statements: vec![
+                        initializer,
+                        body,
+                    ],
+                },
+            ),
+        }
+    }
+
     fn if_statement(&mut self) -> Result<Statement, LoxError> {
         self.consume(&TokenType::LeftParen, "expect '(' after 'if'".to_string())?;
         let condition = self.expression()?;
@@ -84,10 +149,28 @@ impl Parser {
         )
     }
 
+    fn while_statement(&mut self) -> Result<Statement, LoxError> {
+        self.consume(&TokenType::LeftParen, "expect '(' after 'while'".to_string())?;
+        let condition = self.expression()?;
+        self.consume(&TokenType::RightParen, "expect ')' after 'while' condition".to_string())?;
+
+        let body = self.statement()?;
+
+        Ok(
+            Statement::While {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            }
+        )
+    }
+
     fn declaration_statement(&mut self) -> Result<Option<Statement>, LoxError> {
-        let statement = match self.token_type_matches(&[TokenType::Var]) {
-            true => self.var_declaration(),
-            false => self.statement(),
+        let statement = match self.token_type_matches(&[TokenType::Fun]) {
+            true => self.function("function".to_string()),
+            false => match self.token_type_matches(&[TokenType::Var]) {
+                true => self.var_declaration(),
+                false => self.statement(),
+            },
         };
 
         match statement {
@@ -142,6 +225,63 @@ impl Parser {
         )
     }
 
+    fn function(&mut self, kind: String) -> Result<Statement, LoxError> {
+        let name = self.consume(
+            &TokenType::Identifier,
+            format!("expect {} name", kind),
+        )?;
+
+        self.consume(
+            &TokenType::LeftParen,
+            format!("expect '(' after {} name", kind),
+        )?;
+
+        let mut parameters: Vec<Token> = Vec::new();
+
+        if !self.check_current_token(&TokenType::RightParen) {
+            loop {
+                if parameters.len() >= 255 {
+                    let next_token = self.peek();
+                    self.error(
+                        &next_token,
+                        "can't have more than 255 arguments".to_string(),
+                    );
+                }
+
+                parameters.push(
+                    self.consume(
+                        &TokenType::Identifier,
+                        "expect parameter name".to_string(),
+                    )?
+                );
+
+                if !self.token_type_matches(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(
+            &TokenType::RightParen,
+            "expect ')' after parameter list".to_string(),
+        )?;
+
+        self.consume(
+            &TokenType::LeftBrace,
+            format!("expect '{{' before {} body", kind),
+        )?;
+
+        let statements: Vec<Statement> = self.block()?;
+
+        Ok(
+            Statement::Function {
+                name,
+                params: parameters,
+                body: statements,
+            }
+        )
+    }
+
     fn print_statement(&mut self) -> Result<Statement, LoxError> {
         let expr = self.expression()?;
 
@@ -153,6 +293,29 @@ impl Parser {
         Ok(
             Statement::Print {
                 expression: Box::new(expr.clone()),
+            }
+        )
+    }
+
+    fn return_statement(&mut self) -> Result<Statement, LoxError> {
+        let keyword = self.previous();
+
+        let value: Expression = match self.check_current_token(&TokenType::Semicolon) {
+            true => self.expression()?,
+            false => Expression::Literal {
+                value: Literal::Nil,
+            },
+        };
+
+        self.consume(
+            &TokenType::Semicolon,
+            "expected ';' after return value".to_string(),
+        )?;
+
+        Ok(
+            Statement::Return {
+                keyword,
+                value: Box::new(value),
             }
         )
     }
@@ -326,10 +489,60 @@ impl Parser {
             return Ok(new_expr);
         }
 
-        self.primary()
+        self.call()
     }
 
-    fn primary(&mut self) ->  Result<Expression, LoxError> {
+    fn finish_call(&mut self, callee: Expression) -> Result<Expression, LoxError> {
+        let mut arguments: Vec<Expression> = Vec::new();
+
+        if !self.check_current_token(&TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    let next_token = self.peek();
+                    self.error(
+                        &next_token,
+                        "can't have more than 255 arguments".to_string(),
+                    );
+                }
+
+                arguments.push(self.expression()?);
+
+                if !self.token_type_matches(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        let paren = self.consume(
+            &TokenType::RightParen,
+            "expect ')' after arguments".to_string(),
+        )?;
+
+        Ok(
+            Expression::Call {
+                callee: Box::new(callee),
+                paren,
+                arguments,
+            }
+        )
+    }
+
+    fn call(&mut self) -> Result<Expression, LoxError> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if self.token_type_matches(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+
+    fn primary(&mut self) -> Result<Expression, LoxError> {
         if self.token_type_matches(&[TokenType::False]) {
             return Ok(
                 Expression::Literal {

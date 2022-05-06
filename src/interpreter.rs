@@ -1,7 +1,4 @@
-use std::boxed::Box;
-use std::cell::RefCell;
-use std::rc::Rc;
-
+use crate::callable::LoxCallable;
 use crate::environment::Environment;
 use crate::errors::LoxError;
 use crate::expressions::{Expression, ExpressionVisitor};
@@ -9,16 +6,15 @@ use crate::statements::{Statement, StatementVisitor};
 use crate::tokens::{Literal, TokenType};
 
 pub struct Interpreter {
-    environment: Rc<RefCell<Box<Environment>>>,
+    environment: Environment<Literal>,
+    callables: Environment<LoxCallable>,
 }
 
 impl Interpreter {
-    pub fn new(env: Option<Rc<RefCell<Box<Environment>>>>) -> Interpreter {
+    pub fn new() -> Interpreter {
         Interpreter {
-            environment: match env {
-                Some(env) => env,
-                None => Rc::new(RefCell::new(Box::new(Environment::new()))),
-            }
+            environment: Environment::new_literal(),
+            callables: Environment::new_callable(),
         }
     }
 
@@ -26,14 +22,37 @@ impl Interpreter {
         self.accept_expression(expr)
     }
 
+    fn _is_truthy(&self, literal: &Literal) -> Result<bool, LoxError> {
+        match literal {
+            Literal::String(ref string) => Ok(string.len() > 0),
+            Literal::Number(ref number) => Ok(*number != 0.0f64),
+            Literal::Identifier(_) => Ok(false),
+            Literal::Boolean(ref boolean) => Ok(*boolean),
+            Literal::Nil => Ok(false),
+        }
+    }
+
     fn is_truthy(&mut self, expr: &Expression) -> Result<bool, LoxError> {
         match expr {
-            Expression::Literal { value } => match value {
-                Literal::String(string) => Ok(string.len() > 0),
-                Literal::Number(number) => Ok(*number != 0.0f64),
-                Literal::Identifier(_todo) => Ok(false),
-                Literal::Boolean(boolean) => Ok(*boolean),
-                Literal::Nil => Ok(false),
+            Expression::Literal { value } => self._is_truthy(&value),
+            Expression::Unary {
+                operator: _,
+                right: _,
+            } | Expression::Binary {
+                left: _,
+                operator: _,
+                right: _,
+            } | Expression::Logical {
+                left: _,
+                operator: _,
+                right: _,
+            } | Expression::Variable {
+                name: _,
+            } | Expression::Grouping {
+                expression: _,
+            } => {
+                let output = self.evaluate(expr)?;
+                self._is_truthy(&output)
             },
             _ => Err(LoxError::AstError),
         }
@@ -60,6 +79,11 @@ impl ExpressionVisitor<Literal> for Interpreter {
                 operator: _,
                 right: _,
             } => self.visit_binary(expr),
+            Expression::Call {
+                callee: _,
+                paren: _,
+                arguments: _,
+            } => self.visit_call(expr),
             Expression::Grouping {
                 expression: _,
             } => self.visit_grouping(expr),
@@ -144,6 +168,44 @@ impl ExpressionVisitor<Literal> for Interpreter {
         }
     }
 
+    fn visit_call(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+        match expr {
+            Expression::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => {
+                let mut real_arguments: Vec<Literal> = Vec::new();
+                for arg in arguments.iter() {
+                    let real_arg = self.evaluate(arg)?;
+                    real_arguments.push(real_arg);
+                }
+
+                let mut callable = match **callee {
+                    Expression::Variable {
+                        ref name,
+                    } => self.callables.get(&name.lexeme)?,
+                    _ => return Err(LoxError::AstError),
+                };
+
+                if real_arguments.len() != callable.arity()? {
+                    return Err(
+                        LoxError::RuntimeError(
+                            format!(
+                                "expected {} arguments but got {}",
+                                callable.arity()?,
+                                real_arguments.len(),
+                            )
+                        )
+                    );
+                }
+
+                callable.call(self, real_arguments)
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
     fn visit_grouping(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
         match expr {
             Expression::Grouping { expression } => self.evaluate(&**expression),
@@ -199,7 +261,7 @@ impl ExpressionVisitor<Literal> for Interpreter {
     fn visit_variable(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
         match expr {
             Expression::Variable { name } => {
-                (*(Rc::get_mut(&mut self.environment).unwrap().borrow_mut())).get(name.lexeme.clone())
+                self.environment.get(&name.lexeme.clone())
             },
             _ => Err(LoxError::AstError),
         }
@@ -212,7 +274,7 @@ impl ExpressionVisitor<Literal> for Interpreter {
                 expression,
             } => {
                 let value = self.evaluate(&**expression)?;
-                (*(Rc::get_mut(&mut self.environment).unwrap().borrow_mut())).assign(name.lexeme.clone(), value.clone())?;
+                self.environment.assign(name.lexeme.clone(), value.clone())?;
 
                 Ok(value)
             },
@@ -251,6 +313,11 @@ impl StatementVisitor for Interpreter {
             Statement::Expression {
                 expression: _,
             } => self.visit_expression(stmt),
+            Statement::Function {
+                name: _,
+                params: _,
+                body: _,
+            } => self.visit_function(stmt),
             Statement::If {
                 condition: _,
                 then_branch: _,
@@ -259,6 +326,14 @@ impl StatementVisitor for Interpreter {
             Statement::Print {
                 expression: _,
             } => self.visit_print(stmt),
+            Statement::Return {
+                keyword: _,
+                value: _,
+            } => self.visit_return(stmt),
+            Statement::While {
+                condition: _,
+                body: _,
+            } => self.visit_while(stmt),
             Statement::Var {
                 name: _,
                 initializer: _,
@@ -281,6 +356,22 @@ impl StatementVisitor for Interpreter {
         }
     }
 
+    fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::Function {
+                name,
+                params: _,
+                body: _,
+            } => {
+                let callable = LoxCallable::Function(stmt.clone());
+                self.callables.define(name.lexeme.clone(), callable);
+
+                Ok(())
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
     fn visit_print(&mut self, stmt: &Statement) -> Result<(), LoxError> {
         match stmt {
             Statement::Print {
@@ -288,6 +379,38 @@ impl StatementVisitor for Interpreter {
             } => {
                 let value = self.evaluate(&**expression)?;
                 println!("{}", value);
+
+                Ok(())
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_return(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::Return {
+                keyword: _,
+                value,
+            } => {
+                Err(
+                    LoxError::FunctionReturn(
+                        self.evaluate(value)?
+                    )
+                )
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_while(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::While {
+                condition,
+                body,
+            } => {
+                while self.is_truthy(&**condition)? {
+                    self.execute(body)?;
+                }
 
                 Ok(())
             },
@@ -306,26 +429,7 @@ impl StatementVisitor for Interpreter {
                     None => Literal::Nil,
                 };
 
-                (*(Rc::get_mut(&mut self.environment).unwrap().borrow_mut())).define(name.lexeme.clone(), value);
-
-                Ok(())
-            },
-            _ => Err(LoxError::AstError),
-        }
-    }
-
-    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let mut tmp_environment = Rc::new(RefCell::new(Box::new(Environment::new())));
-        (*(*Rc::get_mut(&mut tmp_environment).unwrap().borrow_mut())).set_enclosing(self.environment.clone());
-        let mut tmp_interpreter = Interpreter::new(Some(tmp_environment));
-
-        match stmt {
-            Statement::Block {
-                statements,
-            } => {
-                for statement in statements.iter() {
-                    tmp_interpreter.execute(statement)?;
-                }
+                self.environment.define(name.lexeme.clone(), value);
 
                 Ok(())
             },
@@ -352,5 +456,45 @@ impl StatementVisitor for Interpreter {
             },
             _ => Err(LoxError::AstError),
         }
+    }
+
+    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::Block {
+                statements,
+            } => {
+                let output_env = self.execute_block(statements, self.environment.clone(), true)?;
+                self.environment = output_env;
+            },
+            _ => return Err(LoxError::AstError),
+        };
+
+        Ok(())
+    }
+}
+
+impl Interpreter {
+    pub fn execute_block(
+        &mut self,
+        statements: &[Statement],
+        working_env: Environment<Literal>,
+        link_env: bool,
+    ) -> Result<Environment<Literal>, LoxError> {
+        let mut current_env = working_env.clone();
+        self.environment = current_env.clone();
+
+        for statement in statements.iter() {
+            self.execute(statement)?;
+        }
+
+        if link_env {
+            for (key, value) in self.environment.values.iter() {
+                if current_env.values.contains_key(key) {
+                    current_env.assign(key.clone(), value.clone())?;
+                }
+            }
+        }
+
+        Ok(current_env)
     }
 }

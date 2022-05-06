@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::tokens::Literal;
+
 #[derive(Clone, Debug)]
 pub enum LoxError {
     UsageError,
@@ -9,6 +11,7 @@ pub enum LoxError {
     InputError(String),
     RuntimeError(String),
     SyntaxError(usize, String),
+    FunctionReturn(Literal),
 }
 
 impl fmt::Display for LoxError {
@@ -21,6 +24,7 @@ impl fmt::Display for LoxError {
             LoxError::InputError(msg) => msg.clone(),
             LoxError::SyntaxError(line, msg) => format!("error on line {}: {}", line, msg),
             LoxError::RuntimeError(msg) => format!("runtime error: {}", msg),
+            LoxError::FunctionReturn(msg) => "you shouldn't see this!".to_string(),
         };
 
         write!(f, "{}", output)
