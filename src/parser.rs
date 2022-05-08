@@ -144,7 +144,10 @@ impl Parser {
             Statement::If {
                 condition: Box::new(condition),
                 then_branch: Box::new(then_branch),
-                else_branch: Box::new(else_branch),
+                else_branch: match else_branch {
+                    Some(eb) => Some(Box::new(eb)),
+                    None => None,
+                },
             }
         )
     }
@@ -402,7 +405,6 @@ impl Parser {
 
     fn comparison(&mut self) -> Result<Expression, LoxError> {
         let expr = self.term()?;
-
 
         if self.token_type_matches(
             &[

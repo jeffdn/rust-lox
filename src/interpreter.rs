@@ -1,24 +1,25 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::callable::LoxCallable;
-use crate::environment::Environment;
+use crate::environment::{LoxEntity, Environment};
 use crate::errors::LoxError;
 use crate::expressions::{Expression, ExpressionVisitor};
 use crate::statements::{Statement, StatementVisitor};
 use crate::tokens::{Literal, TokenType};
 
 pub struct Interpreter {
-    environment: Environment<Literal>,
-    callables: Environment<LoxCallable>,
+    pub environment: Rc<RefCell<Environment<LoxEntity>>>,
 }
 
 impl Interpreter {
     pub fn new() -> Interpreter {
         Interpreter {
-            environment: Environment::new_literal(),
-            callables: Environment::new_callable(),
+            environment: Rc::new(RefCell::new(Environment::new(None))),
         }
     }
 
-    fn evaluate(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn evaluate(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         self.accept_expression(expr)
     }
 
@@ -51,8 +52,10 @@ impl Interpreter {
             } | Expression::Grouping {
                 expression: _,
             } => {
-                let output = self.evaluate(expr)?;
-                self._is_truthy(&output)
+                match self.evaluate(expr)? {
+                    LoxEntity::Literal(output) => self._is_truthy(&output),
+                    LoxEntity::Callable(_) => Ok(true),
+                }
             },
             _ => Err(LoxError::AstError),
         }
@@ -71,8 +74,8 @@ impl Interpreter {
     }
 }
 
-impl ExpressionVisitor<Literal> for Interpreter {
-    fn accept_expression(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+impl ExpressionVisitor<LoxEntity> for Interpreter {
+    fn accept_expression(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Binary {
                 left: _,
@@ -109,55 +112,138 @@ impl ExpressionVisitor<Literal> for Interpreter {
         }
     }
 
-    fn visit_binary(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_binary(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Binary {
                 left,
                 operator,
                 right,
             } => {
-                let left = self.evaluate(&**left)?;
-                let right = self.evaluate(&**right)?;
+                let eval_left = self.evaluate(&**left)?;
+                let eval_right = self.evaluate(&**right)?;
 
-                match (left, right) {
-                    (Literal::Number(left), Literal::Number(right)) => {
-                        match operator.token_type {
-                            TokenType::Minus => Ok(Literal::Number(left - right)),
-                            TokenType::Slash => Ok(Literal::Number(left / right)),
-                            TokenType::Star => Ok(Literal::Number(left * right)),
-                            TokenType::Plus => Ok(Literal::Number(left + right)),
-                            TokenType::Greater => Ok(Literal::Boolean(left > right)),
-                            TokenType::GreaterEqual => Ok(Literal::Boolean(left >= right)),
-                            TokenType::Less => Ok(Literal::Boolean(left < right)),
-                            TokenType::LessEqual=> Ok(Literal::Boolean(left <= right)),
-                            TokenType::BangEqual=> Ok(Literal::Boolean(left != right)),
-                            TokenType::EqualEqual=> Ok(Literal::Boolean(left == right)),
-                            _ => Err(LoxError::AstError),
-                        }
-                    },
-                    (Literal::String(left), Literal::String(right)) => {
-                        match operator.token_type {
-                            TokenType::Plus => Ok(
-                                Literal::String(
-                                    format!("{}{}", left, right),
-                                )
-                            ),
-                            TokenType::BangEqual=> Ok(Literal::Boolean(left != right)),
-                            TokenType::EqualEqual=> Ok(Literal::Boolean(left == right)),
-                            _ => Err(LoxError::AstError),
-                        }
-                    },
-                    (Literal::Boolean(left), Literal::Boolean(right)) => {
-                        match operator.token_type {
-                            TokenType::BangEqual=> Ok(Literal::Boolean(left != right)),
-                            TokenType::EqualEqual=> Ok(Literal::Boolean(left == right)),
-                            _ => Err(LoxError::AstError),
-                        }
-                    },
-                    (Literal::Nil, Literal::Nil) => {
-                        match operator.token_type {
-                            TokenType::BangEqual => Ok(Literal::Boolean(false)),
-                            TokenType::EqualEqual => Ok(Literal::Boolean(true)),
+                match (eval_left, eval_right) {
+                    (LoxEntity::Literal(left), LoxEntity::Literal(right)) => {
+                        match (left, right) {
+                            (Literal::Number(left), Literal::Number(right)) => {
+                                match operator.token_type {
+                                    TokenType::Minus => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Number(left - right)
+                                        )
+                                    ),
+                                    TokenType::Slash => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Number(left / right)
+                                        )
+                                    ),
+                                    TokenType::Star => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Number(left * right)
+                                        )
+                                    ),
+                                    TokenType::Plus => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Number(left + right)
+                                        )
+                                    ),
+                                    TokenType::Greater => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left > right)
+                                        )
+                                    ),
+                                    TokenType::GreaterEqual => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left >= right)
+                                        )
+                                    ),
+                                    TokenType::Less => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left < right)
+                                        )
+                                    ),
+                                    TokenType::LessEqual => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left <= right)
+                                        )
+                                    ),
+                                    TokenType::BangEqual => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left != right)
+                                        )
+                                    ),
+                                    TokenType::EqualEqual => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left == right)
+                                        )
+                                    ),
+                                    _ => Err(LoxError::AstError),
+                                }
+                            },
+                            (Literal::String(left), Literal::Number(right)) => {
+                                match operator.token_type {
+                                    TokenType::Plus => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::String(
+                                                format!("{}{}", left, right),
+                                            )
+                                        )
+                                    ),
+                                    _ => Err(LoxError::AstError),
+                                }
+                            },
+                            (Literal::String(left), Literal::String(right)) => {
+                                match operator.token_type {
+                                    TokenType::Plus => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::String(
+                                                format!("{}{}", left, right),
+                                            )
+                                        )
+                                    ),
+                                    TokenType::BangEqual=> Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left != right)
+                                        )
+                                    ),
+                                    TokenType::EqualEqual=> Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left == right)
+                                        )
+                                    ),
+                                    _ => Err(LoxError::AstError),
+                                }
+                            },
+                            (Literal::Boolean(left), Literal::Boolean(right)) => {
+                                match operator.token_type {
+                                    TokenType::BangEqual=> Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left != right)
+                                        )
+                                    ),
+                                    TokenType::EqualEqual=> Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(left == right)
+                                        )
+                                    ),
+                                    _ => Err(LoxError::AstError),
+                                }
+                            },
+                            (Literal::Nil, Literal::Nil) => {
+                                match operator.token_type {
+                                    TokenType::BangEqual => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(false)
+                                        )
+                                    ),
+                                    TokenType::EqualEqual => Ok(
+                                        LoxEntity::Literal(
+                                            Literal::Boolean(true)
+                                        )
+                                    ),
+                                    _ => Err(LoxError::AstError),
+                                }
+                            },
                             _ => Err(LoxError::AstError),
                         }
                     },
@@ -168,7 +254,7 @@ impl ExpressionVisitor<Literal> for Interpreter {
         }
     }
 
-    fn visit_call(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_call(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Call {
                 callee,
@@ -177,14 +263,19 @@ impl ExpressionVisitor<Literal> for Interpreter {
             } => {
                 let mut real_arguments: Vec<Literal> = Vec::new();
                 for arg in arguments.iter() {
-                    let real_arg = self.evaluate(arg)?;
-                    real_arguments.push(real_arg);
+                    match self.evaluate(arg)? {
+                        LoxEntity::Literal(real_arg) => real_arguments.push(real_arg),
+                        _ => return Err(LoxError::AstError),
+                    };
                 }
 
                 let mut callable = match **callee {
                     Expression::Variable {
                         ref name,
-                    } => self.callables.get(&name.lexeme)?,
+                    } => match self.environment.borrow().get(&name.lexeme)? {
+                        LoxEntity::Callable(callable) => callable,
+                        _ => return Err(LoxError::AstError),
+                    },
                     _ => return Err(LoxError::AstError),
                 };
 
@@ -206,35 +297,45 @@ impl ExpressionVisitor<Literal> for Interpreter {
         }
     }
 
-    fn visit_grouping(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_grouping(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Grouping { expression } => self.evaluate(&**expression),
             _ => Err(LoxError::AstError),
         }
     }
 
-    fn visit_literal(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_literal(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
-            Expression::Literal { value } => Ok(value.clone()),
+            Expression::Literal { value } => Ok(LoxEntity::Literal(value.clone())),
             _ => Err(LoxError::AstError),
         }
     }
 
-    fn visit_unary(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_unary(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Unary {
                 operator,
                 right,
             } => match operator.token_type {
                 TokenType::Minus => {
-                    let right = self.evaluate(&**right)?;
-                    match right {
-                        Literal::Number(number) => {
-                            Ok(Literal::Number(-number))
+                    match self.evaluate(&**right)? {
+                        LoxEntity::Literal(outer_right) => match outer_right {
+                            Literal::Number(number) => {
+                                Ok(
+                                    LoxEntity::Literal(
+                                        Literal::Number(-number)
+                                    )
+                                )
+                            },
+                            _ => Err(
+                                LoxError::TypeError(
+                                    format!("expected number, got {}", outer_right)
+                                ),
+                            ),
                         },
                         _ => Err(
                             LoxError::TypeError(
-                                format!("expected number, got {}", right)
+                                format!("expected number, got something else")
                             ),
                         ),
                     }
@@ -243,7 +344,11 @@ impl ExpressionVisitor<Literal> for Interpreter {
                     match **right {
                         Expression::Literal { value: _ } => {
                             let truthy = self.is_truthy(&**right)?;
-                            Ok(Literal::Boolean(truthy))
+                            Ok(
+                                LoxEntity::Literal(
+                                    Literal::Boolean(truthy)
+                                )
+                            )
                         },
                         _ => Err(
                             LoxError::TypeError(
@@ -258,23 +363,26 @@ impl ExpressionVisitor<Literal> for Interpreter {
         }
     }
 
-    fn visit_variable(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_variable(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Variable { name } => {
-                self.environment.get(&name.lexeme.clone())
+                self.environment.borrow().get(&name.lexeme.clone())
             },
             _ => Err(LoxError::AstError),
         }
     }
 
-    fn visit_assignment(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_assignment(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Assignment {
                 name,
                 expression,
             } => {
                 let value = self.evaluate(&**expression)?;
-                self.environment.assign(name.lexeme.clone(), value.clone())?;
+                self.environment.borrow_mut().assign(
+                    name.lexeme.clone(),
+                    value.clone(),
+                )?;
 
                 Ok(value)
             },
@@ -282,24 +390,36 @@ impl ExpressionVisitor<Literal> for Interpreter {
         }
     }
 
-    fn visit_logical(&mut self, expr: &Expression) -> Result<Literal, LoxError> {
+    fn visit_logical(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Logical {
                 left,
                 operator,
                 right,
             } => {
-                let left = self.evaluate(&**left)?;
-                let truthy_left = self.is_truthy(
-                    &Expression::Literal {
-                        value: left.clone(),
-                    }
-                )?;
+                match self.evaluate(&**left)? {
+                    LoxEntity::Literal(inner) => {
+                        let truthy_left = self.is_truthy(
+                            &Expression::Literal {
+                                value: inner.clone(),
+                            }
+                        )?;
 
-                match (truthy_left, &operator.token_type) {
-                    (true, TokenType::Or) => Ok(left.clone()),
-                    (false, TokenType::And) => Ok(left.clone()),
-                    _ => Ok(self.evaluate(right)?),
+                        match (truthy_left, &operator.token_type) {
+                            (true, TokenType::Or) => Ok(
+                                LoxEntity::Literal(
+                                    inner.clone()
+                                )
+                            ),
+                            (false, TokenType::And) => Ok(
+                                LoxEntity::Literal(
+                                    inner.clone()
+                                )
+                            ),
+                            _ => Ok(self.evaluate(right)?),
+                        }
+                    },
+                    _ => return Err(LoxError::AstError),
                 }
             },
             _ => Err(LoxError::AstError),
@@ -363,8 +483,21 @@ impl StatementVisitor for Interpreter {
                 params: _,
                 body: _,
             } => {
-                let callable = LoxCallable::Function(stmt.clone());
-                self.callables.define(name.lexeme.clone(), callable);
+                let callable = LoxCallable::Function {
+                    statement: stmt.clone(),
+                    environment: Rc::new(
+                        RefCell::new(
+                            Environment::new(
+                                Some(self.environment.clone()),
+                            )
+                        )
+                    ),
+                };
+
+                self.environment.borrow_mut().define(
+                    name.lexeme.clone(),
+                    LoxEntity::Callable(callable),
+                );
 
                 Ok(())
             },
@@ -392,9 +525,10 @@ impl StatementVisitor for Interpreter {
                 keyword: _,
                 value,
             } => {
+                let value = self.evaluate(value)?;
                 Err(
                     LoxError::FunctionReturn(
-                        self.evaluate(value)?
+                        value
                     )
                 )
             },
@@ -426,10 +560,12 @@ impl StatementVisitor for Interpreter {
             } => {
                 let value = match initializer {
                     Some(init) => self.evaluate(&**init)?,
-                    None => Literal::Nil,
+                    None => LoxEntity::Literal(Literal::Nil),
                 };
 
-                self.environment.define(name.lexeme.clone(), value);
+                self.environment.borrow_mut().define(
+                    name.lexeme.clone(), value,
+                );
 
                 Ok(())
             },
@@ -446,8 +582,10 @@ impl StatementVisitor for Interpreter {
             } => {
                 match self.is_truthy(&**condition)? {
                     true => self.execute(then_branch)?,
-                    false => match **else_branch {
-                        Some(ref eb) => self.execute(eb)?,
+                    false => match else_branch {
+                        Some(eb) => {
+                            self.execute(&**eb)?
+                        },
                         None => {},
                     }
                 };
@@ -463,8 +601,12 @@ impl StatementVisitor for Interpreter {
             Statement::Block {
                 statements,
             } => {
-                let output_env = self.execute_block(statements, self.environment.clone(), true)?;
-                self.environment = output_env;
+                let new_env = Rc::new(
+                    RefCell::new(
+                        Environment::new(Some(self.environment.clone()))
+                    )
+                );
+                self.execute_block(statements, new_env)?;
             },
             _ => return Err(LoxError::AstError),
         };
@@ -477,24 +619,31 @@ impl Interpreter {
     pub fn execute_block(
         &mut self,
         statements: &[Statement],
-        working_env: Environment<Literal>,
-        link_env: bool,
-    ) -> Result<Environment<Literal>, LoxError> {
-        let mut current_env = working_env.clone();
-        self.environment = current_env.clone();
+        working_env: Rc<RefCell<Environment<LoxEntity>>>,
+    ) -> Result<(), LoxError> {
+        let previous = self.environment.clone();
+        self.environment = working_env;
 
-        for statement in statements.iter() {
-            self.execute(statement)?;
+        let mut statement_iter = statements.iter();
+        let mut output: Result<(), LoxError> = Ok(());
+
+        loop {
+            let next_statement = statement_iter.next();
+
+            match next_statement {
+                None => break,
+                Some(statement) => match self.execute(statement) {
+                    Ok(_) => continue,
+                    Err(e) => {
+                        output = Err(e);
+                        break;
+                    },
+                },
+            };
         }
 
-        if link_env {
-            for (key, value) in self.environment.values.iter() {
-                if current_env.values.contains_key(key) {
-                    current_env.assign(key.clone(), value.clone())?;
-                }
-            }
-        }
+        self.environment = previous;
 
-        Ok(current_env)
+        output
     }
 }

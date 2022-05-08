@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::tokens::Literal;
+use crate::environment::LoxEntity;
 
 #[derive(Clone, Debug)]
 pub enum LoxError {
@@ -11,7 +11,7 @@ pub enum LoxError {
     InputError(String),
     RuntimeError(String),
     SyntaxError(usize, String),
-    FunctionReturn(Literal),
+    FunctionReturn(LoxEntity),
 }
 
 impl fmt::Display for LoxError {

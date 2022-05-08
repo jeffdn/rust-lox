@@ -11,7 +11,7 @@ pub trait StatementVisitor {
     fn visit_return(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_var(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_while(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_block(&'_ mut self, stmt: &Statement) -> Result<(), LoxError>;
+    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError>;
 }
 
 #[derive(Clone, Debug)]
@@ -27,7 +27,7 @@ pub enum Statement {
     If {
         condition: Box<Expression>,
         then_branch: Box<Statement>,
-        else_branch: Box<Option<Statement>>,
+        else_branch: Option<Box<Statement>>,
     },
     Print {
         expression: Box<Expression>,
