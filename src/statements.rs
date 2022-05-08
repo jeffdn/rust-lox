@@ -3,7 +3,42 @@ use crate::expressions::Expression;
 use crate::tokens::Token;
 
 pub trait StatementVisitor {
-    fn accept_statement(&mut self, stmt: &Statement) -> Result<(), LoxError>;
+    fn accept_statement(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::Expression {
+                expression: _,
+            } => self.visit_expression(stmt),
+            Statement::Function {
+                name: _,
+                params: _,
+                body: _,
+            } => self.visit_function(stmt),
+            Statement::If {
+                condition: _,
+                then_branch: _,
+                else_branch: _,
+            } => self.visit_if(stmt),
+            Statement::Print {
+                expression: _,
+            } => self.visit_print(stmt),
+            Statement::Return {
+                keyword: _,
+                value: _,
+            } => self.visit_return(stmt),
+            Statement::While {
+                condition: _,
+                body: _,
+            } => self.visit_while(stmt),
+            Statement::Var {
+                name: _,
+                initializer: _,
+            } => self.visit_var(stmt),
+            Statement::Block {
+                statements: _,
+            } => self.visit_block(stmt),
+        }
+    }
+
     fn visit_expression(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_if(&mut self, stmt: &Statement) -> Result<(), LoxError>;

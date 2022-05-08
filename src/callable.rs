@@ -12,7 +12,7 @@ use crate::tokens::Literal;
 pub enum LoxCallable {
     Function {
         statement: Statement,
-        environment: Rc<RefCell<Environment<LoxEntity>>>,
+        environment: Rc<RefCell<Environment<String, LoxEntity>>>,
     },
 }
 

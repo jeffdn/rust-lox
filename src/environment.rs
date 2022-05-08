@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
 use std::rc::Rc;
 
 use crate::callable::LoxCallable;
@@ -25,35 +26,24 @@ impl fmt::Display for LoxEntity {
 }
 
 #[derive(Clone, Debug)]
-pub struct Environment<T> {
-    pub parent: Option<Rc<RefCell<Environment<T>>>>,
-    pub values: HashMap<String, T>,
-    pub id: usize,
+pub struct Environment<K, V> {
+    pub parent: Option<Rc<RefCell<Environment<K, V>>>>,
+    pub values: HashMap<K, V>,
 }
 
-static mut COUNTER: usize = 0;
-
-fn counter() -> usize {
-    unsafe {
-        COUNTER = COUNTER + 1;
-        COUNTER.clone()
-    }
-}
-
-impl Environment<LoxEntity> {
-    pub fn new(parent: Option<Rc<RefCell<Environment<LoxEntity>>>>) -> Environment<LoxEntity> {
+impl<K: Clone + fmt::Debug + Eq + Hash, V: Clone + fmt::Debug> Environment<K, V> {
+    pub fn new(parent: Option<Rc<RefCell<Environment<K, V>>>>) -> Environment<K, V> {
         Environment {
             parent,
             values: HashMap::new(),
-            id: counter(),
         }
     }
 
-    pub fn define(&mut self, key: String, value: LoxEntity) {
+    pub fn define(&mut self, key: K, value: V) {
         self.values.insert(key.clone(), value);
     }
 
-    pub fn assign(&mut self, key: String, value: LoxEntity) -> Result<(), LoxError>{
+    pub fn assign(&mut self, key: K, value: V) -> Result<(), LoxError>{
         if self.values.contains_key(&key) {
             self.values.insert(key, value);
             return Ok(());
@@ -63,22 +53,48 @@ impl Environment<LoxEntity> {
             Some(ref parent) => parent.borrow_mut().assign(key, value),
             None => Err(
                 LoxError::RuntimeError(
-                    format!("(env id {:?}) undefined variable '{}'", self.id, key),
+                    format!("undefined variable '{:?}'", key),
                 ),
             )
         }
     }
 
-    pub fn get(&self, key: &str) -> Result<LoxEntity, LoxError> {
-        match self.values.get(key) {
-            Some(val) => {
-                Ok(val.clone())
-            },
-            None => match self.parent {
-                Some(ref parent) => parent.borrow_mut().get(key),
-                None =>  Err(
+    pub fn assign_at(&mut self, key: K, value: V, depth: usize) -> Result<(), LoxError>{
+        match depth > 0 {
+            true => match self.parent {
+                Some(ref mut parent) => parent.borrow_mut().assign_at(key, value, depth - 1),
+                None => Err(
                     LoxError::RuntimeError(
-                        format!("(env id {:?}) undefined variable '{}'", self.id, key)
+                        format!("undefined variable '{:?}' -- too deep!", key)
+                    )
+                ),
+            },
+            false => self.assign(key, value),
+        }
+    }
+
+    pub fn get(&self, key: &K) -> Option<V> {
+        match self.values.get(key) {
+            Some(val) => Some(val.clone()),
+            None => None,
+        }
+    }
+
+    pub fn get_at(&self, key: &K, depth: usize) -> Result<V, LoxError> {
+        match depth > 1 {
+            true => match self.parent {
+                Some(ref parent) => parent.borrow().get_at(key, depth - 1),
+                None => Err(
+                    LoxError::RuntimeError(
+                        format!("undefined variable '{:?}' -- too deep!", key)
+                    )
+                ),
+            },
+            false => match self.get(key) {
+                Some(val) => Ok(val),
+                None => Err(
+                    LoxError::RuntimeError(
+                        format!("undefined variable '{:?}'", key)
                     )
                 ),
             },

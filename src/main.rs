@@ -4,6 +4,7 @@ pub mod errors;
 pub mod expressions;
 pub mod interpreter;
 pub mod parser;
+pub mod resolver;
 pub mod scanner;
 pub mod statements;
 pub mod tokens;
@@ -13,8 +14,8 @@ use std::fs;
 use std::io::{self, Write};
 
 use crate::errors::LoxError;
-use crate::interpreter::Interpreter;
 use crate::parser::Parser;
+use crate::resolver::Resolver;
 use crate::scanner::Scanner;
 
 fn eval(source: String) -> Result<(), LoxError> {
@@ -25,7 +26,10 @@ fn eval(source: String) -> Result<(), LoxError> {
 
     match parse_output {
         Ok(output) => {
-            let mut interpreter = Interpreter::new();
+            let mut resolver = Resolver::new();
+            resolver.resolve(&output)?;
+
+            let mut interpreter = resolver.interpreter;
 
             match interpreter.interpret(output) {
                 Ok(_) => {},
