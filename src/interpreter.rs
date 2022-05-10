@@ -1,8 +1,9 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::callable::LoxCallable;
-use crate::environment::{LoxEntity, Environment};
+use crate::environment::{LoxEntity, LoxInstance, Environment};
 use crate::errors::LoxError;
 use crate::expressions::{Expression, ExpressionVisitor};
 use crate::statements::{Statement, StatementVisitor};
@@ -90,20 +91,39 @@ impl Interpreter {
         let distance = self.locals.borrow().get(expr);
 
         match distance {
-            Some(distance) => self.environment.borrow().get_at(&name.lexeme, distance),
-            None => match self.globals.borrow().get(&name.lexeme) {
-                Some(val) => Ok(val),
-                None => Err(
-                    LoxError::RuntimeError(
-                        format!("undefined variable '{}'", name.lexeme)
-                    )
-                )
-            },
+            Ok(_) => self.environment.borrow().get(&name.lexeme),
+            Err(_) => self.globals.borrow().get(&name.lexeme),
         }
     }
 }
 
 impl ExpressionVisitor<LoxEntity> for Interpreter {
+    fn visit_assignment(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::Assignment {
+                name,
+                expression,
+            } => {
+                let value = self.evaluate(&**expression)?;
+                let distance = self.locals.borrow().get(expr);
+
+                match distance {
+                    Ok(_) => self.environment.borrow_mut().assign(
+                        name.lexeme.clone(),
+                        value.clone(),
+                    )?,
+                    Err(_) => self.globals.borrow_mut().assign(
+                        name.lexeme.clone(),
+                        value.clone(),
+                    )?,
+                };
+
+                Ok(value)
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
     fn visit_binary(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Binary {
@@ -264,10 +284,21 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                 let mut callable = match **callee {
                     Expression::Variable {
                         ref name,
-                    } => match self.look_up_variable(name, expr)? {
-                        LoxEntity::Callable(callable) => callable,
-                        _ => return Err(LoxError::AstError),
+                    } => {
+                        match self.environment.borrow().get(&name.lexeme)? {
+                            LoxEntity::Callable(callable) => callable,
+                            _ => return Err(LoxError::AstError),
+                        }
                     },
+                    Expression::Get {
+                        name: _,
+                        object: _,
+                    } => {
+                        match self.evaluate(&**callee)? {
+                            LoxEntity::Callable(callable) => callable,
+                            _ => return Err(LoxError::AstError),
+                        }
+                    }
                     _ => return Err(LoxError::AstError),
                 };
 
@@ -289,6 +320,25 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
         }
     }
 
+    fn visit_get(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::Get {
+                name,
+                object,
+            } => {
+                match self.evaluate(&**object)? {
+                    LoxEntity::Callable(
+                        LoxCallable::Class {
+                            class,
+                        }
+                    ) => class.get(&name.lexeme),
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
     fn visit_grouping(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Grouping { expression } => self.evaluate(&**expression),
@@ -302,6 +352,86 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => Err(LoxError::AstError),
         }
     }
+
+    fn visit_logical(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                match self.evaluate(&**left)? {
+                    LoxEntity::Literal(inner) => {
+                        let truthy_left = self.is_truthy(
+                            &Expression::Literal {
+                                value: inner.clone(),
+                            }
+                        )?;
+
+                        match (truthy_left, &operator.token_type) {
+                            (true, TokenType::Or) => Ok(
+                                LoxEntity::Literal(
+                                    inner.clone()
+                                )
+                            ),
+                            (false, TokenType::And) => Ok(
+                                LoxEntity::Literal(
+                                    inner.clone()
+                                )
+                            ),
+                            _ => Ok(self.evaluate(right)?),
+                        }
+                    },
+                    _ => return Err(LoxError::AstError),
+                }
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_set(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::Set {
+                name,
+                object,
+                value,
+            } => {
+                match (self.evaluate(&**object)?, &**object) {
+                    (
+                        LoxEntity::Callable(
+                            LoxCallable::Class {
+                                mut class,
+                            }
+                        ),
+                        Expression::Variable {
+                            name: instance_name,
+                        },
+                    ) => {
+                        let value = self.evaluate(&**value)?;
+                        class.set(
+                            name.lexeme.clone(),
+                            value.clone(),
+                        )?;
+
+                        // We must reassign this to update its internal state permanently.
+                        self.environment.borrow_mut().assign(
+                            instance_name.lexeme.clone(),
+                            LoxEntity::Callable(
+                                LoxCallable::Class {
+                                    class,
+                                }
+                            ),
+                        )?;
+
+                        Ok(value)
+                    },
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
 
     fn visit_unary(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
@@ -363,72 +493,79 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => Err(LoxError::AstError),
         }
     }
-
-    fn visit_assignment(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        match expr {
-            Expression::Assignment {
-                name,
-                expression,
-            } => {
-                let value = self.evaluate(&**expression)?;
-                let distance = self.locals.borrow().get(expr);
-
-                match distance {
-                    Some(distance) => self.environment.borrow_mut().assign_at(
-                        name.lexeme.clone(),
-                        value.clone(),
-                        distance,
-                    )?,
-                    None => self.globals.borrow_mut().assign(
-                        name.lexeme.clone(),
-                        value.clone(),
-                    )?,
-                };
-
-                Ok(value)
-            },
-            _ => Err(LoxError::AstError),
-        }
-    }
-
-    fn visit_logical(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        match expr {
-            Expression::Logical {
-                left,
-                operator,
-                right,
-            } => {
-                match self.evaluate(&**left)? {
-                    LoxEntity::Literal(inner) => {
-                        let truthy_left = self.is_truthy(
-                            &Expression::Literal {
-                                value: inner.clone(),
-                            }
-                        )?;
-
-                        match (truthy_left, &operator.token_type) {
-                            (true, TokenType::Or) => Ok(
-                                LoxEntity::Literal(
-                                    inner.clone()
-                                )
-                            ),
-                            (false, TokenType::And) => Ok(
-                                LoxEntity::Literal(
-                                    inner.clone()
-                                )
-                            ),
-                            _ => Ok(self.evaluate(right)?),
-                        }
-                    },
-                    _ => return Err(LoxError::AstError),
-                }
-            },
-            _ => Err(LoxError::AstError),
-        }
-    }
 }
 
 impl StatementVisitor for Interpreter {
+    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::Block {
+                statements,
+            } => {
+                let new_env = Rc::new(
+                    RefCell::new(
+                        Environment::new(Some(self.environment.clone()))
+                    )
+                );
+                self.execute_block(statements, new_env)?;
+            },
+            _ => return Err(LoxError::AstError),
+        };
+
+        Ok(())
+    }
+
+    fn visit_class(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        match stmt {
+            Statement::Class {
+                name,
+                methods,
+            } => {
+                self.environment.borrow_mut().define(
+                    name.lexeme.clone(),
+                    LoxEntity::Literal(
+                        Literal::Nil,
+                    ),
+                );
+
+                let mut class_methods: HashMap<String, LoxCallable> = HashMap::new();
+
+                for method in methods.iter() {
+                    match method {
+                        Statement::Function {
+                            name: method_name,
+                            params: _,
+                            body: _,
+                        } => {
+                            class_methods.insert(
+                                method_name.lexeme.clone(),
+                                LoxCallable::Function {
+                                    statement: method.clone(),
+                                    environment: self.environment.clone(),
+                                }
+                            );
+                        },
+                        _ => return Err(LoxError::AstError),
+                    };
+                }
+
+                let class = LoxEntity::Callable(
+                    LoxCallable::Class {
+                        class: LoxInstance::new(
+                            name.clone(),
+                            stmt.clone(),
+                            class_methods,
+                        ),
+                    },
+                );
+
+                self.environment.borrow_mut().assign(name.lexeme.clone(), class)?;
+
+                Ok(())
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
     fn visit_expression(&mut self, stmt: &Statement) -> Result<(), LoxError> {
         match stmt {
             Statement::Expression {
@@ -476,6 +613,7 @@ impl StatementVisitor for Interpreter {
                 expression,
             } => {
                 let value = self.evaluate(&**expression)?;
+
                 println!("{}", value);
 
                 Ok(())
@@ -559,24 +697,6 @@ impl StatementVisitor for Interpreter {
             },
             _ => Err(LoxError::AstError),
         }
-    }
-
-    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
-            Statement::Block {
-                statements,
-            } => {
-                let new_env = Rc::new(
-                    RefCell::new(
-                        Environment::new(Some(self.environment.clone()))
-                    )
-                );
-                self.execute_block(statements, new_env)?;
-            },
-            _ => return Err(LoxError::AstError),
-        };
-
-        Ok(())
     }
 }
 

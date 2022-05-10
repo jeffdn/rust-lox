@@ -168,11 +168,14 @@ impl Parser {
     }
 
     fn declaration_statement(&mut self) -> Result<Option<Statement>, LoxError> {
-        let statement = match self.token_type_matches(&[TokenType::Fun]) {
-            true => self.function("function".to_string()),
-            false => match self.token_type_matches(&[TokenType::Var]) {
-                true => self.var_declaration(),
-                false => self.statement(),
+        let statement = match self.token_type_matches(&[TokenType::Class]) {
+            true => self.class_declaration(),
+            false => match self.token_type_matches(&[TokenType::Fun]) {
+                true => self.function("function".to_string()),
+                false => match self.token_type_matches(&[TokenType::Var]) {
+                    true => self.var_declaration(),
+                    false => self.statement(),
+                },
             },
         };
 
@@ -183,6 +186,36 @@ impl Parser {
                 Ok(None)
             },
         }
+    }
+
+    fn class_declaration(&mut self) -> Result<Statement, LoxError> {
+        let name = self.consume(
+            &TokenType::Identifier,
+            "expect class name".to_string(),
+        )?;
+
+        self.consume(
+            &TokenType::LeftBrace,
+            "expect '{' after class body".to_string(),
+        )?;
+
+        let mut methods: Vec<Statement> = Vec::new();
+
+        while !self.check_current_token(&TokenType::RightBrace) && !self.at_end() {
+            methods.push(self.function("method".to_string())?);
+        }
+
+        self.consume(
+            &TokenType::RightBrace,
+            "expect '}' after class body".to_string(),
+        )?;
+
+        Ok(
+            Statement::Class {
+                name,
+                methods,
+            }
+        )
     }
 
     fn var_declaration(&mut self) -> Result<Statement, LoxError> {
@@ -331,11 +364,25 @@ impl Parser {
             let value = self.assignment()?;
 
             match expr {
-                Expression::Variable { name } => {
+                Expression::Variable {
+                    name,
+                } => {
                     return Ok(
                         Expression::Assignment {
                             name,
                             expression: Box::new(value.clone()),
+                        }
+                    )
+                },
+                Expression::Get {
+                    name,
+                    object,
+                } => {
+                    return Ok(
+                        Expression::Set {
+                            name,
+                            object,
+                            value: Box::new(value.clone()),
                         }
                     )
                 },
@@ -535,6 +582,16 @@ impl Parser {
         loop {
             if self.token_type_matches(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.token_type_matches(&[TokenType::Dot]) {
+                let name = self.consume(
+                    &TokenType::Identifier,
+                    "expect property name after '.'".to_string(),
+                )?;
+
+                expr = Expression::Get {
+                    name,
+                    object: Box::new(expr),
+                };
             } else {
                 break;
             }

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::environment::{LoxEntity, Environment};
+use crate::environment::{LoxEntity, LoxInstance, Environment};
 use crate::errors::LoxError;
 use crate::interpreter::Interpreter;
 use crate::statements::Statement;
@@ -13,6 +13,9 @@ pub enum LoxCallable {
     Function {
         statement: Statement,
         environment: Rc<RefCell<Environment<String, LoxEntity>>>,
+    },
+    Class {
+        class: LoxInstance,
     },
 }
 
@@ -30,6 +33,9 @@ impl fmt::Display for LoxCallable {
                 } => format!("function '{}'", name.lexeme),
                 _ => "this shouldn't be happening!".to_string(),
             },
+            LoxCallable::Class {
+                class,
+            } =>  format!("class '{}'", class.name.lexeme),
         };
 
         write!(f, "{}", output)
@@ -85,6 +91,13 @@ impl LoxCallable {
                     ),
                 ),
             },
+            LoxCallable::Class { class } => Ok(
+                LoxEntity::Callable(
+                    LoxCallable::Class {
+                        class: class.clone(),
+                    }
+                ),
+            ),
         }
     }
 
@@ -105,6 +118,7 @@ impl LoxCallable {
                     ),
                 ),
             },
+            LoxCallable::Class { class: _ } => Ok(0),
         }
     }
 }

@@ -6,7 +6,55 @@ use std::rc::Rc;
 
 use crate::callable::LoxCallable;
 use crate::errors::LoxError;
-use crate::tokens::Literal;
+use crate::statements::Statement;
+use crate::tokens::{Literal, Token};
+
+#[derive(Clone, Debug)]
+pub struct LoxInstance {
+    pub name: Token,
+    pub statement: Statement,
+    pub fields: HashMap<String, LoxEntity>,
+    pub methods: HashMap<String, LoxCallable>,
+}
+
+impl LoxInstance {
+    pub fn new(
+        name: Token,
+        statement: Statement,
+        methods: HashMap<String, LoxCallable>,
+    ) -> LoxInstance {
+        LoxInstance {
+            name,
+            statement,
+            fields: HashMap::new(),
+            methods,
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Result<LoxEntity, LoxError> {
+        match self.fields.get(key) {
+            Some(value) => Ok(value.clone()),
+            None => match self.methods.get(key) {
+                Some(method) => Ok(
+                    LoxEntity::Callable(
+                        method.clone()
+                    )
+                ),
+                None => Err(
+                    LoxError::RuntimeError(
+                        format!("undefined property {}", key)
+                    )
+                ),
+            }
+        }
+    }
+
+    pub fn set(&mut self, key: String, value: LoxEntity) -> Result<(), LoxError> {
+        self.fields.insert(key, value);
+
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum LoxEntity {
@@ -44,55 +92,35 @@ impl<K: Clone + fmt::Debug + Eq + Hash, V: Clone + fmt::Debug> Environment<K, V>
     }
 
     pub fn assign(&mut self, key: K, value: V) -> Result<(), LoxError>{
-        if self.values.contains_key(&key) {
-            self.values.insert(key, value);
-            return Ok(());
-        }
-
-        match self.parent {
-            Some(ref parent) => parent.borrow_mut().assign(key, value),
-            None => Err(
-                LoxError::RuntimeError(
-                    format!("undefined variable '{:?}'", key),
-                ),
-            )
-        }
-    }
-
-    pub fn assign_at(&mut self, key: K, value: V, depth: usize) -> Result<(), LoxError>{
-        match depth > 0 {
-            true => match self.parent {
-                Some(ref mut parent) => parent.borrow_mut().assign_at(key, value, depth - 1),
+        match self.values.contains_key(&key) {
+            false => match self.parent {
+                Some(ref parent) => parent.borrow_mut().assign(key, value),
                 None => Err(
                     LoxError::RuntimeError(
                         format!("undefined variable '{:?}' -- too deep!", key)
                     )
                 ),
             },
-            false => self.assign(key, value),
+            true => {
+                self.values.insert(key, value);
+                Ok(())
+            },
         }
     }
 
-    pub fn get(&self, key: &K) -> Option<V> {
-        match self.values.get(key) {
-            Some(val) => Some(val.clone()),
-            None => None,
-        }
-    }
-
-    pub fn get_at(&self, key: &K, depth: usize) -> Result<V, LoxError> {
-        match depth > 1 {
-            true => match self.parent {
-                Some(ref parent) => parent.borrow().get_at(key, depth - 1),
+    pub fn get(&self, key: &K) -> Result<V, LoxError> {
+        match self.values.contains_key(key) {
+            false => match self.parent {
+                Some(ref parent) => parent.borrow().get(key),
                 None => Err(
                     LoxError::RuntimeError(
                         format!("undefined variable '{:?}' -- too deep!", key)
                     )
                 ),
             },
-            false => match self.get(key) {
-                Some(val) => Ok(val),
-                None => Err(
+            true => match self.values.get(key) {
+                Some(val) => Ok(val.clone()),
+                _ => Err(
                     LoxError::RuntimeError(
                         format!("undefined variable '{:?}'", key)
                     )
@@ -100,4 +128,23 @@ impl<K: Clone + fmt::Debug + Eq + Hash, V: Clone + fmt::Debug> Environment<K, V>
             },
         }
     }
+
+    pub fn get_current_depth(&self, depth: usize) -> usize {
+        match self.parent {
+            Some(ref parent) => parent.borrow().get_current_depth(depth + 1),
+            None => depth,
+        }
+    }
 }
+//
+        // match self.get(key) {
+        //     Some(val) => Ok(val),
+        //     None => match self.parent {
+        //         Some(ref parent) => parent.borrow().get_at(key, 0),
+        //         None => Err(
+        //             LoxError::RuntimeError(
+        //                 format!("undefined variable '{:?}'", key)
+        //             )
+        //         ),
+        //     }
+        // }
