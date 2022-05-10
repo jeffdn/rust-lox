@@ -1,0 +1,10 @@
+class Foo {
+  bar(who) {
+    print who + " says: crunch crunch crunch";
+  }
+}
+
+var foo = Foo();
+
+foo.bar("coco");
+foo.bar("melvin");

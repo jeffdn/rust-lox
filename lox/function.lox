@@ -1,0 +1,38 @@
+fun pow(num, exp) {
+    var val = 1;
+
+    for (var i = 0; i < exp; i = i + 1) {
+        val = val * num;
+    }
+
+    return val;
+}
+
+print pow(2, 4);
+
+var a = "global";
+{
+  fun show_a() {
+    print a;
+  }
+
+  show_a();
+  var a = "block";
+  show_a();
+}
+
+fun counter() {
+    var i = 0;
+
+    fun count() {
+        i = i + 1;
+        return i;
+    }
+
+    return count;
+}
+
+var count = counter();
+print count();
+print count();
+print count();

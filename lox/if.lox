@@ -1,0 +1,14 @@
+var foo = 10;
+
+print "hello";
+
+while (foo) {
+    print foo;
+    foo = foo - 1;
+}
+
+foo = 0;
+for (;foo <= 10;) {
+    print foo;
+    foo = foo + 1;
+}
