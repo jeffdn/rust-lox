@@ -109,136 +109,139 @@ impl Resolver {
     }
 
     fn resolve_function(
-        &mut self, stmt: &Statement, function_type: FunctionType,
+        &mut self,
+        stmt: &Statement,
+        function_type: FunctionType,
     ) -> Result<(), LoxError> {
-        match stmt {
+        let (params, body) = match stmt {
             Statement::Function {
                 name: _,
                 params,
                 body,
-            } => {
-                let enclosing_function: Option<FunctionType> = self.function_type;
-                self.function_type = Some(function_type);
-
-                self.begin_scope()?;
-
-                for param in params.iter() {
-                    self.declare(param)?;
-                    self.define(param)?;
-                }
-
-                self.resolve(body)?;
-                self.end_scope()?;
-
-                self.function_type = enclosing_function;
-
-                Ok(())
-            },
-            _ => Err(
+            } => (params, body),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to resolve a non-function statement".to_string(),
                 )
             ),
+        };
+
+        let enclosing_function: Option<FunctionType> = self.function_type;
+        self.function_type = Some(function_type);
+
+        self.begin_scope()?;
+
+        for param in params.iter() {
+            self.declare(param)?;
+            self.define(param)?;
         }
+
+        self.resolve(body)?;
+        self.end_scope()?;
+
+        self.function_type = enclosing_function;
+
+        Ok(())
     }
 }
 
 
 impl ExpressionVisitor<()> for Resolver {
     fn visit_assignment(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let (name, expression) = match expr {
             Expression::Assignment {
                 name,
                 expression,
-            } =>  {
-                self.resolve_expression(&**expression)?;
-                self.resolve_local(expr, name)?;
-                Ok(())
-            },
-            _ => Err(
+            } =>  (name, expression),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit assignment with a non-assignment expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&**expression)?;
+        self.resolve_local(expr, name)?;
+
+        Ok(())
     }
 
     fn visit_binary(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let (left, right) = match expr {
             Expression::Binary {
                 left,
                 operator: _,
                 right,
-            } =>  {
-                self.resolve_expression(&*left)?;
-                self.resolve_expression(&*right)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } =>  (left, right),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit binary with a non-binary expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&*left)?;
+        self.resolve_expression(&*right)?;
+
+        Ok(())
     }
 
     fn visit_call(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let (callee, arguments) = match expr {
             Expression::Call {
                 callee,
                 paren: _,
                 arguments,
-            } =>  {
-                self.resolve_expression(&*callee)?;
-
-                for argument in arguments.iter() {
-                    self.resolve_expression(argument)?;
-                }
-
-                Ok(())
-            },
-            _ => Err(
+            } =>  (callee, arguments),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit call with a non-call expression".to_string()
                 )
             ),
+        };
+
+        self.resolve_expression(&*callee)?;
+
+        for argument in arguments.iter() {
+            self.resolve_expression(argument)?;
         }
+
+        Ok(())
     }
 
     fn visit_get(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let object = match expr {
             Expression::Get {
                 name: _,
                 object,
-            } =>  {
-                self.resolve_expression(&*object)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } =>  object,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit grouping with a non-grouping expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&*object)?;
+
+        Ok(())
     }
 
     fn visit_grouping(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let expression = match expr {
             Expression::Grouping {
                 expression,
-            } =>  {
-                self.resolve_expression(&*expression)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => expression,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit grouping with a non-grouping expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&*expression)?;
+
+        Ok(())
     }
 
     fn visit_literal(&mut self, expr: &Expression) -> Result<(), LoxError> {
@@ -253,282 +256,278 @@ impl ExpressionVisitor<()> for Resolver {
     }
 
     fn visit_logical(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let (left, right) = match expr {
             Expression::Logical {
                 left,
                 operator: _,
                 right,
-            } =>  {
-                self.resolve_expression(&*left)?;
-                self.resolve_expression(&*right)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => (left, right),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit logical with a non-logical expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&*left)?;
+        self.resolve_expression(&*right)?;
+
+        Ok(())
     }
 
     fn visit_set(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let (object, value) = match expr {
             Expression::Set {
                 name: _,
                 object,
                 value,
-            } =>  {
-                self.resolve_expression(&*value)?;
-                self.resolve_expression(&*object)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => (object, value),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit grouping with a non-grouping expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&*value)?;
+        self.resolve_expression(&*object)?;
+
+        Ok(())
     }
 
     fn visit_unary(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let right = match expr {
             Expression::Unary {
                 operator: _,
                 right,
-            } =>  {
-                self.resolve_expression(&*right)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => right,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit unary with a non-unary expression".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(&*right)?;
+
+        Ok(())
     }
 
     fn visit_variable(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        match expr {
+        let name = match expr {
             Expression::Variable {
                 name,
-            } => {
-                if !self.scopes.is_empty() {
-                    match self.scopes.last().unwrap().get(&name.lexeme) {
-                        Some(false) => return Err(
-                            LoxError::ResolutionError(
-                                format!(
-                                    "can't read local variable '{}' in its own initializer",
-                                    name.lexeme,
-                                )
-                            )
-                        ),
-                        _ => {},
-                    };
-                }
-
-                self.resolve_local(expr, name)
-            },
-            _ => Err(
+            } => name,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit variable with a non-variable expression".to_string()
                 )
             ),
+        };
+
+        if !self.scopes.is_empty() {
+            if let Some(false) = self.scopes.last().unwrap().get(&name.lexeme) {
+                return Err(
+                    LoxError::ResolutionError(
+                        format!(
+                            "can't read local variable '{}' in its own initializer",
+                            name.lexeme,
+                        )
+                    )
+                )
+            }
         }
+
+        self.resolve_local(expr, name)
     }
 }
 
 impl StatementVisitor for Resolver {
     fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let statements = match stmt {
             Statement::Block {
                 statements,
-            } => {
-                self.begin_scope()?;
-                self.resolve(statements)?;
-                self.end_scope()?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => statements,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit block with a non-block statement".to_string()
                 )
             ),
-        }
+        };
+
+        self.begin_scope()?;
+        self.resolve(statements)?;
+        self.end_scope()?;
+
+        Ok(())
     }
 
     fn visit_class(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let (name, methods) = match stmt {
             Statement::Class {
                 name,
                 methods,
-            } => {
-                self.declare(name)?;
-                self.define(name)?;
-
-                for method in methods.iter() {
-                    self.resolve_function(method, FunctionType::Method)?;
-                }
-
-                Ok(())
-            },
-            _ => Err(
+            } => (name, methods),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit block with a non-block statement".to_string()
                 )
             ),
+        };
+
+        self.declare(name)?;
+        self.define(name)?;
+
+        for method in methods.iter() {
+            self.resolve_function(method, FunctionType::Method)?;
         }
+
+        Ok(())
     }
 
     fn visit_expression(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let expression = match stmt {
             Statement::Expression {
                 expression,
-            } =>  {
-                self.resolve_expression(expression)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => expression,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit expression with a non-expression statement".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(expression)?;
+
+        Ok(())
     }
 
     fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let name =match stmt {
             Statement::Function {
                 name,
                 params: _,
                 body: _,
-            } =>  {
-                self.declare(name)?;
-                self.define(name)?;
-
-                self.resolve_function(stmt, FunctionType::Function)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => name,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit function with a non-function statement".to_string()
                 )
             ),
-        }
+        };
+
+        self.declare(name)?;
+        self.define(name)?;
+
+        self.resolve_function(stmt, FunctionType::Function)?;
+
+        Ok(())
     }
 
     fn visit_if(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let (condition, then_branch, else_branch) = match stmt {
             Statement::If {
                 condition,
                 then_branch,
                 else_branch,
-            } =>  {
-                self.resolve_expression(condition)?;
-                self.resolve_statement(then_branch)?;
-
-                match else_branch {
-                    Some(eb) => self.resolve_statement(eb)?,
-                    None => {},
-                };
-
-                Ok(())
-            },
-            _ => Err(
+            } => (condition, then_branch, else_branch),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit if with a non-if statement".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(condition)?;
+        self.resolve_statement(then_branch)?;
+
+        match else_branch {
+            Some(eb) => self.resolve_statement(eb)?,
+            None => {}
+        };
+
+        Ok(())
     }
 
     fn visit_print(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let expression = match stmt {
             Statement::Print {
                 expression,
-            } =>  {
-                self.resolve_expression(expression)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => expression,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit print with a non-print statement".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(expression)?;
+
+        Ok(())
     }
 
     fn visit_return(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let value = match stmt {
             Statement::Return {
                 keyword: _,
                 value,
-            } =>  {
-                if let None = self.function_type {
-                    return Err(
-                        LoxError::ResolutionError(
-                            "can't return from top-level code".to_string(),
-                        )
-                    );
-                }
-
-                self.resolve_expression(value)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => value,
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit return with a non-return statement".to_string()
                 )
             ),
+        };
+
+        if let None = self.function_type {
+            return Err(
+                LoxError::ResolutionError(
+                    "can't return from top-level code".to_string(),
+                )
+            );
         }
+
+        self.resolve_expression(value)?;
+
+        Ok(())
     }
 
     fn visit_var(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
-            Statement::Var {
-                name,
-                initializer,
-            } => {
-                self.declare(name)?;
+        let (name, initializer) = match stmt {
+            Statement::Var { name, initializer } => (name, initializer),
+            _ => {
+                return Err(LoxError::ResolutionError(
+                    "attempted to visit var with a non-var statement".to_string(),
+                ))
+            }
+        };
 
-                match initializer {
-                    Some(init) => self.resolve_expression(&**init)?,
-                    None => {},
-                };
+        self.declare(name)?;
 
-                self.define(name)
-            },
-            _ => Err(
-                LoxError::ResolutionError(
-                    "attempted to visit var with a non-var statement".to_string()
-                )
-            ),
-        }
+        match initializer {
+            Some(init) => self.resolve_expression(&**init)?,
+            None => {}
+        };
+
+        self.define(name)
     }
 
     fn visit_while(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        match stmt {
+        let (condition, body) = match stmt {
             Statement::While {
                 condition,
                 body,
-            } =>  {
-                self.resolve_expression(condition)?;
-                self.resolve_statement(body)?;
-
-                Ok(())
-            },
-            _ => Err(
+            } => (condition, body),
+            _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit while with a non-while statement".to_string()
                 )
             ),
-        }
+        };
+
+        self.resolve_expression(condition)?;
+        self.resolve_statement(body)?;
+
+        Ok(())
     }
 }

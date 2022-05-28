@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::environment::{LoxEntity, LoxInstance, Environment};
+use crate::environment::{Environment, LoxEntity, LoxInstance};
 use crate::errors::LoxError;
 use crate::interpreter::Interpreter;
 use crate::statements::Statement;
@@ -33,9 +33,7 @@ impl fmt::Display for LoxCallable {
                 } => format!("function '{}'", name.lexeme),
                 _ => "this shouldn't be happening!".to_string(),
             },
-            LoxCallable::Class {
-                class,
-            } =>  format!("class '{}'", class.name.lexeme),
+            LoxCallable::Class { class } => format!("class '{}'", class.name.lexeme),
         };
 
         write!(f, "{}", output)

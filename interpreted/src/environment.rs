@@ -136,15 +136,3 @@ impl<K: Clone + fmt::Debug + Eq + Hash, V: Clone + fmt::Debug> Environment<K, V>
         }
     }
 }
-//
-        // match self.get(key) {
-        //     Some(val) => Ok(val),
-        //     None => match self.parent {
-        //         Some(ref parent) => parent.borrow().get_at(key, 0),
-        //         None => Err(
-        //             LoxError::RuntimeError(
-        //                 format!("undefined variable '{:?}'", key)
-        //             )
-        //         ),
-        //     }
-        // }

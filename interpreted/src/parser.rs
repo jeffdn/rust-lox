@@ -184,15 +184,12 @@ impl Parser {
             Err(_) => {
                 self.synchronize();
                 Ok(None)
-            },
+            }
         }
     }
 
     fn class_declaration(&mut self) -> Result<Statement, LoxError> {
-        let name = self.consume(
-            &TokenType::Identifier,
-            "expect class name".to_string(),
-        )?;
+        let name = self.consume(&TokenType::Identifier, "expect class name".to_string())?;
 
         self.consume(
             &TokenType::LeftBrace,
@@ -210,12 +207,7 @@ impl Parser {
             "expect '}' after class body".to_string(),
         )?;
 
-        Ok(
-            Statement::Class {
-                name,
-                methods,
-            }
-        )
+        Ok(Statement::Class { name, methods })
     }
 
     fn var_declaration(&mut self) -> Result<Statement, LoxError> {
@@ -254,18 +246,13 @@ impl Parser {
             "expected ';' after expression".to_string(),
         )?;
 
-        Ok(
-            Statement::Expression {
-                expression: Box::new(expr.clone()),
-            }
-        )
+        Ok(Statement::Expression {
+            expression: Box::new(expr.clone()),
+        })
     }
 
     fn function(&mut self, kind: String) -> Result<Statement, LoxError> {
-        let name = self.consume(
-            &TokenType::Identifier,
-            format!("expect {} name", kind),
-        )?;
+        let name = self.consume(&TokenType::Identifier, format!("expect {} name", kind))?;
 
         self.consume(
             &TokenType::LeftParen,
@@ -285,10 +272,7 @@ impl Parser {
                 }
 
                 parameters.push(
-                    self.consume(
-                        &TokenType::Identifier,
-                        "expect parameter name".to_string(),
-                    )?
+                    self.consume(&TokenType::Identifier, "expect parameter name".to_string())?,
                 );
 
                 if !self.token_type_matches(&[TokenType::Comma]) {
@@ -430,12 +414,7 @@ impl Parser {
     fn equality(&mut self) -> Result<Expression, LoxError> {
         let expr = self.comparison()?;
 
-        if self.token_type_matches(
-            &[
-                TokenType::BangEqual,
-                TokenType::EqualEqual,
-            ]
-        ) {
+        if self.token_type_matches(&[TokenType::BangEqual, TokenType::EqualEqual]) {
             let operator = self.previous();
             let right = self.comparison()?;
             let new_expr = Expression::Binary {
@@ -478,12 +457,7 @@ impl Parser {
     fn term(&mut self) -> Result<Expression, LoxError> {
         let expr = self.factor()?;
 
-        if self.token_type_matches(
-            &[
-                TokenType::Minus,
-                TokenType::Plus,
-            ]
-        ) {
+        if self.token_type_matches(&[TokenType::Minus, TokenType::Plus]) {
             let operator = self.previous();
             let right = self.term()?;
             let new_expr = Expression::Binary {
@@ -501,12 +475,7 @@ impl Parser {
     fn factor(&mut self) -> Result<Expression, LoxError> {
         let expr = self.unary()?;
 
-        if self.token_type_matches(
-            &[
-                TokenType::Slash,
-                TokenType::Star,
-            ]
-        ) {
+        if self.token_type_matches(&[TokenType::Slash, TokenType::Star]) {
             let operator = self.previous();
             let right = self.unary()?;
             let new_expr = Expression::Binary {
@@ -522,12 +491,7 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expression, LoxError> {
-        if self.token_type_matches(
-            &[
-                TokenType::Bang,
-                TokenType::Minus,
-            ]
-        ) {
+        if self.token_type_matches(&[TokenType::Bang, TokenType::Minus]) {
             let operator = self.previous();
             let right = self.unary()?;
             let new_expr = Expression::Unary {
@@ -659,7 +623,7 @@ impl Parser {
 
     fn error(&mut self, next_token: &Token, message: String) -> LoxError {
         if next_token.token_type == TokenType::Eof {
-            return LoxError::ParseError(next_token.line, format!("at end {}", message))
+            return LoxError::ParseError(next_token.line, format!("at end {}", message));
         }
 
         LoxError::ParseError(
@@ -676,11 +640,7 @@ impl Parser {
         &self.peek().token_type == token_type
     }
 
-    fn consume(
-        &mut self,
-        token_type: &TokenType,
-        message: String,
-    ) -> Result<Token, LoxError> {
+    fn consume(&mut self, token_type: &TokenType, message: String) -> Result<Token, LoxError> {
         if self.check_current_token(token_type) {
             return Ok(self.advance().clone());
         }
@@ -699,17 +659,17 @@ impl Parser {
             }
 
             match self.peek().token_type {
-                TokenType::Class |
-                TokenType::Fun |
-                TokenType::Var |
-                TokenType::For |
-                TokenType::If |
-                TokenType::While |
-                TokenType::Print |
-                TokenType::Return => {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => {
                     return;
-                },
-                _ => {},
+                }
+                _ => {}
             };
 
             self.advance();

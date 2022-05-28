@@ -20,16 +20,9 @@ pub trait ExpressionVisitor<T> {
                 paren: _,
                 arguments: _,
             } => self.visit_call(expr),
-            Expression::Get {
-                name: _,
-                object: _,
-            } => self.visit_get(expr),
-            Expression::Grouping {
-                expression: _,
-            } => self.visit_grouping(expr),
-            Expression::Literal {
-                value: _
-            } => self.visit_literal(expr),
+            Expression::Get { name: _, object: _ } => self.visit_get(expr),
+            Expression::Grouping { expression: _ } => self.visit_grouping(expr),
+            Expression::Literal { value: _ } => self.visit_literal(expr),
             Expression::Logical {
                 left: _,
                 operator: _,
@@ -44,9 +37,7 @@ pub trait ExpressionVisitor<T> {
                 operator: _,
                 right: _,
             } => self.visit_unary(expr),
-            Expression::Variable {
-                name: _,
-            } => self.visit_variable(expr),
+            Expression::Variable { name: _ } => self.visit_variable(expr),
         }
     }
 

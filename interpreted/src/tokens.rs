@@ -92,12 +92,12 @@ impl Hash for Literal {
                 mantissa.hash(state);
                 exponent.hash(state);
                 sign.hash(state);
-            },
+            }
         };
     }
 }
 
-impl Eq for Literal { }
+impl Eq for Literal {}
 
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -123,7 +123,10 @@ pub struct Token {
 
 impl Token {
     pub fn new(
-        token_type: TokenType, lexeme: String, literal: Option<Literal>, line: usize
+        token_type: TokenType,
+        lexeme: String,
+        literal: Option<Literal>,
+        line: usize,
     ) -> Token {
         Token {
             token_type,

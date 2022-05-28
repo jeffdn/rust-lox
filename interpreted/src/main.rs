@@ -76,7 +76,7 @@ fn slurp_expr() -> String {
     input_expr
 }
 
-fn run_lox_repl() -> Result<(), LoxError>{
+fn run_lox_repl() -> Result<(), LoxError> {
     loop {
         print!("lox > ");
         io::stdout().flush().unwrap();

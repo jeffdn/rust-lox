@@ -106,17 +106,15 @@ impl Scanner {
                     }
 
                     Ok(TokenType::Skip)
-                },
+                }
                 false => Ok(TokenType::Slash),
             },
             ' ' | '\r' | '\t' => Ok(TokenType::Skip),
             '\n' => {
                 self.line += 1;
                 Ok(TokenType::Skip)
-            },
-            '"' => {
-                self.add_string()
-            },
+            }
+            '"' => self.add_string(),
             _ => {
                 if c.is_ascii_digit() {
                     return self.add_number();
@@ -254,11 +252,9 @@ impl Scanner {
 
     fn peek_twice(&self) -> char {
         if self.current + 1 >= self.source.len() {
-            return '\0'
+            return '\0';
         }
 
-        return self.chars[self.current + 1]
+        return self.chars[self.current + 1];
     }
 }
-
-

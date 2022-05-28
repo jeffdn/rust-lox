@@ -32,4 +32,3 @@ impl fmt::Display for LoxError {
         write!(f, "{}", output)
     }
 }
-
