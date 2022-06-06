@@ -1,12 +1,16 @@
-use std::cell::RefCell;
-use std::fmt;
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    fmt,
+    rc::Rc,
+};
 
-use crate::environment::{Environment, LoxEntity, LoxInstance};
-use crate::errors::LoxError;
-use crate::interpreter::Interpreter;
-use crate::statements::Statement;
-use crate::tokens::Literal;
+use crate::{
+    environment::{Environment, LoxEntity, LoxInstance},
+    errors::LoxError,
+    interpreter::Interpreter,
+    statements::Statement,
+    tokens::Literal,
+};
 
 #[derive(Clone, Debug)]
 pub enum LoxCallable {

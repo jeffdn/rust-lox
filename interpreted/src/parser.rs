@@ -1,7 +1,9 @@
-use crate::errors::LoxError;
-use crate::expressions::Expression;
-use crate::statements::Statement;
-use crate::tokens::{Literal, Token, TokenType};
+use crate::{
+    errors::LoxError,
+    expressions::Expression,
+    statements::Statement,
+    tokens::{Literal, Token, TokenType},
+};
 
 pub struct Parser {
     tokens: Vec<Token>,

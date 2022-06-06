@@ -1,13 +1,17 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::Hash;
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt,
+    hash::Hash,
+    rc::Rc,
+};
 
-use crate::callable::LoxCallable;
-use crate::errors::LoxError;
-use crate::statements::Statement;
-use crate::tokens::{Literal, Token};
+use crate::{
+    callable::LoxCallable,
+    errors::LoxError,
+    statements::Statement,
+    tokens::{Literal, Token},
+};
 
 #[derive(Clone, Debug)]
 pub struct LoxInstance {

@@ -1,13 +1,17 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+};
 
-use crate::callable::LoxCallable;
-use crate::environment::{Environment, LoxEntity, LoxInstance};
-use crate::errors::LoxError;
-use crate::expressions::{Expression, ExpressionVisitor};
-use crate::statements::{Statement, StatementVisitor};
-use crate::tokens::{Literal, Token, TokenType};
+use crate::{
+    callable::LoxCallable,
+    environment::{Environment, LoxEntity, LoxInstance},
+    errors::LoxError,
+    expressions::{Expression, ExpressionVisitor},
+    statements::{Statement, StatementVisitor},
+    tokens::{Literal, Token, TokenType},
+};
 
 pub struct Interpreter {
     globals: Rc<RefCell<Environment<String, LoxEntity>>>,

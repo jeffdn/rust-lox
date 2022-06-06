@@ -9,14 +9,18 @@ pub mod scanner;
 pub mod statements;
 pub mod tokens;
 
-use std::env;
-use std::fs;
-use std::io::{self, Write};
+use std::{
+    env,
+    fs,
+    io::{self, Write},
+};
 
-use crate::errors::LoxError;
-use crate::parser::Parser;
-use crate::resolver::Resolver;
-use crate::scanner::Scanner;
+use crate::{
+    errors::LoxError,
+    parser::Parser,
+    resolver::Resolver,
+    scanner::Scanner,
+};
 
 fn eval(source: String) -> Result<(), LoxError> {
     let mut scanner = Scanner::new(source);

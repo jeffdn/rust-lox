@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
-use crate::errors::LoxError;
-use crate::expressions::{Expression, ExpressionVisitor};
-use crate::interpreter::Interpreter;
-use crate::statements::{Statement, StatementVisitor};
-use crate::tokens::Token;
+use crate::{
+    errors::LoxError,
+    expressions::{Expression, ExpressionVisitor},
+    interpreter::Interpreter,
+    statements::{Statement, StatementVisitor},
+    tokens::Token,
+};
 
 #[derive(Clone, Copy)]
 pub enum FunctionType {

@@ -1,6 +1,8 @@
-use crate::errors::LoxError;
-use crate::expressions::Expression;
-use crate::tokens::Token;
+use crate::{
+    errors::LoxError,
+    expressions::Expression,
+    tokens::Token,
+};
 
 pub trait StatementVisitor {
     fn accept_statement(&mut self, stmt: &Statement) -> Result<(), LoxError> {

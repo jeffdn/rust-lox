@@ -1,5 +1,7 @@
-use crate::errors::LoxError;
-use crate::tokens::*;
+use crate::{
+    errors::LoxError,
+    tokens::{Literal, Token, TokenType},
+};
 
 #[derive(Debug)]
 pub struct Scanner {

@@ -1,7 +1,9 @@
 use std::boxed::Box;
 
-use crate::errors::LoxError;
-use crate::tokens;
+use crate::{
+    errors::LoxError,
+    tokens,
+};
 
 pub trait ExpressionVisitor<T> {
     fn accept_expression(&mut self, expr: &Expression) -> Result<T, LoxError> {
