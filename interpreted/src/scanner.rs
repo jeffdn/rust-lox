@@ -79,10 +79,13 @@ impl Scanner {
             ')' => Ok(TokenType::RightParen),
             '{' => Ok(TokenType::LeftBrace),
             '}' => Ok(TokenType::RightBrace),
+            '[' => Ok(TokenType::LeftBracket),
+            ']' => Ok(TokenType::RightBracket),
             ',' => Ok(TokenType::Comma),
             '.' => Ok(TokenType::Dot),
             '-' => Ok(TokenType::Minus),
             '+' => Ok(TokenType::Plus),
+            ':' => Ok(TokenType::Colon),
             ';' => Ok(TokenType::Semicolon),
             '*' => Ok(TokenType::Star),
             '!' => match self.check_next('=') {

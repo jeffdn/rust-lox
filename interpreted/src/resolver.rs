@@ -246,6 +246,63 @@ impl ExpressionVisitor<()> for Resolver {
         Ok(())
     }
 
+    fn visit_index(&mut self, expr: &Expression) -> Result<(), LoxError> {
+        let (item, index) = match expr {
+            Expression::Index {
+                item,
+                index,
+            } => (item, index),
+            _ => return Err(
+                LoxError::ResolutionError(
+                    "attempted to visit index with a non-index expression".to_string()
+                )
+            ),
+        };
+
+        self.resolve_expression(&*item)?;
+        self.resolve_expression(&*index)?;
+
+        Ok(())
+    }
+
+    fn visit_indexed_assignment(&mut self, expr: &Expression) -> Result<(), LoxError> {
+        let (indexed_item, expression) = match expr {
+            Expression::IndexedAssignment {
+                indexed_item,
+                expression,
+            } => (indexed_item, expression),
+            _ => return Err(
+                LoxError::ResolutionError(
+                    "attempted to visit index with a non-index expression".to_string()
+                )
+            ),
+        };
+
+        self.resolve_expression(&*indexed_item)?;
+        self.resolve_expression(&*expression)?;
+
+        Ok(())
+    }
+
+    fn visit_list(&mut self, expr: &Expression) -> Result<(), LoxError> {
+        let items = match expr {
+            Expression::List {
+                expressions,
+            } => expressions,
+            _ => return Err(
+                LoxError::ResolutionError(
+                    "attempted to visit list with a non-list expression".to_string()
+                )
+            ),
+        };
+
+        for item in items.iter() {
+            self.resolve_expression(item)?;
+        }
+
+        Ok(())
+    }
+
     fn visit_literal(&mut self, expr: &Expression) -> Result<(), LoxError> {
         match expr {
             Expression::Literal { value: _ } => { Ok(()) },
@@ -273,6 +330,26 @@ impl ExpressionVisitor<()> for Resolver {
 
         self.resolve_expression(&*left)?;
         self.resolve_expression(&*right)?;
+
+        Ok(())
+    }
+
+    fn visit_map(&mut self, expr: &Expression) -> Result<(), LoxError> {
+        let expression_map = match expr {
+            Expression::Map {
+                expression_map,
+            } => expression_map,
+            _ => return Err(
+                LoxError::ResolutionError(
+                    "attempted to visit list with a non-list expression".to_string()
+                )
+            ),
+        };
+
+        for (key, value) in expression_map.iter() {
+            self.resolve_expression(key)?;
+            self.resolve_expression(value)?;
+        }
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     rc::Rc,
 };
 
@@ -41,6 +41,8 @@ impl Interpreter {
             Literal::Number(ref number) => Ok(*number != 0.0f64),
             Literal::Identifier(_) => Ok(false),
             Literal::Boolean(ref boolean) => Ok(*boolean),
+            Literal::List(ref list) => Ok(list.len() > 0),
+            Literal::Map(ref map) => Ok(map.len() > 0),
             Literal::Nil => Ok(false),
         }
     }
@@ -345,6 +347,141 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
         }
     }
 
+    fn visit_index(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::Index {
+                item,
+                index,
+            } => {
+                let item = self.evaluate(&**item)?;
+                let index = self.evaluate(&**index)?;
+
+                match (item, index) {
+                    (
+                        LoxEntity::Literal(Literal::List(list)),
+                        LoxEntity::Literal(Literal::Number(index))
+                    ) => {
+                        let list_index = index as usize;
+
+                        if list_index > list.len() - 1 {
+                            return Err(LoxError::AstError);
+                        }
+
+                        let at_index = list[list_index].clone();
+
+                        Ok(LoxEntity::Literal(at_index))
+                    },
+                    (
+                        LoxEntity::Literal(Literal::Map(map)),
+                        LoxEntity::Literal(index)
+                    ) => {
+                        if !map.contains_key(&index) {
+                            return Err(LoxError::AstError);
+                        }
+
+                        let at_index = map[&index].clone();
+
+                        Ok(LoxEntity::Literal(at_index))
+                    },
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_indexed_assignment(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::IndexedAssignment {
+                indexed_item,
+                expression,
+            } => match &**indexed_item {
+                Expression::Index {
+                    item,
+                    index,
+                } => {
+                    let name = match &**item {
+                        Expression::Variable { name } => name.clone(),
+                        _ => return Err(LoxError::AstError),
+                    };
+
+                    let item = self.evaluate(&**item)?;
+                    let index = self.evaluate(&**index)?;
+
+                    let output = match (item, index) {
+                        (
+                            LoxEntity::Literal(Literal::List(mut list)),
+                            LoxEntity::Literal(Literal::Number(index))
+                        ) => {
+                            let list_index = index as usize;
+
+                            if list_index > list.len() - 1 {
+                                return Err(LoxError::AstError);
+                            }
+
+                            list[list_index] = match self.evaluate(&**expression)? {
+                                LoxEntity::Literal(literal) => literal,
+                                _ => return Err(LoxError::AstError),
+                            };
+
+                            Box::new(
+                                Expression::Literal {
+                                    value: Literal::List(list),
+                                }
+                            )
+                        },
+                        (
+                            LoxEntity::Literal(Literal::Map(mut map)),
+                            LoxEntity::Literal(index)
+                        ) => {
+                            let value = match self.evaluate(&**expression)? {
+                                LoxEntity::Literal(literal) => literal,
+                                _ => return Err(LoxError::AstError),
+                            };
+
+                            map.insert(index, value);
+
+                            Box::new(
+                                Expression::Literal {
+                                    value: Literal::Map(map),
+                                }
+                            )
+                        },
+                        _ => return Err(LoxError::AstError),
+                    };
+
+                    self.evaluate(
+                        &Expression::Assignment {
+                            name,
+                            expression: output
+                        }
+                    )
+                },
+                _ => Err(LoxError::AstError),
+
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_list(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::List { expressions } => {
+                let mut list: Vec<Literal> = vec![];
+
+                for expression in expressions.iter() {
+                    match self.evaluate(&expression)? {
+                        LoxEntity::Literal(literal) => list.push(literal),
+                        _ => return Err(LoxError::AstError),
+                    };
+                }
+
+                Ok(LoxEntity::Literal(Literal::List(list)))
+            },
+            _ => Err(LoxError::AstError),
+        }
+    }
+
     fn visit_literal(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Literal { value } => Ok(LoxEntity::Literal(value.clone())),
@@ -385,6 +522,29 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                 }
             },
             _ => return Err(LoxError::AstError),
+        }
+    }
+
+    fn visit_map(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+        match expr {
+            Expression::Map { expression_map } => {
+                let mut map: BTreeMap<Literal, Literal> = BTreeMap::new();
+
+                for (key, value) in expression_map.iter() {
+                    match (
+                        self.evaluate(&key)?,
+                        self.evaluate(&value)?,
+                    ) {
+                        (LoxEntity::Literal(key), LoxEntity::Literal(value)) => {
+                            map.insert(key, value);
+                        },
+                        _ => return Err(LoxError::AstError),
+                    };
+                }
+
+                Ok(LoxEntity::Literal(Literal::Map(map)))
+            },
+            _ => Err(LoxError::AstError),
         }
     }
 

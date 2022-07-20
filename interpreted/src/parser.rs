@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{
     errors::LoxError,
     expressions::Expression,
@@ -372,6 +374,22 @@ impl Parser {
                         }
                     )
                 },
+                Expression::Index {
+                    item,
+                    index,
+                } => {
+                    return Ok(
+                        Expression::IndexedAssignment {
+                            indexed_item: Box::new(
+                                Expression::Index {
+                                    item,
+                                    index,
+                                },
+                            ),
+                            expression: Box::new(value.clone()),
+                        }
+                    );
+                },
                 _ => return Err(
                     self.error(&equals, "invalid assignment target".to_string())
                 ),
@@ -542,6 +560,65 @@ impl Parser {
         )
     }
 
+    fn finish_list(&mut self) -> Result<Expression, LoxError> {
+        let mut list: Vec<Expression> = vec![];
+
+        if !self.check_current_token(&TokenType::RightBracket) {
+            loop {
+                list.push(self.expression()?);
+
+                if !self.token_type_matches(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(
+            &TokenType::RightBracket,
+            "expect ']' after list items".to_string(),
+        )?;
+
+        return Ok(
+            Expression::List {
+                expressions: list,
+            }
+        );
+    }
+
+    fn finish_map(&mut self) -> Result<Expression, LoxError> {
+        let mut map: BTreeMap<Expression, Expression> = BTreeMap::new();
+
+        if !self.check_current_token(&TokenType::RightBrace) {
+            loop {
+                let key = self.expression()?;
+
+                self.consume(
+                    &TokenType::Colon,
+                    "use ':' to separate keys and values".to_string(),
+                )?;
+
+                let value = self.expression()?;
+
+                map.insert(key, value);
+
+                if !self.token_type_matches(&[TokenType::Comma]) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(
+            &TokenType::RightBrace,
+            "expect ']' after list items".to_string(),
+        )?;
+
+        return Ok(
+            Expression::Map {
+                expression_map: map,
+            }
+        );
+    }
+
     fn call(&mut self) -> Result<Expression, LoxError> {
         let mut expr = self.primary()?;
 
@@ -557,6 +634,18 @@ impl Parser {
                 expr = Expression::Get {
                     name,
                     object: Box::new(expr),
+                };
+            } else if self.token_type_matches(&[TokenType::LeftBracket]) {
+                let index = self.expression()?;
+
+                self.consume(
+                    &TokenType::RightBracket,
+                    "expect indexes to close  with a ']'".to_string(),
+                )?;
+
+                expr = Expression::Index {
+                    item: Box::new(expr),
+                    index: Box::new(index),
                 };
             } else {
                 break;
@@ -597,6 +686,10 @@ impl Parser {
                     value: self.previous().literal.clone().unwrap(),
                 }
             );
+        } else if self.token_type_matches(&[TokenType::LeftBracket]) {
+            return self.finish_list();
+        } else if self.token_type_matches(&[TokenType::LeftBrace]) {
+            return self.finish_map();
         } else if self.token_type_matches(&[TokenType::Identifier]) {
             return Ok(
                 Expression::Variable {

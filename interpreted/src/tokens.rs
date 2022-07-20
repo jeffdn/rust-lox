@@ -1,20 +1,25 @@
 use std::{
+    cmp::{Ord, Ordering},
+    collections::BTreeMap,
     fmt,
     hash::{Hash, Hasher},
     mem,
 };
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Comma,
     Dot,
     Minus,
     Plus,
+    Colon,
     Semicolon,
     Slash,
     Star,
@@ -57,12 +62,14 @@ pub enum TokenType {
     Skip,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum Literal {
     String(String),
     Number(f64),
     Boolean(bool),
     Identifier(String),
+    List(Vec<Literal>),
+    Map(BTreeMap<Literal, Literal>),
     Nil,
 }
 
@@ -81,6 +88,12 @@ fn integer_decode(val: f64) -> (u64, i16, i8) {
     (mantissa, exponent, sign)
 }
 
+impl Ord for Literal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.to_string().cmp(&other.to_string())
+    }
+}
+
 impl Hash for Literal {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
@@ -88,6 +101,17 @@ impl Hash for Literal {
             Literal::Identifier(string) => string.hash(state),
             Literal::Boolean(boolean) => boolean.hash(state),
             Literal::Nil => 0.hash(state),
+            Literal::List(list) => {
+                for item in list.iter() {
+                    item.hash(state);
+                }
+            },
+            Literal::Map(map) => {
+                for (key, value) in map.iter() {
+                    key.hash(state);
+                    value.hash(state);
+                }
+            },
             Literal::Number(number) => {
                 let (mantissa, exponent, sign) = integer_decode(*number);
 
@@ -108,6 +132,24 @@ impl fmt::Display for Literal {
             Literal::Identifier(string) => string.clone(),
             Literal::Boolean(boolean) => boolean.to_string(),
             Literal::Number(number) => number.to_string(),
+            Literal::List(list) => {
+                format!(
+                    "[{}]",
+                    list.iter()
+                        .map(|token| format!("{}", token))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            },
+            Literal::Map(hmap) => {
+                format!(
+                    "{{ {} }}",
+                    hmap.iter()
+                        .map(|(key, value)| format!("{} => {}", key, value))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            },
             Literal::Nil => "nil".to_string(),
         };
 
@@ -115,7 +157,7 @@ impl fmt::Display for Literal {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
