@@ -263,6 +263,15 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                     _ => Err(LoxError::AstError),
                 }
             },
+            (LoxEntity::List(ref mut left), LoxEntity::List(ref mut right)) => {
+                match operator.token_type {
+                    TokenType::Plus => {
+                        left.append(right);
+                        Ok(LoxEntity::List(left.clone()))
+                    },
+                    _ => Err(LoxError::AstError),
+                }
+            },
             _ => Err(LoxError::AstError),
         }
     }

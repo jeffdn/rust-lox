@@ -3,9 +3,11 @@ fun pass(n) {
 }
 
 // var list = ["foo", "bar", "baz"];
-var map = { "foo": "bar", "baz": "quux" };
-// var list = [1, 2, 3, 4];
+// var map = { "foo": "bar", "baz": "quux" };
+var list1 = [1, 2, 3, 4];
+var list2 = [5, 6, 7, 8];
+var list = list1 + list2;
 
-foreach (var item in map) {
-    print item + " " + map[item];
+foreach (var item in list) {
+    print item;
 }

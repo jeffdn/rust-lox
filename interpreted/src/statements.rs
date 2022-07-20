@@ -56,7 +56,7 @@ pub trait StatementVisitor {
     fn visit_while(&mut self, stmt: &Statement) -> Result<(), LoxError>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Statement {
     Block {
         statements: Vec<Statement>,
