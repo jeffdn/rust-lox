@@ -481,6 +481,31 @@ impl StatementVisitor for Resolver {
         Ok(())
     }
 
+    fn visit_foreach(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        let (iterator, iterable, body) = match stmt {
+            Statement::Foreach {
+                iterator,
+                iterable,
+                body,
+            } => (iterator, iterable, body),
+            _ => return Err(
+                LoxError::ResolutionError(
+                    "attempted to visit foreach with a non-foreach statement".to_string()
+                )
+            ),
+        };
+
+        self.begin_scope()?;
+
+        self.declare(iterator)?;
+        self.resolve_expression(iterable)?;
+        self.resolve_statement(body)?;
+
+        self.end_scope()?;
+
+        Ok(())
+    }
+
     fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError> {
         let name =match stmt {
             Statement::Function {

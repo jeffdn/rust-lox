@@ -1,6 +1,5 @@
 use std::{
     cmp::{Ord, Ordering},
-    collections::BTreeMap,
     fmt,
     hash::{Hash, Hasher},
     mem,
@@ -46,7 +45,9 @@ pub enum TokenType {
     False,
     Fun,
     For,
+    Foreach,
     If,
+    In,
     Nil,
     Or,
     Print,
@@ -68,8 +69,6 @@ pub enum Literal {
     Number(f64),
     Boolean(bool),
     Identifier(String),
-    List(Vec<Literal>),
-    Map(BTreeMap<Literal, Literal>),
     Nil,
 }
 
@@ -101,17 +100,6 @@ impl Hash for Literal {
             Literal::Identifier(string) => string.hash(state),
             Literal::Boolean(boolean) => boolean.hash(state),
             Literal::Nil => 0.hash(state),
-            Literal::List(list) => {
-                for item in list.iter() {
-                    item.hash(state);
-                }
-            },
-            Literal::Map(map) => {
-                for (key, value) in map.iter() {
-                    key.hash(state);
-                    value.hash(state);
-                }
-            },
             Literal::Number(number) => {
                 let (mantissa, exponent, sign) = integer_decode(*number);
 
@@ -132,24 +120,6 @@ impl fmt::Display for Literal {
             Literal::Identifier(string) => string.clone(),
             Literal::Boolean(boolean) => boolean.to_string(),
             Literal::Number(number) => number.to_string(),
-            Literal::List(list) => {
-                format!(
-                    "[{}]",
-                    list.iter()
-                        .map(|token| format!("{}", token))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                )
-            },
-            Literal::Map(hmap) => {
-                format!(
-                    "{{ {} }}",
-                    hmap.iter()
-                        .map(|(key, value)| format!("{} => {}", key, value))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                )
-            },
             Literal::Nil => "nil".to_string(),
         };
 

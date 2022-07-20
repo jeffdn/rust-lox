@@ -41,6 +41,8 @@ impl Parser {
     fn statement(&mut self) -> Result<Statement, LoxError> {
         if self.token_type_matches(&[TokenType::For]) {
             return self.for_statement();
+        } else if self.token_type_matches(&[TokenType::Foreach]) {
+            return self.foreach_statement();
         } else if self.token_type_matches(&[TokenType::If]) {
             return self.if_statement();
         } else if self.token_type_matches(&[TokenType::Print]) {
@@ -131,6 +133,54 @@ impl Parser {
                 },
             ),
         }
+    }
+
+    fn foreach_statement(&mut self) -> Result<Statement, LoxError> {
+        self.consume(&TokenType::LeftParen, "expect '(' after 'foreach'".to_string())?;
+        self.consume(&TokenType::Var, "expect 'var' after 'foreach ('".to_string())?;
+
+        let token: Token = self.consume(
+            &TokenType::Identifier,
+            "expected a variable name".to_string(),
+        )?;
+
+        self.consume(
+            &TokenType::In,
+            "expect 'in' after 'foreach (identifier'".to_string(),
+        )?;
+
+        let iterable = match self.peek().token_type {
+            TokenType::Identifier => {
+                let iterable_name: Token = self.consume(
+                    &TokenType::Identifier,
+                    "expected a variable name".to_string(),
+                )?;
+
+                Expression::Variable {
+                    name: iterable_name,
+                }
+            },
+            TokenType::LeftBracket => self.finish_list()?,
+            TokenType::LeftBrace => self.finish_map()?,
+            _ => return Err(
+                LoxError::SyntaxError(
+                    self.current,
+                    "expect 'foreach (var name in list_or_map)'".to_string(),
+                )
+            ),
+        };
+
+        self.consume(&TokenType::RightParen, "expect ')' after 'foreach' setup".to_string())?;
+
+        let body = self.statement()?;
+
+        Ok(
+            Statement::Foreach {
+                iterator: token,
+                iterable: Box::new(iterable),
+                body: Box::new(body),
+            }
+        )
     }
 
     fn if_statement(&mut self) -> Result<Statement, LoxError> {

@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     rc::Rc,
 };
 
@@ -41,8 +41,6 @@ impl Interpreter {
             Literal::Number(ref number) => Ok(*number != 0.0f64),
             Literal::Identifier(_) => Ok(false),
             Literal::Boolean(ref boolean) => Ok(*boolean),
-            Literal::List(ref list) => Ok(list.len() > 0),
-            Literal::Map(ref map) => Ok(map.len() > 0),
             Literal::Nil => Ok(false),
         }
     }
@@ -68,6 +66,8 @@ impl Interpreter {
             | Expression::Grouping { expression: _ } => match self.evaluate(expr)? {
                 LoxEntity::Literal(output) => self._is_truthy(&output),
                 LoxEntity::Callable(_) => Ok(true),
+                LoxEntity::List(list) => Ok(list.len() > 0),
+                LoxEntity::Map(map) => Ok(map.len() > 0),
             },
             _ => Err(LoxError::AstError),
         }
@@ -277,12 +277,9 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        let mut real_arguments: Vec<Literal> = Vec::new();
+        let mut real_arguments: Vec<LoxEntity> = Vec::new();
         for arg in arguments.iter() {
-            match self.evaluate(arg)? {
-                LoxEntity::Literal(real_arg) => real_arguments.push(real_arg),
-                _ => return Err(LoxError::AstError),
-            };
+            real_arguments.push(self.evaluate(arg)?);
         }
 
         let mut callable = match **callee {
@@ -297,6 +294,15 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             Expression::Get {
                 name: _,
                 object: _,
+            } => {
+                match self.evaluate(&**callee)? {
+                    LoxEntity::Callable(callable) => callable,
+                    _ => return Err(LoxError::AstError),
+                }
+            },
+            Expression::Index {
+                item: _,
+                index: _,
             } => {
                 match self.evaluate(&**callee)? {
                     LoxEntity::Callable(callable) => callable,
@@ -358,7 +364,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
                 match (item, index) {
                     (
-                        LoxEntity::Literal(Literal::List(list)),
+                        LoxEntity::List(list),
                         LoxEntity::Literal(Literal::Number(index))
                     ) => {
                         let list_index = index as usize;
@@ -367,21 +373,17 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                             return Err(LoxError::AstError);
                         }
 
-                        let at_index = list[list_index].clone();
-
-                        Ok(LoxEntity::Literal(at_index))
+                        Ok(list[list_index].clone())
                     },
                     (
-                        LoxEntity::Literal(Literal::Map(map)),
+                        LoxEntity::Map(map),
                         LoxEntity::Literal(index)
                     ) => {
                         if !map.contains_key(&index) {
                             return Err(LoxError::AstError);
                         }
 
-                        let at_index = map[&index].clone();
-
-                        Ok(LoxEntity::Literal(at_index))
+                        Ok(map[&index].clone())
                     },
                     _ => Err(LoxError::AstError),
                 }
@@ -405,12 +407,14 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                         _ => return Err(LoxError::AstError),
                     };
 
+                    let distance = self.locals.borrow().get(expr);
+
                     let item = self.evaluate(&**item)?;
                     let index = self.evaluate(&**index)?;
 
-                    let output = match (item, index) {
+                    match (item, index) {
                         (
-                            LoxEntity::Literal(Literal::List(mut list)),
+                            LoxEntity::List(mut list),
                             LoxEntity::Literal(Literal::Number(index))
                         ) => {
                             let list_index = index as usize;
@@ -419,43 +423,42 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                                 return Err(LoxError::AstError);
                             }
 
-                            list[list_index] = match self.evaluate(&**expression)? {
-                                LoxEntity::Literal(literal) => literal,
-                                _ => return Err(LoxError::AstError),
-                            };
+                            list[list_index] = self.evaluate(&**expression)?;
 
-                            Box::new(
-                                Expression::Literal {
-                                    value: Literal::List(list),
-                                }
-                            )
+                            match distance {
+                                Ok(_) => self.environment.borrow_mut().assign(
+                                    name.lexeme.clone(),
+                                    LoxEntity::List(list),
+                                )?,
+                                Err(_) => self.globals.borrow_mut().assign(
+                                    name.lexeme.clone(),
+                                    LoxEntity::List(list),
+                                )?,
+                            };
                         },
                         (
-                            LoxEntity::Literal(Literal::Map(mut map)),
+                            LoxEntity::Map(mut map),
                             LoxEntity::Literal(index)
                         ) => {
-                            let value = match self.evaluate(&**expression)? {
-                                LoxEntity::Literal(literal) => literal,
-                                _ => return Err(LoxError::AstError),
-                            };
+                            let value = self.evaluate(&**expression)?;
 
                             map.insert(index, value);
 
-                            Box::new(
-                                Expression::Literal {
-                                    value: Literal::Map(map),
-                                }
-                            )
+                            match distance {
+                                Ok(_) => self.environment.borrow_mut().assign(
+                                    name.lexeme.clone(),
+                                    LoxEntity::Map(map),
+                                )?,
+                                Err(_) => self.globals.borrow_mut().assign(
+                                    name.lexeme.clone(),
+                                    LoxEntity::Map(map),
+                                )?,
+                            };
                         },
                         _ => return Err(LoxError::AstError),
                     };
 
-                    self.evaluate(
-                        &Expression::Assignment {
-                            name,
-                            expression: output
-                        }
-                    )
+                    Ok(LoxEntity::Literal(Literal::Nil))
                 },
                 _ => Err(LoxError::AstError),
 
@@ -467,16 +470,14 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     fn visit_list(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::List { expressions } => {
-                let mut list: Vec<Literal> = vec![];
+                let mut list: Vec<LoxEntity> = vec![];
 
                 for expression in expressions.iter() {
-                    match self.evaluate(&expression)? {
-                        LoxEntity::Literal(literal) => list.push(literal),
-                        _ => return Err(LoxError::AstError),
-                    };
+                    let value = self.evaluate(&expression)?;
+                    list.push(value);
                 }
 
-                Ok(LoxEntity::Literal(Literal::List(list)))
+                Ok(LoxEntity::List(list))
             },
             _ => Err(LoxError::AstError),
         }
@@ -528,21 +529,19 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     fn visit_map(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
             Expression::Map { expression_map } => {
-                let mut map: BTreeMap<Literal, Literal> = BTreeMap::new();
+                let mut map: HashMap<Literal, LoxEntity> = HashMap::new();
 
                 for (key, value) in expression_map.iter() {
-                    match (
-                        self.evaluate(&key)?,
-                        self.evaluate(&value)?,
-                    ) {
-                        (LoxEntity::Literal(key), LoxEntity::Literal(value)) => {
-                            map.insert(key, value);
-                        },
+                    let key = match self.evaluate(&key)? {
+                        LoxEntity::Literal(literal) => literal,
                         _ => return Err(LoxError::AstError),
                     };
+                    let value = self.evaluate(&value)?;
+
+                    map.insert(key, value);
                 }
 
-                Ok(LoxEntity::Literal(Literal::Map(map)))
+                Ok(LoxEntity::Map(map))
             },
             _ => Err(LoxError::AstError),
         }
@@ -734,6 +733,57 @@ impl StatementVisitor for Interpreter {
 
         let _ = self.evaluate(&**expression)?;
         Ok(())
+    }
+
+    fn visit_foreach(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+        let (iterator, iterable, body) = match stmt {
+            Statement::Foreach {
+                iterator,
+                iterable,
+                body,
+            } => (iterator, iterable, body),
+            _ => return Err(LoxError::AstError),
+        };
+
+        match (&**body, self.evaluate(&**iterable)?) {
+            (Statement::Block { statements }, LoxEntity::List(list)) => {
+                for item in list.iter() {
+                    let new_env = Rc::new(
+                        RefCell::new(
+                            Environment::new(Some(self.environment.clone()))
+                        )
+                    );
+
+                    new_env.borrow_mut().define(
+                        iterator.lexeme.clone(),
+                        item.clone(),
+                    );
+
+                    self.execute_block(statements, new_env)?;
+                }
+
+                Ok(())
+            },
+            (Statement::Block { statements }, LoxEntity::Map(map)) => {
+                for item in map.keys() {
+                    let new_env = Rc::new(
+                        RefCell::new(
+                            Environment::new(Some(self.environment.clone()))
+                        )
+                    );
+
+                    new_env.borrow_mut().define(
+                        iterator.lexeme.clone(),
+                        LoxEntity::Literal(item.clone()),
+                    );
+
+                    self.execute_block(statements, new_env)?;
+                }
+
+                Ok(())
+            },
+            _ => Err(LoxError::AstError),
+        }
     }
 
     fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError> {

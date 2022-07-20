@@ -64,6 +64,8 @@ impl LoxInstance {
 pub enum LoxEntity {
     Callable(LoxCallable),
     Literal(Literal),
+    List(Vec<LoxEntity>),
+    Map(HashMap<Literal, LoxEntity>),
 }
 
 impl fmt::Display for LoxEntity {
@@ -71,6 +73,24 @@ impl fmt::Display for LoxEntity {
         let output = match self {
             LoxEntity::Callable(callable) => format!("{}", callable),
             LoxEntity::Literal(literal) => format!("{}", literal),
+            LoxEntity::List(list) => {
+                format!(
+                    "[{}]",
+                    list.iter()
+                        .map(|token| format!("{}", token))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            },
+            LoxEntity::Map(hmap) => {
+                format!(
+                    "{{ {} }}",
+                    hmap.iter()
+                        .map(|(key, value)| format!("{} => {}", key, value))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            },
         };
 
         write!(f, "{}", output)

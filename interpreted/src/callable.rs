@@ -48,7 +48,7 @@ impl LoxCallable {
     pub fn call(
         &mut self,
         interpreter: &mut Interpreter,
-        arguments: Vec<Literal>,
+        arguments: Vec<LoxEntity>,
     ) -> Result<LoxEntity, LoxError> {
         match self {
             LoxCallable::Function {
@@ -71,7 +71,7 @@ impl LoxCallable {
                     for (ref param, ref argument) in params.iter().zip(arguments) {
                         runtime_env.borrow_mut().define(
                             param.lexeme.clone(),
-                            LoxEntity::Literal(argument.clone()),
+                            argument.clone(),
                         );
                     }
 

@@ -13,6 +13,11 @@ pub trait StatementVisitor {
                 methods: _,
             } => self.visit_class(stmt),
             Statement::Expression { expression: _ } => self.visit_expression(stmt),
+            Statement::Foreach {
+                iterator: _,
+                iterable: _,
+                body: _,
+            } => self.visit_foreach(stmt),
             Statement::Function {
                 name: _,
                 params: _,
@@ -42,6 +47,7 @@ pub trait StatementVisitor {
     fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_class(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_expression(&mut self, stmt: &Statement) -> Result<(), LoxError>;
+    fn visit_foreach(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_if(&mut self, stmt: &Statement) -> Result<(), LoxError>;
     fn visit_print(&mut self, stmt: &Statement) -> Result<(), LoxError>;
@@ -61,6 +67,11 @@ pub enum Statement {
     },
     Expression {
         expression: Box<Expression>,
+    },
+    Foreach {
+        iterator: Token,
+        iterable: Box<Expression>,
+        body: Box<Statement>,
     },
     Function {
         name: Token,
