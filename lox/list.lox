@@ -1,0 +1,11 @@
+fun pass(n) {
+    return n;
+}
+
+// var list = ["foo", "bar", "baz"];
+var map = { "foo": "bar", "baz": "quux" };
+// var list = [1, 2, 3, 4];
+
+foreach (var item in map) {
+    print item + " " + map[item];
+}
