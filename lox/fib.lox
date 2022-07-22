@@ -1,9 +1,21 @@
+var cache = {};
+
 fun fib(n) {
-  if (n <= 1) {
-      return n;
-  } else {
-      return fib(n - 2) + fib(n - 1);
-  }
+    if (n in cache) {
+        return cache[n];
+    }
+
+    var answer = 0;
+
+    if (n <= 1) {
+        answer = n;
+    } else {
+        answer = fib(n - 2) + fib(n - 1);
+    }
+
+    cache[n] = answer;
+
+    return answer;
 }
 
-print fib(15);
+print fib(50);
