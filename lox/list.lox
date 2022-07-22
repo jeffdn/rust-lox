@@ -2,12 +2,27 @@ fun pass(n) {
     return n;
 }
 
-// var list = ["foo", "bar", "baz"];
-// var map = { "foo": "bar", "baz": "quux" };
+var map = { "foo": "bar", "baz": "quux" };
 var list1 = [1, 2, 3, 4];
 var list2 = [5, 6, 7, 8];
 var list = list1 + list2;
 
 foreach (var item in list) {
     print item;
+}
+
+if (3 in list) {
+    print "woah";
+}
+
+if (10 not in list) {
+    print "uh oh";
+}
+
+if ("foo" in map) {
+    print "woah";
+}
+
+if ("bar" not in map) {
+    print "uh oh";
 }

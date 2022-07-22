@@ -144,6 +144,7 @@ impl Scanner {
             "if"        => TokenType::If,
             "in"        => TokenType::In,
             "nil"       => TokenType::Nil,
+            "not"       => TokenType::NotIn,
             "or"        => TokenType::Or,
             "print"     => TokenType::Print,
             "return"    => TokenType::Return,

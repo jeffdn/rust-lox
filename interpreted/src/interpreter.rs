@@ -269,6 +269,88 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                         left.append(right);
                         Ok(LoxEntity::List(left.clone()))
                     },
+                    TokenType::In => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(
+                                right.contains(&LoxEntity::List(left.clone()))
+                            ),
+                        )
+                    ),
+                    TokenType::NotIn => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(
+                                !right.contains(&LoxEntity::List(left.clone()))
+                            ),
+                        )
+                    ),
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            (LoxEntity::Callable(left), LoxEntity::List(list)) => {
+                match operator.token_type {
+                    TokenType::In => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(
+                                list.contains(&LoxEntity::Callable(left))
+                            ),
+                        )
+                    ),
+                    TokenType::NotIn => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(
+                                !list.contains(&LoxEntity::Callable(left))
+                            ),
+                        )
+                    ),
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            (LoxEntity::Map(left), LoxEntity::List(list)) => {
+                match operator.token_type {
+                    TokenType::In => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(
+                                list.contains(&LoxEntity::Map(left))
+                            ),
+                        )
+                    ),
+                    TokenType::NotIn => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(
+                                !list.contains(&LoxEntity::Map(left))
+                            ),
+                        )
+                    ),
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            (LoxEntity::Literal(left), LoxEntity::List(list)) => {
+                match operator.token_type {
+                    TokenType::In => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(list.contains(&LoxEntity::Literal(left))),
+                        )
+                    ),
+                    TokenType::NotIn => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(!list.contains(&LoxEntity::Literal(left))),
+                        )
+                    ),
+                    _ => Err(LoxError::AstError),
+                }
+            },
+            (LoxEntity::Literal(item), LoxEntity::Map(map)) => {
+                match operator.token_type {
+                    TokenType::In => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(map.contains_key(&item)),
+                        )
+                    ),
+                    TokenType::NotIn => Ok(
+                        LoxEntity::Literal(
+                            Literal::Boolean(!map.contains_key(&item)),
+                        )
+                    ),
                     _ => Err(LoxError::AstError),
                 }
             },

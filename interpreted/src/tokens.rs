@@ -49,6 +49,7 @@ pub enum TokenType {
     If,
     In,
     Nil,
+    NotIn,
     Or,
     Print,
     Return,

@@ -13,7 +13,7 @@ use crate::{
     tokens::{Literal, Token},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LoxInstance {
     pub name: Token,
     pub statement: Statement,
@@ -60,7 +60,7 @@ impl LoxInstance {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LoxEntity {
     Callable(LoxCallable),
     Literal(Literal),
@@ -97,13 +97,19 @@ impl fmt::Display for LoxEntity {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Environment<K, V> {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Environment<K, V>
+where K: Clone + fmt::Debug + Eq + Hash + PartialEq,
+      V: Clone + fmt::Debug + PartialEq
+{
     pub parent: Option<Rc<RefCell<Environment<K, V>>>>,
     pub values: HashMap<K, V>,
 }
 
-impl<K: Clone + fmt::Debug + Eq + Hash, V: Clone + fmt::Debug> Environment<K, V> {
+impl<
+    K: Clone + fmt::Debug + Eq + Hash + PartialEq,
+    V: Clone + fmt::Debug + PartialEq
+> Environment<K, V> {
     pub fn new(parent: Option<Rc<RefCell<Environment<K, V>>>>) -> Environment<K, V> {
         Environment {
             parent,

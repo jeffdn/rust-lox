@@ -12,7 +12,7 @@ use crate::{
     tokens::Literal,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LoxCallable {
     Function {
         statement: Statement,

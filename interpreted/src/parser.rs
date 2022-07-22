@@ -484,7 +484,13 @@ impl Parser {
     fn equality(&mut self) -> Result<Expression, LoxError> {
         let expr = self.comparison()?;
 
-        if self.token_type_matches(&[TokenType::BangEqual, TokenType::EqualEqual]) {
+        if self.token_type_matches(
+            &[
+                TokenType::BangEqual,
+                TokenType::EqualEqual,
+                TokenType::In,
+            ]
+        ) {
             let operator = self.previous();
             let right = self.comparison()?;
             let new_expr = Expression::Binary {
@@ -493,10 +499,28 @@ impl Parser {
                 right: Box::new(right.clone()),
             };
 
-            return Ok(new_expr);
-        }
+            Ok(new_expr)
+        } else if self.token_type_matches(&[TokenType::NotIn]) {
+            // This is a special case, with a two-token operator.
+            let operator = self.previous();
 
-        Ok(expr)
+            self.consume(
+                &TokenType::In,
+                "expect 'in' after 'not'".to_string(),
+            )?;
+
+            let right = self.comparison()?;
+
+            let new_expr = Expression::Binary {
+                left: Box::new(expr.clone()),
+                operator,
+                right: Box::new(right.clone()),
+            };
+
+            Ok(new_expr)
+        } else {
+            Ok(expr)
+        }
     }
 
     fn comparison(&mut self) -> Result<Expression, LoxError> {
