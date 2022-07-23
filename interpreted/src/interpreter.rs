@@ -23,13 +23,13 @@ impl Interpreter {
     pub fn new() -> Interpreter {
         let mut inner_globals: Environment<String, LoxEntity> = Environment::new(None);
 
-        inner_globals.define(
-            "len".into(), LoxEntity::Callable(LoxCallable::Len),
-        );
-
-        inner_globals.define(
-            "type".into(), LoxEntity::Callable(LoxCallable::Type),
-        );
+        for (name, callable) in [
+            ("len".into(), LoxCallable::Len),
+            ("range".into(), LoxCallable::Range),
+            ("type".into(), LoxCallable::Type),
+        ] {
+            inner_globals.define(name, LoxEntity::Callable(callable));
+        }
 
         let globals = Rc::new(RefCell::new(inner_globals));
 
@@ -41,7 +41,7 @@ impl Interpreter {
         }
     }
 
-    pub fn evaluate(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+    fn evaluate(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         self.accept_expression(expr)
     }
 
@@ -223,6 +223,42 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                             _ => Err(LoxError::AstError),
                         }
                     },
+                    (Literal::Number(left), Literal::String(right)) => {
+                        match operator.token_type {
+                            TokenType::Plus => Ok(
+                                LoxEntity::Literal(
+                                    Literal::String(
+                                        format!("{}{}", left, right),
+                                    )
+                                )
+                            ),
+                            _ => Err(LoxError::AstError),
+                        }
+                    },
+                    (Literal::String(left), Literal::Boolean(right)) => {
+                        match operator.token_type {
+                            TokenType::Plus => Ok(
+                                LoxEntity::Literal(
+                                    Literal::String(
+                                        format!("{}{}", left, right),
+                                    )
+                                )
+                            ),
+                            _ => Err(LoxError::AstError),
+                        }
+                    },
+                    (Literal::Boolean(left), Literal::String(right)) => {
+                        match operator.token_type {
+                            TokenType::Plus => Ok(
+                                LoxEntity::Literal(
+                                    Literal::String(
+                                        format!("{}{}", left, right),
+                                    )
+                                )
+                            ),
+                            _ => Err(LoxError::AstError),
+                        }
+                    },
                     (Literal::String(left), Literal::String(right)) => {
                         match operator.token_type {
                             TokenType::Plus => Ok(
@@ -385,7 +421,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
         let mut real_arguments: Vec<LoxEntity> = Vec::new();
         for arg in arguments.iter() {
-            real_arguments.push(self.evaluate(arg)?);
+            let evaluated = self.evaluate(arg)?;
+            real_arguments.push(evaluated);
         }
 
         let mut callable = match **callee {
@@ -851,7 +888,9 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        match (&**body, self.evaluate(&**iterable)?) {
+        let iterable = self.evaluate(&**iterable)?;
+
+        match (&**body, iterable) {
             (Statement::Block { statements }, LoxEntity::List(list)) => {
                 for item in list.iter() {
                     let new_env = Rc::new(

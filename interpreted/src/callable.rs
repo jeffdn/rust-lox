@@ -24,6 +24,7 @@ pub enum LoxCallable {
 
     // Built-in functions
     Len,
+    Range,
     Type,
 }
 
@@ -43,6 +44,7 @@ impl fmt::Display for LoxCallable {
             },
             LoxCallable::Class { class } => format!("class '{}'", class.name.lexeme),
             LoxCallable::Len => "function 'len'".to_string(),
+            LoxCallable::Range => "function 'range'".to_string(),
             LoxCallable::Type => "function 'type'".to_string(),
         };
 
@@ -125,10 +127,31 @@ impl LoxCallable {
                     ),
                     _ => Err(
                         LoxError::RuntimeError(
-                            "len() only accepts lists, maps, and strings".to_string(),
+                            "len(item) only accepts lists, maps, and strings".to_string(),
                         ),
                     ),
                 }
+            },
+            LoxCallable::Range => {
+                let (start, stop) = match (&arguments[0], &arguments[1]) {
+                    (
+                        LoxEntity::Literal(Literal::Number(start)),
+                        LoxEntity::Literal(Literal::Number(stop)),
+                    ) => (*start as usize, *stop as usize),
+                    _ => return Err(
+                        LoxError::RuntimeError(
+                            "range(start, stop) requires two numbers as arguments".to_string(),
+                        )
+                    ),
+                };
+
+                Ok(
+                    LoxEntity::List(
+                        (start..stop)
+                            .map(|x| LoxEntity::Literal(Literal::Number(x as f64)))
+                            .collect()
+                    )
+                )
             },
             LoxCallable::Type => {
                 match &arguments[0] {
@@ -170,7 +193,9 @@ impl LoxCallable {
                         ),
                     },
                     LoxEntity::Callable(callable) => match callable {
-                        LoxCallable::Len | LoxCallable::Type => Ok(
+                        LoxCallable::Len |
+                        LoxCallable::Type |
+                        LoxCallable::Range => Ok(
                             LoxEntity::Literal(
                                 Literal::String("built-in function".into()),
                             )
@@ -210,6 +235,7 @@ impl LoxCallable {
             },
             LoxCallable::Class { class: _ } => Ok(0),
             LoxCallable::Len => Ok(1),
+            LoxCallable::Range => Ok(2),
             LoxCallable::Type => Ok(1),
         }
     }

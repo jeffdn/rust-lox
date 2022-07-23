@@ -43,10 +43,11 @@ pub enum TokenType {
     And,
     Class,
     Else,
+    Eof,
     False,
-    Fun,
     For,
     Foreach,
+    Fun,
     If,
     In,
     Nil,
@@ -59,7 +60,6 @@ pub enum TokenType {
     True,
     Var,
     While,
-    Eof,
 
     // to skip
     Skip,

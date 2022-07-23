@@ -149,26 +149,7 @@ impl Parser {
             "expect 'in' after 'foreach (identifier'".to_string(),
         )?;
 
-        let iterable = match self.peek().token_type {
-            TokenType::Identifier => {
-                let iterable_name: Token = self.consume(
-                    &TokenType::Identifier,
-                    "expected a variable name".to_string(),
-                )?;
-
-                Expression::Variable {
-                    name: iterable_name,
-                }
-            },
-            TokenType::LeftBracket => self.finish_list()?,
-            TokenType::LeftBrace => self.finish_map()?,
-            _ => return Err(
-                LoxError::SyntaxError(
-                    self.current,
-                    "expect 'foreach (var name in list_or_map)'".to_string(),
-                )
-            ),
-        };
+        let iterable = self.expression()?;
 
         self.consume(&TokenType::RightParen, "expect ')' after 'foreach' setup".to_string())?;
 

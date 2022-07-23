@@ -1,7 +1,7 @@
 var map = {
-    "foo": "bar",
-    "baz": "quux",
-    "address": 4065
+   "foo": "bar",
+   "baz": "quux",
+   "address": 4065
 };
 
 var list1 = [1, 2, 3, 4];
@@ -17,7 +17,7 @@ foreach (var key in map) {
 
 print "using 'len()' on a list";
 
-for (var i = 0; i < len(list); i = i + 1) {
+foreach (var i in range(0, len(list))) {
     if (i % 2) {
         print "even! " + list[i];
     } else {
