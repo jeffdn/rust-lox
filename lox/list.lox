@@ -48,3 +48,5 @@ if ("foo" in map) {
 if ("bar" not in map) {
     print "uh oh";
 }
+
+print "!!true = " + (!!true);

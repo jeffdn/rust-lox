@@ -768,12 +768,11 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                 }
             },
             TokenType::Bang => {
-                match **right {
-                    Expression::Literal { value: _ } => {
-                        let truthy = self.is_truthy(&**right)?;
+                match self.evaluate(&**right)? {
+                    LoxEntity::Literal(right) => {
                         Ok(
                             LoxEntity::Literal(
-                                Literal::Boolean(truthy)
+                                Literal::Boolean(!self._is_truthy(&right)?)
                             )
                         )
                     },
