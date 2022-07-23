@@ -569,7 +569,13 @@ impl Parser {
     fn factor(&mut self) -> Result<Expression, LoxError> {
         let expr = self.unary()?;
 
-        if self.token_type_matches(&[TokenType::Slash, TokenType::Star]) {
+        if self.token_type_matches(
+            &[
+                TokenType::Percent,
+                TokenType::Slash,
+                TokenType::Star,
+            ]
+        ) {
             let operator = self.previous();
             let right = self.unary()?;
             let new_expr = Expression::Binary {

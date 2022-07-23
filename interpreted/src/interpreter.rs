@@ -158,6 +158,11 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                                     Literal::Number(left - right)
                                 )
                             ),
+                            TokenType::Percent => Ok(
+                                LoxEntity::Literal(
+                                    Literal::Number(left % right)
+                                )
+                            ),
                             TokenType::Slash => Ok(
                                 LoxEntity::Literal(
                                     Literal::Number(left / right)
