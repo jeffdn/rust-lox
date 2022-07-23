@@ -21,8 +21,18 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        let inner_globals: Environment<String, LoxEntity> = Environment::new(None);
+        let mut inner_globals: Environment<String, LoxEntity> = Environment::new(None);
+
+        inner_globals.define(
+            "len".into(), LoxEntity::Callable(LoxCallable::Len),
+        );
+
+        inner_globals.define(
+            "type".into(), LoxEntity::Callable(LoxCallable::Type),
+        );
+
         let globals = Rc::new(RefCell::new(inner_globals));
+
 
         Interpreter {
             globals: globals.clone(),
@@ -31,7 +41,7 @@ impl Interpreter {
         }
     }
 
-    fn evaluate(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
+    pub fn evaluate(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         self.accept_expression(expr)
     }
 
@@ -895,7 +905,7 @@ impl StatementVisitor for Interpreter {
                         Some(self.environment.clone()),
                     )
                 )
-            ),
+            )
         };
 
         self.environment.borrow_mut().define(
