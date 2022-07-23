@@ -145,13 +145,24 @@ impl LoxCallable {
                     ),
                 };
 
-                Ok(
-                    LoxEntity::List(
-                        (start..stop)
-                            .map(|x| LoxEntity::Literal(Literal::Number(x as f64)))
-                            .collect()
+                if stop > start {
+                    Ok(
+                        LoxEntity::List(
+                            (start..stop)
+                                .map(|x| LoxEntity::Literal(Literal::Number(x as f64)))
+                                .collect()
+                        )
                     )
-                )
+                } else {
+                    Ok(
+                        LoxEntity::List(
+                            (stop..start)
+                                .rev()
+                                .map(|x| LoxEntity::Literal(Literal::Number(x as f64)))
+                                .collect()
+                        )
+                    )
+                }
             },
             LoxCallable::Type => {
                 match &arguments[0] {

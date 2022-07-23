@@ -15,6 +15,10 @@ foreach (var key in map) {
     print key + ": " + type(map[key]);
 }
 
+foreach (var char in "hello") {
+    print char;
+}
+
 print "using 'len()' on a list";
 
 foreach (var i in range(0, len(list))) {
@@ -23,6 +27,10 @@ foreach (var i in range(0, len(list))) {
     } else {
         print "odd!  " + list[i];
     }
+}
+
+foreach (var i in range(len(list), 0)) {
+    print i;
 }
 
 if (3 in list) {

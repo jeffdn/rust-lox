@@ -888,9 +888,30 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        let iterable = self.evaluate(&**iterable)?;
+        match (&**body, self.evaluate(&**iterable)?) {
+            (
+                Statement::Block { statements },
+                LoxEntity::Literal(Literal::String(string)),
+            ) => {
+                for item in string.chars() {
+                    let new_env = Rc::new(
+                        RefCell::new(
+                            Environment::new(Some(self.environment.clone()))
+                        )
+                    );
 
-        match (&**body, iterable) {
+                    new_env.borrow_mut().define(
+                        iterator.lexeme.clone(),
+                        LoxEntity::Literal(
+                            Literal::String(item.to_string())
+                        ),
+                    );
+
+                    self.execute_block(statements, new_env)?;
+                }
+
+                Ok(())
+            },
             (Statement::Block { statements }, LoxEntity::List(list)) => {
                 for item in list.iter() {
                     let new_env = Rc::new(
