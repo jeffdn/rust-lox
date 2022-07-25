@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     fmt,
     rc::Rc,
+    time::SystemTime,
 };
 
 use crate::{
@@ -25,6 +26,7 @@ pub enum LoxCallable {
     // Built-in functions
     Len,
     Range,
+    Time,
     Type,
 }
 
@@ -45,6 +47,7 @@ impl fmt::Display for LoxCallable {
             LoxCallable::Class { class } => format!("class '{}'", class.name.lexeme),
             LoxCallable::Len => "function 'len'".to_string(),
             LoxCallable::Range => "function 'range'".to_string(),
+            LoxCallable::Time => "function 'time'".to_string(),
             LoxCallable::Type => "function 'type'".to_string(),
         };
 
@@ -164,6 +167,24 @@ impl LoxCallable {
                     )
                 }
             },
+            LoxCallable::Time => {
+                let unix_now = match SystemTime::now().duration_since(
+                    SystemTime::UNIX_EPOCH
+                ) {
+                    Ok(unix_now) => unix_now,
+                    Err(_) => return Err(
+                        LoxError::RuntimeError(
+                            "time() failed to get the current unix timestamp".into(),
+                        )
+                    ),
+                };
+
+                Ok(
+                    LoxEntity::Literal(
+                        Literal::Number(unix_now.as_secs_f64())
+                    )
+                )
+            },
             LoxCallable::Type => {
                 match &arguments[0] {
                     LoxEntity::List(_) => Ok(
@@ -205,8 +226,9 @@ impl LoxCallable {
                     },
                     LoxEntity::Callable(callable) => match callable {
                         LoxCallable::Len |
-                        LoxCallable::Type |
-                        LoxCallable::Range => Ok(
+                        LoxCallable::Range |
+                        LoxCallable::Time |
+                        LoxCallable::Type => Ok(
                             LoxEntity::Literal(
                                 Literal::String("built-in function".into()),
                             )
@@ -247,6 +269,7 @@ impl LoxCallable {
             LoxCallable::Class { class: _ } => Ok(0),
             LoxCallable::Len => Ok(1),
             LoxCallable::Range => Ok(2),
+            LoxCallable::Time => Ok(0),
             LoxCallable::Type => Ok(1),
         }
     }

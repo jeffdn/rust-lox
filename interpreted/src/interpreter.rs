@@ -26,6 +26,7 @@ impl Interpreter {
         for (name, callable) in [
             ("len".into(), LoxCallable::Len),
             ("range".into(), LoxCallable::Range),
+            ("time".into(), LoxCallable::Time),
             ("type".into(), LoxCallable::Type),
         ] {
             inner_globals.define(name, LoxEntity::Callable(callable));
