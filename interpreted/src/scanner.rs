@@ -84,9 +84,7 @@ impl Scanner {
             ':' => Ok(TokenType::Colon),
             ',' => Ok(TokenType::Comma),
             '.' => Ok(TokenType::Dot),
-            '-' => Ok(TokenType::Minus),
             '%' => Ok(TokenType::Percent),
-            '+' => Ok(TokenType::Plus),
             ';' => Ok(TokenType::Semicolon),
             '*' => Ok(TokenType::Star),
             '!' => match self.check_next('=') {
@@ -104,6 +102,14 @@ impl Scanner {
             '>' => match self.check_next('=') {
                 true => Ok(TokenType::GreaterEqual),
                 false => Ok(TokenType::Greater),
+            },
+            '-' => match self.check_next('=') {
+                true => Ok(TokenType::MinusEqual),
+                false => Ok(TokenType::Minus),
+            },
+            '+' => match self.check_next('=') {
+                true => Ok(TokenType::PlusEqual),
+                false => Ok(TokenType::Plus),
             },
             '/' => match self.check_next('/') {
                 true => {

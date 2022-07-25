@@ -425,6 +425,96 @@ impl Parser {
                     self.error(&equals, "invalid assignment target".to_string())
                 ),
             }
+        } else if self.token_type_matches(
+            &[
+                TokenType::MinusEqual,
+                TokenType::PlusEqual,
+            ]
+        ) {
+            let mut token = self.previous();
+            token.token_type = match &token.token_type {
+                TokenType::MinusEqual => TokenType::Minus,
+                TokenType::PlusEqual => TokenType::Plus,
+                _ => panic!("unreachable!"),
+            };
+
+            let value = self.assignment()?;
+
+            match expr {
+                Expression::Variable {
+                    name,
+                } => {
+                    return Ok(
+                        Expression::Assignment {
+                            name: name.clone(),
+                            expression: Box::new(
+                                Expression::Binary {
+                                    left: Box::new(
+                                        Expression::Variable {
+                                            name,
+                                        },
+                                    ),
+                                    operator: token,
+                                    right: Box::new(value.clone()),
+                                },
+                            ),
+                        }
+                    );
+                },
+                Expression::Get {
+                    name,
+                    object,
+                } => {
+                    return Ok(
+                        Expression::Set {
+                            name: name.clone(),
+                            object: object.clone(),
+                            value: Box::new(
+                                Expression::Binary {
+                                    left: Box::new(
+                                        Expression::Get {
+                                            name,
+                                            object,
+                                        }
+                                    ),
+                                    operator: token,
+                                    right: Box::new(value.clone()),
+                                },
+                            ),
+                        }
+                    )
+                },
+                Expression::Index {
+                    item,
+                    index,
+                } => {
+                    return Ok(
+                        Expression::IndexedAssignment {
+                            indexed_item: Box::new(
+                                Expression::Index {
+                                    item: item.clone(),
+                                    index: index.clone(),
+                                },
+                            ),
+                            expression: Box::new(
+                                Expression::Binary {
+                                    left: Box::new(
+                                        Expression::Index {
+                                            item,
+                                            index,
+                                        }
+                                    ),
+                                    operator: token,
+                                    right: Box::new(value.clone()),
+                                },
+                            ),
+                        }
+                    );
+                },
+                _ => return Err(
+                    self.error(&token, "invalid assignment target".to_string())
+                ),
+            }
         }
 
         Ok(expr)
@@ -559,20 +649,25 @@ impl Parser {
         ) {
             let operator = self.previous();
             let right = self.unary()?;
-            let new_expr = Expression::Binary {
-                left: Box::new(expr.clone()),
-                operator,
-                right: Box::new(right.clone()),
-            };
 
-            return Ok(new_expr);
+            return Ok(
+                Expression::Binary {
+                    left: Box::new(expr.clone()),
+                    operator,
+                    right: Box::new(right.clone()),
+                }
+            );
         }
 
         Ok(expr)
     }
 
     fn unary(&mut self) -> Result<Expression, LoxError> {
-        if self.token_type_matches(&[TokenType::Bang, TokenType::Minus]) {
+        if self.token_type_matches(
+            &[
+                TokenType::Bang,
+                TokenType::Minus,
+            ]) {
             let operator = self.previous();
             let right = self.unary()?;
             let new_expr = Expression::Unary {
