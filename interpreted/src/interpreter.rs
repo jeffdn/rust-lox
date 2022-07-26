@@ -110,6 +110,14 @@ impl Interpreter {
             Err(_) => self.globals.borrow().get(&name.lexeme),
         }
     }
+
+    fn _convert_index(&self, len: usize, index: f64) -> usize {
+        let list_len = len as f64;
+        match index < 0.0f64 {
+            true => (list_len + index) as usize,
+            false => index as usize,
+        }
+    }
 }
 
 impl ExpressionVisitor<LoxEntity> for Interpreter {
@@ -119,7 +127,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        let value = self.evaluate(&**expression)?;
+        let value = self.evaluate(expression)?;
         let distance = self.locals.borrow().get(expr);
 
         match distance {
@@ -146,8 +154,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        let eval_left = self.evaluate(&**left)?;
-        let eval_right = self.evaluate(&**right)?;
+        let eval_left = self.evaluate(left)?;
+        let eval_right = self.evaluate(right)?;
 
         match (eval_left, eval_right) {
             (LoxEntity::Literal(left), LoxEntity::Literal(right)) => {
@@ -439,7 +447,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                 name: _,
                 object: _,
             } => {
-                match self.evaluate(&**callee)? {
+                match self.evaluate(callee)? {
                     LoxEntity::Callable(callable) => callable,
                     _ => return Err(LoxError::AstError),
                 }
@@ -447,8 +455,9 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             Expression::Index {
                 item: _,
                 index: _,
+                slice: _,
             } => {
-                match self.evaluate(&**callee)? {
+                match self.evaluate(callee)? {
                     LoxEntity::Callable(callable) => callable,
                     _ => return Err(LoxError::AstError),
                 }
@@ -480,7 +489,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        match self.evaluate(&**object)? {
+        match self.evaluate(object)? {
             LoxEntity::Callable(
                 LoxCallable::Class {
                     class,
@@ -492,7 +501,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
     fn visit_grouping(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
         match expr {
-            Expression::Grouping { expression } => self.evaluate(&**expression),
+            Expression::Grouping { expression } => self.evaluate(expression),
             _ => Err(LoxError::AstError),
         }
     }
@@ -502,16 +511,18 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             Expression::Index {
                 item,
                 index,
+                slice,
             } => {
-                let item = self.evaluate(&**item)?;
-                let index = self.evaluate(&**index)?;
+                let item = self.evaluate(item)?;
+                let index = self.evaluate(index)?;
 
-                match (item, index) {
+                match (item, index, slice) {
                     (
                         LoxEntity::List(list),
-                        LoxEntity::Literal(Literal::Number(index))
+                        LoxEntity::Literal(Literal::Number(index)),
+                        None,
                     ) => {
-                        let list_index = index as usize;
+                        let list_index = self._convert_index(list.len(), index);
 
                         if list_index > list.len() - 1 {
                             return Err(LoxError::AstError);
@@ -520,8 +531,42 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                         Ok(list[list_index].clone())
                     },
                     (
+                        LoxEntity::List(list),
+                        LoxEntity::Literal(Literal::Number(index)),
+                        Some(slice),
+                    ) => {
+                        let slice = match self.evaluate(slice)? {
+                            LoxEntity::Literal(Literal::Number(slice)) => slice,
+                            _ => return Err(LoxError::AstError),
+                        };
+
+                        let list_len = list.len();
+                        let mut slice_start = self._convert_index(list_len, index);
+                        let mut slice_end = self._convert_index(list_len, slice);
+
+                        if slice_start > list_len - 1 {
+                            slice_start = list_len - 1;
+                        }
+
+                        if slice_end > list_len - 1 {
+                            slice_end = list_len - 1;
+                        }
+
+                        if slice_start >= slice_end {
+                            return Ok(LoxEntity::List(vec![]));
+                        }
+
+                        let output: Vec<LoxEntity> = list[slice_start..(slice_end + 1)]
+                            .iter()
+                            .map(|x| x.clone())
+                            .collect();
+
+                        Ok(LoxEntity::List(output))
+                    },
+                    (
                         LoxEntity::Map(map),
-                        LoxEntity::Literal(index)
+                        LoxEntity::Literal(index),
+                        None,
                     ) => {
                         if !map.contains_key(&index) {
                             return Err(LoxError::AstError);
@@ -545,7 +590,12 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                 Expression::Index {
                     item,
                     index,
+                    slice,
                 } => {
+                    if slice.is_some() {
+                        return Err(LoxError::AstError);
+                    }
+
                     let name = match &**item {
                         Expression::Variable { name } => name.clone(),
                         _ => return Err(LoxError::AstError),
@@ -553,21 +603,17 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
                     let distance = self.locals.borrow().get(expr);
 
-                    let item = self.evaluate(&**item)?;
-                    let index = self.evaluate(&**index)?;
+                    let item = self.evaluate(item)?;
+                    let index = self.evaluate(index)?;
 
                     match (item, index) {
                         (
                             LoxEntity::List(mut list),
                             LoxEntity::Literal(Literal::Number(index))
                         ) => {
-                            let list_index = index as usize;
+                            let list_index = self._convert_index(list.len(), index);
 
-                            if list_index > list.len() - 1 {
-                                return Err(LoxError::AstError);
-                            }
-
-                            list[list_index] = self.evaluate(&**expression)?;
+                            list[list_index] = self.evaluate(expression)?;
 
                             match distance {
                                 Ok(_) => self.environment.borrow_mut().assign(
@@ -584,7 +630,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                             LoxEntity::Map(mut map),
                             LoxEntity::Literal(index)
                         ) => {
-                            let value = self.evaluate(&**expression)?;
+                            let value = self.evaluate(expression)?;
 
                             map.insert(index, value);
 
@@ -644,7 +690,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        match self.evaluate(&**left)? {
+        match self.evaluate(left)? {
             LoxEntity::Literal(inner) => {
                 let truthy_left = self.is_truthy(
                     &Expression::Literal {
@@ -701,7 +747,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        match (self.evaluate(&**object)?, &**object) {
+        match (self.evaluate(object)?, &**object) {
             (
                 LoxEntity::Callable(
                     LoxCallable::Class {
@@ -712,7 +758,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                     name: instance_name,
                 },
             ) => {
-                let value = self.evaluate(&**value)?;
+                let value = self.evaluate(value)?;
                 class.set(
                     name.lexeme.clone(),
                     value.clone(),
@@ -746,7 +792,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
         match operator.token_type {
             TokenType::Minus => {
-                match self.evaluate(&**right)? {
+                match self.evaluate(right)? {
                     LoxEntity::Literal(outer_right) => match outer_right {
                         Literal::Number(number) => {
                             Ok(
@@ -769,7 +815,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                 }
             },
             TokenType::Bang => {
-                match self.evaluate(&**right)? {
+                match self.evaluate(right)? {
                     LoxEntity::Literal(right) => {
                         Ok(
                             LoxEntity::Literal(
@@ -874,7 +920,7 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        let _ = self.evaluate(&**expression)?;
+        let _ = self.evaluate(expression)?;
         Ok(())
     }
 
@@ -888,7 +934,7 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        match (&**body, self.evaluate(&**iterable)?) {
+        match (&**body, self.evaluate(iterable)?) {
             (
                 Statement::Block { statements },
                 LoxEntity::Literal(Literal::String(string)),
@@ -991,10 +1037,10 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        match self.is_truthy(&**condition)? {
+        match self.is_truthy(condition)? {
             true => self.execute(then_branch)?,
             false => match else_branch {
-                Some(eb) => self.execute(&**eb)?,
+                Some(eb) => self.execute(eb)?,
                 None => {}
             },
         };
@@ -1008,7 +1054,7 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        println!("{}", self.evaluate(&**expression)?);
+        println!("{}", self.evaluate(expression)?);
 
         Ok(())
     }
@@ -1028,7 +1074,7 @@ impl StatementVisitor for Interpreter {
             _ => return Err(LoxError::AstError),
         };
 
-        while self.is_truthy(&**condition)? {
+        while self.is_truthy(condition)? {
             self.execute(body)?;
         }
 
@@ -1042,7 +1088,7 @@ impl StatementVisitor for Interpreter {
         };
 
         let value = match initializer {
-            Some(init) => self.evaluate(&**init)?,
+            Some(init) => self.evaluate(init)?,
             None => LoxEntity::Literal(Literal::Nil),
         };
 

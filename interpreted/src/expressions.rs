@@ -25,7 +25,11 @@ pub trait ExpressionVisitor<T> {
             } => self.visit_call(expr),
             Expression::Get { name: _, object: _ } => self.visit_get(expr),
             Expression::Grouping { expression: _ } => self.visit_grouping(expr),
-            Expression::Index { item: _, index: _ } => self.visit_index(expr),
+            Expression::Index {
+                item: _,
+                index: _,
+                slice: _,
+            } => self.visit_index(expr),
             Expression::IndexedAssignment {
                 indexed_item: _,
                 expression: _,
@@ -93,6 +97,7 @@ pub enum Expression {
     Index {
         item: Box<Expression>,
         index: Box<Expression>,
+        slice: Option<Box<Expression>>,
     },
     IndexedAssignment {
         indexed_item: Box<Expression>,

@@ -408,6 +408,7 @@ impl Parser {
                 Expression::Index {
                     item,
                     index,
+                    slice,
                 } => {
                     return Ok(
                         Expression::IndexedAssignment {
@@ -415,6 +416,7 @@ impl Parser {
                                 Expression::Index {
                                     item,
                                     index,
+                                    slice,
                                 },
                             ),
                             expression: Box::new(value.clone()),
@@ -487,6 +489,7 @@ impl Parser {
                 Expression::Index {
                     item,
                     index,
+                    slice,
                 } => {
                     return Ok(
                         Expression::IndexedAssignment {
@@ -494,6 +497,7 @@ impl Parser {
                                 Expression::Index {
                                     item: item.clone(),
                                     index: index.clone(),
+                                    slice: slice.clone(),
                                 },
                             ),
                             expression: Box::new(
@@ -502,6 +506,7 @@ impl Parser {
                                         Expression::Index {
                                             item,
                                             index,
+                                            slice,
                                         }
                                     ),
                                     operator: token,
@@ -794,6 +799,12 @@ impl Parser {
             } else if self.token_type_matches(&[TokenType::LeftBracket]) {
                 let index = self.expression()?;
 
+                let slice = if self.token_type_matches(&[TokenType::Colon]) {
+                    Some(Box::new(self.expression()?))
+                } else {
+                    None
+                };
+
                 self.consume(
                     &TokenType::RightBracket,
                     "expect indexes to close  with a ']'".to_string(),
@@ -802,6 +813,7 @@ impl Parser {
                 expr = Expression::Index {
                     item: Box::new(expr),
                     index: Box::new(index),
+                    slice,
                 };
             } else {
                 break;

@@ -247,11 +247,12 @@ impl ExpressionVisitor<()> for Resolver {
     }
 
     fn visit_index(&mut self, expr: &Expression) -> Result<(), LoxError> {
-        let (item, index) = match expr {
+        let (item, index, slice) = match expr {
             Expression::Index {
                 item,
                 index,
-            } => (item, index),
+                slice,
+            } => (item, index, slice),
             _ => return Err(
                 LoxError::ResolutionError(
                     "attempted to visit index with a non-index expression".to_string()
@@ -261,6 +262,10 @@ impl ExpressionVisitor<()> for Resolver {
 
         self.resolve_expression(&*item)?;
         self.resolve_expression(&*index)?;
+
+        if let Some(slice) = slice {
+            self.resolve_expression(&*slice)?;
+        }
 
         Ok(())
     }
