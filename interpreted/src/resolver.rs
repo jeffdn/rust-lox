@@ -63,8 +63,7 @@ impl Resolver {
         }
 
         let scope = self.scopes.last_mut()
-            .ok_or(
-                LoxError::ResolutionError(
+            .ok_or_else(|| LoxError::ResolutionError(
                     "can't declare a variable without a scope!".to_string()
                 )
             )?;
@@ -588,7 +587,7 @@ impl StatementVisitor for Resolver {
             ),
         };
 
-        if let None = self.function_type {
+        if self.function_type.is_none() {
             return Err(
                 LoxError::ResolutionError(
                     "can't return from top-level code".to_string(),

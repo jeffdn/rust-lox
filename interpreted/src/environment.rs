@@ -41,7 +41,7 @@ impl LoxInstance {
             None => match self.methods.get(key) {
                 Some(method) => Ok(
                     LoxEntity::Callable(
-                        method.clone()
+                        Box::new(method.clone())
                     )
                 ),
                 None => Err(
@@ -62,7 +62,7 @@ impl LoxInstance {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoxEntity {
-    Callable(LoxCallable),
+    Callable(Box<LoxCallable>),
     Literal(Literal),
     List(Vec<LoxEntity>),
     Map(HashMap<Literal, LoxEntity>),
@@ -118,7 +118,7 @@ impl<
     }
 
     pub fn define(&mut self, key: K, value: V) {
-        self.values.insert(key.clone(), value);
+        self.values.insert(key, value);
     }
 
     pub fn assign(&mut self, key: K, value: V) -> Result<(), LoxError>{

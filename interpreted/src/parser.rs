@@ -179,10 +179,7 @@ impl Parser {
             Statement::If {
                 condition: Box::new(condition),
                 then_branch: Box::new(then_branch),
-                else_branch: match else_branch {
-                    Some(eb) => Some(Box::new(eb)),
-                    None => None,
-                },
+                else_branch: else_branch.map(Box::new),
             }
         )
     }
@@ -264,10 +261,7 @@ impl Parser {
         Ok(
             Statement::Var {
                 name: token,
-                initializer: match initializer {
-                    Some(expr) => Some(Box::new(expr.clone())),
-                    None => None,
-                },
+                initializer: initializer.map(Box::new),
             }
         )
 
@@ -282,7 +276,7 @@ impl Parser {
         )?;
 
         Ok(Statement::Expression {
-            expression: Box::new(expr.clone()),
+            expression: Box::new(expr),
         })
     }
 
@@ -347,7 +341,7 @@ impl Parser {
 
         Ok(
             Statement::Print {
-                expression: Box::new(expr.clone()),
+                expression: Box::new(expr),
             }
         )
     }
@@ -389,7 +383,7 @@ impl Parser {
                     return Ok(
                         Expression::Assignment {
                             name,
-                            expression: Box::new(value.clone()),
+                            expression: Box::new(value),
                         }
                     )
                 },
@@ -401,7 +395,7 @@ impl Parser {
                         Expression::Set {
                             name,
                             object,
-                            value: Box::new(value.clone()),
+                            value: Box::new(value),
                         }
                     )
                 },
@@ -419,7 +413,7 @@ impl Parser {
                                     slice,
                                 },
                             ),
-                            expression: Box::new(value.clone()),
+                            expression: Box::new(value),
                         }
                     );
                 },
@@ -457,7 +451,7 @@ impl Parser {
                                         },
                                     ),
                                     operator: token,
-                                    right: Box::new(value.clone()),
+                                    right: Box::new(value),
                                 },
                             ),
                         }
@@ -480,7 +474,7 @@ impl Parser {
                                         }
                                     ),
                                     operator: token,
-                                    right: Box::new(value.clone()),
+                                    right: Box::new(value),
                                 },
                             ),
                         }
@@ -510,7 +504,7 @@ impl Parser {
                                         }
                                     ),
                                     operator: token,
-                                    right: Box::new(value.clone()),
+                                    right: Box::new(value),
                                 },
                             ),
                         }
@@ -570,9 +564,9 @@ impl Parser {
             let operator = self.previous();
             let right = self.comparison()?;
             let new_expr = Expression::Binary {
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 operator,
-                right: Box::new(right.clone()),
+                right: Box::new(right),
             };
 
             Ok(new_expr)
@@ -588,9 +582,9 @@ impl Parser {
             let right = self.comparison()?;
 
             let new_expr = Expression::Binary {
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 operator,
-                right: Box::new(right.clone()),
+                right: Box::new(right),
             };
 
             Ok(new_expr)
@@ -613,9 +607,9 @@ impl Parser {
             let operator = self.previous();
             let right = self.term()?;
             let new_expr = Expression::Binary {
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 operator,
-                right: Box::new(right.clone()),
+                right: Box::new(right),
             };
 
             return Ok(new_expr);
@@ -631,9 +625,9 @@ impl Parser {
             let operator = self.previous();
             let right = self.term()?;
             let new_expr = Expression::Binary {
-                left: Box::new(expr.clone()),
+                left: Box::new(expr),
                 operator,
-                right: Box::new(right.clone()),
+                right: Box::new(right),
             };
 
             return Ok(new_expr);
@@ -657,9 +651,9 @@ impl Parser {
 
             return Ok(
                 Expression::Binary {
-                    left: Box::new(expr.clone()),
+                    left: Box::new(expr),
                     operator,
-                    right: Box::new(right.clone()),
+                    right: Box::new(right),
                 }
             );
         }
@@ -677,7 +671,7 @@ impl Parser {
             let right = self.unary()?;
             let new_expr = Expression::Unary {
                 operator,
-                right: Box::new(right.clone()),
+                right: Box::new(right),
             };
 
             return Ok(new_expr);
@@ -739,11 +733,11 @@ impl Parser {
             "expect ']' after list items".to_string(),
         )?;
 
-        return Ok(
+        Ok(
             Expression::List {
                 expressions: list,
             }
-        );
+        )
     }
 
     fn finish_map(&mut self) -> Result<Expression, LoxError> {
@@ -773,11 +767,11 @@ impl Parser {
             "expect ']' after list items".to_string(),
         )?;
 
-        return Ok(
+        Ok(
             Expression::Map {
                 expression_map: map,
             }
-        );
+        )
     }
 
     fn call(&mut self) -> Result<Expression, LoxError> {
@@ -851,7 +845,7 @@ impl Parser {
         ) {
             return Ok(
                 Expression::Literal {
-                    value: self.previous().literal.clone().unwrap(),
+                    value: self.previous().literal.unwrap(),
                 }
             );
         } else if self.token_type_matches(&[TokenType::LeftBracket]) {
@@ -873,7 +867,7 @@ impl Parser {
             return Ok(
                 Expression::Grouping {
                     expression: Box::new(
-                        expr.clone()
+                        expr
                     ),
                 }
             );
@@ -905,7 +899,7 @@ impl Parser {
 
     fn consume(&mut self, token_type: &TokenType, message: String) -> Result<Token, LoxError> {
         if self.check_current_token(token_type) {
-            return Ok(self.advance().clone());
+            return Ok(self.advance());
         }
 
         let next_token = self.peek();
@@ -917,7 +911,7 @@ impl Parser {
         self.advance();
 
         while !self.at_end() {
-            if &self.previous().token_type == &TokenType::Semicolon {
+            if self.previous().token_type == TokenType::Semicolon {
                 return;
             }
 

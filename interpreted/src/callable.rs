@@ -79,21 +79,21 @@ impl LoxCallable {
                         )
                     );
 
-                    for (ref param, ref argument) in params.iter().zip(arguments) {
+                    for (param, argument) in params.iter().zip(arguments) {
                         runtime_env.borrow_mut().define(
                             param.lexeme.clone(),
                             argument.clone(),
                         );
                     }
 
-                    match interpreter.execute_block(body, runtime_env.clone()) {
+                    match interpreter.execute_block(body, runtime_env) {
                         Ok(_) => Ok(
                             LoxEntity::Literal(
                                 Literal::Nil,
                             )
                         ),
                         Err(e) => match e {
-                            LoxError::FunctionReturn(val) => Ok(val),
+                            LoxError::FunctionReturn(val) => Ok(*val),
                             _ => Err(e),
                         },
                     }
@@ -106,9 +106,11 @@ impl LoxCallable {
             },
             LoxCallable::Class { class } => Ok(
                 LoxEntity::Callable(
-                    LoxCallable::Class {
-                        class: class.clone(),
-                    }
+                    Box::new(
+                        LoxCallable::Class {
+                            class: class.clone(),
+                        }
+                    )
                 ),
             ),
             LoxCallable::Len => {
@@ -218,13 +220,13 @@ impl LoxCallable {
                                 Literal::String("null".into())
                             )
                         ),
-                        _ => return Err(
+                        _ => Err(
                             LoxError::RuntimeError(
                                 "arguments not properly evaluated".to_string()
                             )
                         ),
                     },
-                    LoxEntity::Callable(callable) => match callable {
+                    LoxEntity::Callable(callable) => match **callable {
                         LoxCallable::Len |
                         LoxCallable::Range |
                         LoxCallable::Time |

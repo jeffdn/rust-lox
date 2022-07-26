@@ -12,7 +12,7 @@ pub enum LoxError {
     InputError(String),
     RuntimeError(String),
     SyntaxError(usize, String),
-    FunctionReturn(LoxEntity),
+    FunctionReturn(Box<LoxEntity>),
 }
 
 impl fmt::Display for LoxError {

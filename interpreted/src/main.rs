@@ -46,7 +46,7 @@ fn eval(source: String) -> Result<(), LoxError> {
         }
     };
 
-    if errors.len() > 0 {
+    if !errors.is_empty() {
         println!("syntax errors:");
         for error in errors.iter() {
             println!(" - {}", error);
@@ -59,15 +59,12 @@ fn eval(source: String) -> Result<(), LoxError> {
 fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
     let source = fs::read_to_string(script_path)
         .ok()
-        .ok_or(
-            LoxError::InputError(
+        .ok_or_else(|| LoxError::InputError(
                 format!("unable to parse source file '{}'", script_path)
             )
         )?;
 
-    let output = eval(source)?;
-
-    Ok(output)
+    eval(source)
 }
 
 fn slurp_expr() -> String {

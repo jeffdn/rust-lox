@@ -165,17 +165,11 @@ impl Scanner {
     }
 
     fn is_alpha(&self, c: char) -> bool {
-        match c {
-            'a'..='z' | 'A'..='Z' | '_' => true,
-            _ => false,
-        }
+        matches!(c, 'a'..='z' | 'A'..='Z' | '_')
     }
 
     fn is_alphanumeric(&self, c: char) -> bool {
-        match c {
-            '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => true,
-            _ => false,
-        }
+        matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_')
     }
 
     fn add_identifier(&mut self) -> Result<TokenType, LoxError> {
@@ -270,6 +264,6 @@ impl Scanner {
             return '\0';
         }
 
-        return self.chars[self.current + 1];
+        self.chars[self.current + 1]
     }
 }
