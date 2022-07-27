@@ -1,6 +1,18 @@
 var cache = {};
 var calls = {};
 
+fun __fib(n, a, b) {
+    if (n == 0) {
+        return a;
+    }
+
+    if (n == 1) {
+        return b;
+    }
+
+    return __fib(n - 1, b, a + b);
+}
+
 fun _fib(n) {
     // if (n not in calls) {
     //     calls[n] = 0;
@@ -37,7 +49,7 @@ print "running naive fibonacci sequence";
 
 var start = time();
 
-print _fib(20);
+print __fib(100, 0, 1);
 
 print "finished in " + (time() - start) + " seconds";
 
@@ -45,7 +57,7 @@ print "running cached fibonacci sequence";
 
 var start = time();
 
-print fib(20);
+print fib(100);
 
 print "finished in " + (time() - start) + " seconds";
 
