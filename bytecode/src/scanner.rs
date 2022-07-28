@@ -229,4 +229,8 @@ impl Scanner {
     pub fn get_string(&self, token: &Token) -> String {
         self.chars[token.start..(token.start + token.length)].iter().cloned().collect()
     }
+
+    pub fn get_string_literal(&self, token: &Token) -> String {
+        self.chars[(token.start + 1)..(token.start + token.length - 1)].iter().cloned().collect()
+    }
 }

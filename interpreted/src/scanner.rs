@@ -66,7 +66,7 @@ impl Scanner {
         );
     }
 
-    fn advance(&mut self) -> char {
+    pub fn advance(&mut self) -> char {
         let char_at = self.current;
         self.current += 1;
 

@@ -1,10 +1,14 @@
 use std::fmt;
 
-#[derive(Clone)]
+use crate::object::Object;
+
+
+#[derive(Clone, Debug)]
 pub enum Value {
     Nil,
     Number(f32),
     Bool(bool),
+    Object(Object),
 }
 
 impl fmt::Display for Value {
@@ -13,6 +17,7 @@ impl fmt::Display for Value {
             Value::Nil => "nil".into(),
             Value::Number(number) => number.to_string(),
             Value::Bool(boolean) => boolean.to_string(),
+            Value::Object(object) => object.to_string(),
         };
 
         write!(f, "{}", output)
@@ -21,7 +26,7 @@ impl fmt::Display for Value {
 
 #[derive(Clone)]
 pub struct ValueSet {
-    values: Vec<Value>,
+    pub values: Vec<Value>,
 }
 
 impl ValueSet {

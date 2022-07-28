@@ -7,28 +7,56 @@ use crate::value::{Value, ValueSet};
 
 #[derive(Clone, Debug)]
 pub enum OpCode {
-    Return,
     Constant(usize),
-    Negate,
+    False,
+    True,
+    Nil,
+    Pop,
+    GetLocal(usize),
+    SetLocal(usize),
+    GetGlobal(usize),
+    DefineGlobal(usize),
+    SetGlobal(usize),
+    Equal,
+    Greater,
+    Less,
     Add,
     Subtract,
     Multiply,
     Divide,
+    Not,
+    Negate,
+    Print,
+    Return,
 }
 
 impl fmt::Display for OpCode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let as_string = match self {
-            OpCode::Return => "op_return",
             OpCode::Constant(_) => "op_constant",
-            OpCode::Negate => "op_negate",
+            OpCode::False => "op_false",
+            OpCode::True => "op_true",
+            OpCode::Nil => "op_nil",
+            OpCode::Pop => "op_pop",
+            OpCode::GetLocal(_) => "op_get_local",
+            OpCode::SetLocal(_) => "op_set_local",
+            OpCode::GetGlobal(_) => "op_get_global",
+            OpCode::DefineGlobal(_) => "op_define_global",
+            OpCode::SetGlobal(_) => "op_set_global",
+            OpCode::Equal => "op_equal",
+            OpCode::Greater => "op_greater",
+            OpCode::Less => "op_less",
             OpCode::Add => "op_add",
             OpCode::Subtract => "op_subtract",
             OpCode::Multiply => "op_multiply",
             OpCode::Divide => "op_divide",
+            OpCode::Not => "op_not",
+            OpCode::Negate => "op_negate",
+            OpCode::Print => "op_print",
+            OpCode::Return => "op_return",
         };
 
-        write!(f, "{:<16}", as_string)
+        write!(f, "{:<20}", as_string)
     }
 }
 
@@ -83,6 +111,21 @@ impl Chunk {
         let output = match code {
             OpCode::Constant(index) => format!(
                 "{:<16} {}", "op_constant", self.constants.get(*index),
+            ),
+            OpCode::GetLocal(index) => format!(
+                "{:<16} {}", "op_get_local", self.constants.get(*index),
+            ),
+            OpCode::SetLocal(index) => format!(
+                "{:<16} {}", "op_set_local", self.constants.get(*index),
+            ),
+            OpCode::GetGlobal(index) => format!(
+                "{:<16} {}", "op_get_global", self.constants.get(*index),
+            ),
+            OpCode::DefineGlobal(index) => format!(
+                "{:<16} {}", "op_define_global", self.constants.get(*index),
+            ),
+            OpCode::SetGlobal(index) => format!(
+                "{:<16} {}", "op_set_global", self.constants.get(*index),
             ),
             _ => code.to_string(),
         };

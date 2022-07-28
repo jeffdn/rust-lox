@@ -4,8 +4,9 @@ use std::fmt;
 pub enum LoxError {
     CompileError(String),
     InputError(String),
+    ResolutionError,
     ParseError(String),
-    RuntimeError,
+    RuntimeError(String),
     UsageError,
 }
 
@@ -15,8 +16,9 @@ impl fmt::Display for LoxError {
         let val = match self {
             LoxError::CompileError(message) => format!("compilation error: {}", message),
             LoxError::InputError(message) => format!("input error: {}", message),
+            LoxError::ResolutionError => "this should never propagate to the surface".into(),
             LoxError::ParseError(token) => format!("unexpected token: {}", token),
-            LoxError::RuntimeError => "runtime error".into(),
+            LoxError::RuntimeError(message) => format!("runtime error: {}", message),
             LoxError::UsageError => "usage: lox [script]".into(),
         };
 
