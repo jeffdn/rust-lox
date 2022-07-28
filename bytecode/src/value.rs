@@ -1,5 +1,25 @@
-type Value = f32;
+use std::fmt;
 
+#[derive(Clone)]
+pub enum Value {
+    Nil,
+    Number(f32),
+    Bool(bool),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let output = match self {
+            Value::Nil => "nil".into(),
+            Value::Number(number) => number.to_string(),
+            Value::Bool(boolean) => boolean.to_string(),
+        };
+
+        write!(f, "{}", output)
+    }
+}
+
+#[derive(Clone)]
 pub struct ValueSet {
     values: Vec<Value>,
 }
@@ -11,8 +31,10 @@ impl ValueSet {
         }
     }
 
-    pub fn write(&mut self, value: Value) {
+    pub fn write(&mut self, value: Value) -> usize {
         self.values.push(value);
+
+        self.values.len() - 1
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Value> {
