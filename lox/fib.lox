@@ -49,7 +49,7 @@ print "running naive fibonacci sequence";
 
 var start = time();
 
-print __fib(100, 0, 1);
+print _fib(20);
 
 print "finished in " + (time() - start) + " seconds";
 
@@ -57,7 +57,7 @@ print "running cached fibonacci sequence";
 
 var start = time();
 
-print fib(100);
+print fib(30);
 
 print "finished in " + (time() - start) + " seconds";
 

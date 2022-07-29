@@ -3,7 +3,7 @@ use std::boxed::Box;
 use crate::{
     chunk::{Chunk, OpCode},
     errors::LoxError,
-    object::Object,
+    object::{Function, FunctionType, Object},
     scanner::Scanner,
     tokens::{Token, TokenType},
     value::Value,
@@ -55,6 +55,7 @@ impl Precedence {
             TokenType::LessEqual => Precedence::Comparison,
             TokenType::And => Precedence::And,
             TokenType::Or => Precedence::Or,
+            TokenType::LeftParen => Precedence::Call,
             _ => Precedence::NoPrecedence,
         }
     }
@@ -66,10 +67,12 @@ struct Local {
 }
 
 pub struct Compiler {
+    compilers: Vec<Compiler>,
+    functions: Vec<Function>,
+
     current: Token,
     previous: Token,
     scanner: Scanner,
-    chunk: Chunk,
     panic_mode: bool,
 
     locals: Vec<Local>,
@@ -78,8 +81,10 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    pub fn new(source: &String) -> Compiler {
-        Compiler {
+    pub fn new(function_type: FunctionType) -> Compiler {
+        let mut compiler = Compiler {
+            compilers: Vec::new(),
+            functions: Vec::new(),
             current: Token {
                 token_type: TokenType::Eof,
                 start: 0,
@@ -92,47 +97,124 @@ impl Compiler {
                 length: 0,
                 line: 0,
             },
-            scanner: Scanner::new(source),
-            chunk: Chunk::new(),
+            scanner: Scanner::new(&"".into()),
             panic_mode: false,
 
             locals: Vec::new(),
-            local_count: 0,
+            local_count: 1,
             scope_depth: 0,
+        };
+
+        compiler.locals.push(
+            Local {
+                name: Token {
+                    token_type: TokenType::Skip,
+                    start: 0,
+                    length: 0,
+                    line: 0,
+                },
+                depth: Some(0),
+            }
+        );
+
+        compiler.functions.push(
+            Function {
+                function_type,
+                obj: None,
+                arity: 0,
+                chunk: Chunk::new(),
+                name: "<script>".into(),
+            }
+        );
+
+
+        compiler
+    }
+
+    fn init_compiler(&mut self, function_type: FunctionType) {
+        let mut compiler = Compiler::new(function_type);
+        compiler.functions.last_mut().unwrap().name = self.scanner.get_string(&self.previous);
+
+        self.compilers.push(compiler);
+    }
+
+    fn compiler(&self) -> &Compiler {
+        match self.compilers.is_empty() {
+            true => self,
+            false => match self.compilers.last() {
+                Some(compiler) => compiler,
+                None => panic!("unreachable"),
+            }
         }
     }
 
-    pub fn compile(&mut self) -> Result<Chunk, LoxError> {
-        self.advance()?;
+    fn mut_compiler(&mut self) -> &mut Compiler {
+        match self.compilers.is_empty() {
+            true => self,
+            false => match self.compilers.last_mut() {
+                Some(compiler) => compiler,
+                None => panic!("unreachable"),
+            }
+        }
+    }
 
+    fn current_function(&mut self) -> &mut Function {
+        match self.mut_compiler().functions.last_mut() {
+            Some(function) => function,
+            None => panic!("unreachable"),
+        }
+    }
+
+    fn chunk(&mut self) -> &mut Chunk {
+        &mut self.mut_compiler().current_function().chunk
+    }
+
+    pub fn compile(&mut self, source: &String) -> Result<Function, LoxError> {
+        self.scanner = Scanner::new(source);
+
+        self.advance()?;
 
         while !self.token_type_matches(&TokenType::Eof)? {
             self.declaration()?;
         }
 
+        self.emit_return()?;
+
         #[cfg(feature = "debug")]
         if self.panic_mode {
-            self.chunk.disassemble("code");
+            self.chunk().disassemble("code");
         }
 
-        Ok(self.chunk.clone())
+        Ok(self.functions.pop().unwrap())
+    }
+
+    fn end_compiler(&mut self) -> Result<Function, LoxError> {
+        self.emit_return()?;
+
+        #[cfg(feature = "debug")]
+        if self.panic_mode {
+            self.chunk().disassemble("code");
+        }
+
+        Ok(self.compilers.pop().unwrap().functions.pop().unwrap())
     }
 
     fn begin_scope(&mut self) -> Result<(), LoxError> {
-        self.scope_depth += 1;
+        self.mut_compiler().scope_depth += 1;
         Ok(())
     }
 
     fn end_scope(&mut self) -> Result<(), LoxError> {
-        self.scope_depth -= 1;
+        self.mut_compiler().scope_depth -= 1;
 
-        let mut pop_count = self.locals.len();
-        self.locals.retain(|x| x.depth.is_some() && x.depth.unwrap() <= self.scope_depth);
+        let mut pop_count = self.compiler().locals.len();
+        let scope_depth = self.compiler().scope_depth;
+        self.mut_compiler().locals.retain(|x| x.depth.is_some() && x.depth.unwrap() <= scope_depth);
 
-        pop_count -= self.locals.len();
+        pop_count -= self.compiler().locals.len();
 
         for _ in 0..pop_count {
-            self.local_count -= 1;
+            self.mut_compiler().local_count -= 1;
             self.emit_byte(OpCode::Pop)?;
         }
 
@@ -140,27 +222,34 @@ impl Compiler {
     }
 
     fn emit_byte(&mut self, byte: OpCode) -> Result<(), LoxError>{
-        self.chunk.write(byte, self.previous.line);
+        let previous_line = self.previous.line;
+        self.chunk().write(byte, previous_line);
 
         Ok(())
     }
 
     fn emit_loop(&mut self, loop_start: usize) -> Result<(), LoxError> {
-        let offset = self.chunk.code.len() - loop_start;
+        let offset = self.chunk().code.len() - loop_start;
 
         self.emit_byte(OpCode::Loop(offset))
     }
 
     fn emit_jump(&mut self, byte: OpCode) -> Result<usize, LoxError>{
-        self.chunk.write(byte, self.previous.line);
+        let previous_line = self.previous.line;
+        self.chunk().write(byte, previous_line);
 
-        Ok(self.chunk.code.len())
+        Ok(self.chunk().code.len())
+    }
+
+    fn emit_return(&mut self) -> Result<(), LoxError> {
+        self.emit_byte(OpCode::Nil)?;
+        self.emit_byte(OpCode::Return)
     }
 
     fn patch_jump(&mut self, offset: usize) -> Result<(), LoxError> {
-        let jump = self.chunk.code.len() - offset;
+        let jump = self.chunk().code.len() - offset;
 
-        self.chunk.code[offset - 1] = match self.chunk.code[offset - 1] {
+        self.chunk().code[offset - 1] = match self.chunk().code[offset - 1] {
             OpCode::Jump(_) => OpCode::Jump(jump),
             OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump),
             _ => return Err(LoxError::RuntimeError("unreachable".into())),
@@ -184,6 +273,50 @@ impl Compiler {
         }
 
         self.consume(TokenType::RightBrace, "expect '}' after block")
+    }
+
+    fn function(&mut self, function_type: FunctionType) -> Result<(), LoxError> {
+        self.init_compiler(function_type);
+
+        self.begin_scope()?;
+
+        self.consume(TokenType::LeftParen, "expect '(' after function name")?;
+
+        if !self.check_current_token(&TokenType::RightParen) {
+            loop {
+                self.current_function().arity += 1;
+                let constant = self.parse_variable("expect parameter name")?;
+                self.define_variable(constant)?;
+
+                if !self.token_type_matches(&TokenType::Comma)? {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightParen, "expect ')' after parameter list")?;
+        self.consume(TokenType::LeftBrace, "expect '{' before function body")?;
+
+        self.block()?;
+
+        let function = self.end_compiler()?;
+        let constant = self.make_constant(
+            Value::Object(
+                Object::Function(Box::new(function))
+            )
+        )?;
+
+        self.emit_byte(OpCode::Constant(constant))
+    }
+
+    fn function_declaration(&mut self) -> Result<(), LoxError> {
+        let global = self.parse_variable("expect function name")?;
+
+        self.mark_initialized()?;
+
+        self.function(FunctionType::Function)?;
+
+        self.define_variable(global)
     }
 
     fn var_declaration(&mut self) -> Result<(), LoxError> {
@@ -219,7 +352,7 @@ impl Compiler {
             self.expression_statement()?;
         }
 
-        let mut loop_start = self.chunk.code.len();
+        let mut loop_start = self.chunk().code.len();
         let mut exit_jump: Option<usize> = None;
 
         if !self.token_type_matches(&TokenType::Semicolon)? {
@@ -232,7 +365,7 @@ impl Compiler {
 
         if !self.token_type_matches(&TokenType::RightParen)? {
             let body_jump = self.emit_jump(OpCode::Jump(0))?;
-            let increment_start = self.chunk.code.len();
+            let increment_start = self.chunk().code.len();
 
             self.expression()?;
             self.emit_byte(OpCode::Pop)?;
@@ -288,8 +421,19 @@ impl Compiler {
         self.emit_byte(OpCode::Print)
     }
 
+    fn return_statement(&mut self) -> Result<(), LoxError> {
+        match self.token_type_matches(&TokenType::Semicolon)? {
+            true => self.emit_return(),
+            false => {
+                self.expression()?;
+                self.consume(TokenType::Semicolon, "expect ';' after value")?;
+                self.emit_byte(OpCode::Return)
+            },
+        }
+    }
+
     fn while_statement(&mut self) -> Result<(), LoxError> {
-        let loop_start = self.chunk.code.len();
+        let loop_start = self.chunk().code.len();
 
         self.consume(TokenType::LeftParen, "expect '(' after 'while'")?;
         self.expression()?;
@@ -330,10 +474,13 @@ impl Compiler {
     }
 
     fn declaration(&mut self) -> Result<(), LoxError> {
-        match self.token_type_matches(&TokenType::Var)? {
-            true => self.var_declaration()?,
-            false => self.statement()?
-        };
+        if self.token_type_matches(&TokenType::Function)? {
+            self.function_declaration()?;
+        } else if self.token_type_matches(&TokenType::Var)? {
+            self.var_declaration()?;
+        } else {
+            self.statement()?
+        }
 
         if self.panic_mode {
             self.synchronize()?;
@@ -349,6 +496,8 @@ impl Compiler {
             self.for_statement()
         } else if self.token_type_matches(&TokenType::If)? {
             self.if_statement()
+        } else if self.token_type_matches(&TokenType::Return)? {
+            self.return_statement()
         } else if self.token_type_matches(&TokenType::While)? {
             self.while_statement()
         } else if self.token_type_matches(&TokenType::LeftBrace)? {
@@ -387,6 +536,14 @@ impl Compiler {
             },
             _ => self.error("unreachable"),
         }
+    }
+
+    fn call(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let arg_count = self.argument_list()?;
+
+        self.emit_byte(OpCode::Call(arg_count))?;
+
+        Ok(())
     }
 
     fn literal(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -453,8 +610,8 @@ impl Compiler {
         }
     }
 
-    fn resolve_local(&mut self, token: &Token) -> Result<usize, LoxError> {
-        match self.locals.iter().enumerate().rev().find(|(_, x)| {
+    fn resolve_local(&self, token: &Token) -> Result<usize, LoxError> {
+        match self.compiler().locals.iter().enumerate().rev().find(|(_, x)| {
             self.scanner.get_string(&x.name) == self.scanner.get_string(token)
         }) {
             Some((idx, local)) => match local.depth {
@@ -513,6 +670,7 @@ impl Compiler {
             &TokenType::LessEqual => Some(Compiler::binary),
             &TokenType::And => Some(Compiler::and_),
             &TokenType::Or => Some(Compiler::or_),
+            &TokenType::LeftParen => Some(Compiler::call),
             _ => None,
         }
     }
@@ -561,20 +719,21 @@ impl Compiler {
     }
 
     fn declare_variable(&mut self) -> Result<(), LoxError> {
-        if self.scope_depth == 0 {
+        if self.compiler().scope_depth == 0 {
             return Ok(());
         }
 
-        let local = self.locals.iter().find(|local| local.name == self.previous);
+        let local = self.compiler().locals.iter().find(|local| local.name == self.previous);
 
         if local.is_some() {
             self.error("already a variable with this name in this scope")?;
         }
 
-        self.local_count += 1;
-        self.locals.push(
+        self.mut_compiler().local_count += 1;
+        let local_name = self.previous.clone();
+        self.mut_compiler().locals.push(
             Local {
-                name: self.previous.clone(),
+                name: local_name,
                 depth: None,
             }
         );
@@ -587,23 +746,54 @@ impl Compiler {
 
         self.declare_variable()?;
 
-        if self.scope_depth > 0 {
+        if self.compiler().scope_depth > 0 {
             return Ok(0);
         }
 
         self.identifier_constant(&self.previous.clone())
     }
 
+    fn mark_initialized(&mut self) -> Result<(), LoxError> {
+        match self.compiler().scope_depth {
+            0 => Ok(()),
+            _ => {
+                let scope_depth = self.compiler().scope_depth;
+                match self.mut_compiler().locals.last_mut() {
+                    Some(mut local) => local.depth = Some(scope_depth),
+                    None => self.error("this should never happen")?,
+                };
+
+                Ok(())
+            },
+        }
+    }
+
     fn define_variable(&mut self, global: usize) -> Result<(), LoxError> {
-        if self.scope_depth > 0 {
-            match self.locals.last_mut() {
-                Some(mut local) => local.depth = Some(self.scope_depth),
-                None => self.error("this should never happen")?,
-            };
+        if self.compiler().scope_depth > 0 {
+            self.mark_initialized()?;
             return Ok(());
         }
 
         self.emit_byte(OpCode::DefineGlobal(global))
+    }
+
+    fn argument_list(&mut self) -> Result<usize, LoxError> {
+        let mut arg_count: usize = 0;
+
+        if !self.check_current_token(&TokenType::RightParen) {
+            loop {
+                self.expression()?;
+                arg_count += 1;
+
+                if !self.token_type_matches(&TokenType::Comma)? {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightParen, "expect ')' after arguments")?;
+
+        Ok(arg_count)
     }
 
     fn and_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -616,7 +806,7 @@ impl Compiler {
     }
 
     fn make_constant(&mut self, value: Value) -> Result<usize, LoxError> {
-        let constant = self.chunk.add_constant(value);
+        let constant = self.chunk().add_constant(value);
 
         if constant > usize::MAX {
             self.error("too many constants in one chunk")?;
@@ -664,23 +854,21 @@ impl Compiler {
         Ok(())
     }
 
-    fn error_at(&mut self, token: Token, message: &str) -> Result<(), LoxError> {
+    fn error_at(&self, token: Token, message: &str) -> Result<(), LoxError> {
         let output = match token.token_type {
             TokenType::Eof => "at end of file".into(),
             TokenType::Error => "unknown".into(),
             _ => format!("at {}", self.scanner.get_string(&token)),
         };
 
-        self.panic_mode = true;
-
         Err(LoxError::CompileError(format!("{}: {}", output, message)))
     }
 
-    fn error(&mut self, message: &str) -> Result<(), LoxError> {
+    fn error(&self, message: &str) -> Result<(), LoxError> {
         self.error_at(self.previous.clone(), message)
     }
 
-    fn error_at_current(&mut self, message: &str) -> Result<(), LoxError> {
+    fn error_at_current(&self, message: &str) -> Result<(), LoxError> {
         self.error_at(self.current.clone(), message)
     }
 }

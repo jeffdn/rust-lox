@@ -32,6 +32,20 @@
 // }
 // print a;
 
-for (var a = 0; a < 1000000; a = a + 1) {
+// fn food(day, breakfast, beverage) {
+//     print day;
+//     print breakfast + " and " + beverage;
+// }
+//
+// for (var a = 0; a < 3; a = a + 1) {
+//     food(a, "beignets", "cafe au lait");
+// }
+
+fn fib(n) {
+    if (n < 2) {
+        return n;
+    }
+    return fib(n - 2) + fib(n - 1);
 }
-print "done";
+
+print fib(30);
