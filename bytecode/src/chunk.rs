@@ -27,6 +27,9 @@ pub enum OpCode {
     Not,
     Negate,
     Print,
+    Jump(usize),
+    JumpIfFalse(usize),
+    Loop(usize),
     Return,
 }
 
@@ -53,6 +56,9 @@ impl fmt::Display for OpCode {
             OpCode::Not => "op_not",
             OpCode::Negate => "op_negate",
             OpCode::Print => "op_print",
+            OpCode::Jump(_) => "op_jump",
+            OpCode::JumpIfFalse(_) => "op_jump_if_false",
+            OpCode::Loop(_) => "op_loop",
             OpCode::Return => "op_return",
         };
 
@@ -110,22 +116,31 @@ impl Chunk {
 
         let output = match code {
             OpCode::Constant(index) => format!(
-                "{:<16} {}", "op_constant", self.constants.get(*index),
+                "{:<20} {}", "op_constant", self.constants.get(*index),
             ),
             OpCode::GetLocal(index) => format!(
-                "{:<16} {}", "op_get_local", self.constants.get(*index),
+                "{:<20} {}", "op_get_local", self.constants.get(*index),
             ),
             OpCode::SetLocal(index) => format!(
-                "{:<16} {}", "op_set_local", self.constants.get(*index),
+                "{:<20} {}", "op_set_local", self.constants.get(*index),
             ),
             OpCode::GetGlobal(index) => format!(
-                "{:<16} {}", "op_get_global", self.constants.get(*index),
+                "{:<20} {}", "op_get_global", self.constants.get(*index),
             ),
             OpCode::DefineGlobal(index) => format!(
-                "{:<16} {}", "op_define_global", self.constants.get(*index),
+                "{:<20} {}", "op_define_global", self.constants.get(*index),
             ),
             OpCode::SetGlobal(index) => format!(
-                "{:<16} {}", "op_set_global", self.constants.get(*index),
+                "{:<20} {}", "op_set_global", self.constants.get(*index),
+            ),
+            OpCode::Jump(offset) => format!(
+                "{:<20} {}", "op_loop", offset,
+            ),
+            OpCode::JumpIfFalse(offset) => format!(
+                "{:<20} {}", "op_jump_if_false", offset,
+            ),
+            OpCode::Loop(offset) => format!(
+                "{:<20} {}", "op_loop", offset,
             ),
             _ => code.to_string(),
         };

@@ -14,6 +14,8 @@ pub struct VirtualMachine {
     chunks: Vec<Chunk>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
+
+    pos: usize,
 }
 
 
@@ -23,6 +25,7 @@ impl VirtualMachine {
             chunks: Vec::new(),
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::new(),
+            pos: 0,
         }
     }
 
@@ -55,20 +58,20 @@ impl VirtualMachine {
     pub fn run(&mut self) -> Result<(), LoxError> {
         let chunk = self.chunks.pop().unwrap();
 
-        for (idx, code) in chunk.iter().enumerate() {
+        while self.pos < chunk.code.len() {
             #[cfg(feature="debug")]
-            self.dump(&chunk, idx);
+            self.dump(&chunk, self.pos);
 
-            match code {
+            match chunk.code[self.pos] {
                 OpCode::Constant(index) => {
-                    self.stack.push(chunk.constants.get(*index).clone());
+                    self.stack.push(chunk.constants.get(index).clone());
                 },
                 OpCode::False => self.stack.push(Value::Bool(false)),
                 OpCode::True => self.stack.push(Value::Bool(true)),
                 OpCode::Nil => self.stack.push(Value::Nil),
                 OpCode::Pop => { self.pop_stack()?; },
                 OpCode::GetLocal(index) => {
-                    self.stack.push(self.stack[*index].clone());
+                    self.stack.push(self.stack[index].clone());
                 },
                 OpCode::SetLocal(index) => {
                     let val = match self.stack.last() {
@@ -80,10 +83,10 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack[*index] = val;
+                    self.stack[index] = val;
                 },
                 OpCode::GetGlobal(index) => {
-                    let key = match chunk.constants.get(*index) {
+                    let key = match chunk.constants.get(index) {
                         Value::Object(Object::String(string)) => *string.clone(),
                         _ => return Err(LoxError::RuntimeError("missing constant".into())),
                     };
@@ -100,7 +103,7 @@ impl VirtualMachine {
                     self.stack.push(val.clone());
                 },
                 OpCode::DefineGlobal(index) => {
-                    let key = match chunk.constants.get(*index) {
+                    let key = match chunk.constants.get(index) {
                         Value::Object(Object::String(string)) => *string.clone(),
                         _ => return Err(LoxError::RuntimeError("missing constant".into())),
                     };
@@ -110,7 +113,7 @@ impl VirtualMachine {
                     self.globals.insert(key, val);
                 },
                 OpCode::SetGlobal(index) => {
-                    let key = match chunk.constants.get(*index) {
+                    let key = match chunk.constants.get(index) {
                         Value::Object(Object::String(string)) => *string.clone(),
                         _ => return Err(LoxError::RuntimeError("missing constant".into())),
                     };
@@ -239,11 +242,22 @@ impl VirtualMachine {
                 OpCode::Print => {
                     println!("{}", self.pop_stack()?);
                 },
-                OpCode::Return => {
-                    return Ok(())
+                OpCode::Jump(offset) => {
+                    self.pos += offset;
                 },
-
+                OpCode::JumpIfFalse(offset) => {
+                    if !self.truthy(self.stack.last().unwrap())? {
+                        self.pos += offset;
+                    }
+                },
+                OpCode::Loop(offset) => {
+                    self.pos -= offset;
+                    continue;
+                }
+                OpCode::Return => break,
             };
+
+            self.pos += 1;
         }
 
         Ok(())

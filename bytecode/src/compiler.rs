@@ -53,11 +53,12 @@ impl Precedence {
             TokenType::GreaterEqual |
             TokenType::Less |
             TokenType::LessEqual => Precedence::Comparison,
+            TokenType::And => Precedence::And,
+            TokenType::Or => Precedence::Or,
             _ => Precedence::NoPrecedence,
         }
     }
 }
-
 
 struct Local {
     name: Token,
@@ -144,6 +145,31 @@ impl Compiler {
         Ok(())
     }
 
+    fn emit_loop(&mut self, loop_start: usize) -> Result<(), LoxError> {
+        let offset = self.chunk.code.len() - loop_start;
+
+        self.emit_byte(OpCode::Loop(offset))
+    }
+
+    fn emit_jump(&mut self, byte: OpCode) -> Result<usize, LoxError>{
+        self.chunk.write(byte, self.previous.line);
+
+        Ok(self.chunk.code.len())
+    }
+
+    fn patch_jump(&mut self, offset: usize) -> Result<(), LoxError> {
+        let jump = self.chunk.code.len() - offset;
+
+        self.chunk.code[offset - 1] = match self.chunk.code[offset - 1] {
+            OpCode::Jump(_) => OpCode::Jump(jump),
+            OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump),
+            _ => return Err(LoxError::RuntimeError("unreachable".into())),
+        };
+
+        Ok(())
+
+    }
+
     fn expression(&mut self) -> Result<(), LoxError> {
         self.parse_precedence(&Precedence::Assignment)
     }
@@ -175,18 +201,108 @@ impl Compiler {
 
     fn expression_statement(&mut self) -> Result<(), LoxError> {
         self.expression()?;
-
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
 
         self.emit_byte(OpCode::Pop)
     }
 
+    fn for_statement(&mut self) -> Result<(), LoxError> {
+        self.begin_scope()?;
+
+        self.consume(TokenType::LeftParen, "expect '(' after 'for'")?;
+
+        if self.token_type_matches(&TokenType::Semicolon)? {
+            // No initializer
+        } else if self.token_type_matches(&TokenType::Var)? {
+            self.var_declaration()?;
+        } else {
+            self.expression_statement()?;
+        }
+
+        let mut loop_start = self.chunk.code.len();
+        let mut exit_jump: Option<usize> = None;
+
+        if !self.token_type_matches(&TokenType::Semicolon)? {
+            self.expression()?;
+            self.consume(TokenType::Semicolon, "expect ';' after loop condition")?;
+
+            exit_jump = Some(self.emit_jump(OpCode::JumpIfFalse(0))?);
+            self.emit_byte(OpCode::Pop)?;
+        }
+
+        if !self.token_type_matches(&TokenType::RightParen)? {
+            let body_jump = self.emit_jump(OpCode::Jump(0))?;
+            let increment_start = self.chunk.code.len();
+
+            self.expression()?;
+            self.emit_byte(OpCode::Pop)?;
+
+            self.consume(TokenType::RightParen, "expect ')' after for clauses")?;
+
+            self.emit_loop(loop_start)?;
+            loop_start = increment_start;
+            self.patch_jump(body_jump)?;
+        }
+
+        self.statement()?;
+        self.emit_loop(loop_start)?;
+
+        match exit_jump {
+            Some(exit_jump) => {
+                self.patch_jump(exit_jump)?;
+                self.emit_byte(OpCode::Pop)?;
+            },
+            None => {},
+        };
+
+        self.end_scope()
+    }
+
+    fn if_statement(&mut self) -> Result<(), LoxError> {
+        self.consume(TokenType::LeftParen, "expect '(' after 'if'")?;
+        self.expression()?;
+        self.consume(TokenType::RightParen, "expect ')' after if statement")?;
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+        self.emit_byte(OpCode::Pop)?;
+
+        self.statement()?;
+
+        let else_jump = self.emit_jump(OpCode::Jump(0))?;
+
+        self.patch_jump(then_jump)?;
+        self.emit_byte(OpCode::Pop)?;
+
+        if self.token_type_matches(&TokenType::Else)? {
+            self.statement()?;
+        }
+
+        self.patch_jump(else_jump)?;
+
+        Ok(())
+    }
+
     fn print_statement(&mut self) -> Result<(), LoxError> {
         self.expression()?;
-
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
-
         self.emit_byte(OpCode::Print)
+    }
+
+    fn while_statement(&mut self) -> Result<(), LoxError> {
+        let loop_start = self.chunk.code.len();
+
+        self.consume(TokenType::LeftParen, "expect '(' after 'while'")?;
+        self.expression()?;
+        self.consume(TokenType::RightParen, "expect ')' after while statement")?;
+
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+        self.emit_byte(OpCode::Pop)?;
+        self.statement()?;
+
+        self.emit_loop(loop_start)?;
+
+        self.patch_jump(exit_jump)?;
+        self.emit_byte(OpCode::Pop)
     }
 
     fn synchronize(&mut self) -> Result<(), LoxError> {
@@ -229,6 +345,12 @@ impl Compiler {
     fn statement(&mut self) -> Result<(), LoxError> {
         if self.token_type_matches(&TokenType::Print)? {
             self.print_statement()
+        } else if self.token_type_matches(&TokenType::For)? {
+            self.for_statement()
+        } else if self.token_type_matches(&TokenType::If)? {
+            self.if_statement()
+        } else if self.token_type_matches(&TokenType::While)? {
+            self.while_statement()
         } else if self.token_type_matches(&TokenType::LeftBrace)? {
             self.begin_scope()?;
             self.block()?;
@@ -291,6 +413,17 @@ impl Compiler {
         let constant = self.make_constant(Value::Number(value))?;
 
         self.emit_byte(OpCode::Constant(constant))
+    }
+
+    fn or_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+        let and_jump = self.emit_jump(OpCode::Jump(0))?;
+
+        self.patch_jump(else_jump)?;
+        self.emit_byte(OpCode::Pop)?;
+
+        self.parse_precedence(&Precedence::Or)?;
+        self.patch_jump(and_jump)
     }
 
     fn string(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -378,6 +511,8 @@ impl Compiler {
             &TokenType::GreaterEqual |
             &TokenType::Less |
             &TokenType::LessEqual => Some(Compiler::binary),
+            &TokenType::And => Some(Compiler::and_),
+            &TokenType::Or => Some(Compiler::or_),
             _ => None,
         }
     }
@@ -469,6 +604,15 @@ impl Compiler {
         }
 
         self.emit_byte(OpCode::DefineGlobal(global))
+    }
+
+    fn and_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+
+        self.emit_byte(OpCode::Pop)?;
+        self.parse_precedence(&Precedence::And)?;
+
+        self.patch_jump(end_jump)
     }
 
     fn make_constant(&mut self, value: Value) -> Result<usize, LoxError> {

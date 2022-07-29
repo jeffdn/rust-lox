@@ -3,7 +3,7 @@ use std::{
     fmt,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Object {
     String(Box<String>),
 }

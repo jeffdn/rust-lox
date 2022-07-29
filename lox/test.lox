@@ -1,15 +1,37 @@
-var a = 1;
-{
-    var b = 2;
-    {
-        var c = 3;
-        {
-            var d = 4;
+// if (true and false) {
+//     print "hi";
+// } else {
+//     print "bye";
+// }
+//
+// if (true and true) {
+//     print "hi";
+// } else {
+//     print "bye";
+// }
+//
+// if (false or true) {
+//     print "hi";
+// } else {
+//     print "bye";
+// }
+//
+// var a = 1;
+// {
+//     var b = 2;
+//     {
+//         var c = 3;
+//         {
+//             var d = 4;
+//
+//             print a + b + c + d;
+//         }
+//         print a + b + c;
+//     }
+//     print a + b;
+// }
+// print a;
 
-            print a + b + c + d;
-        }
-        print a + b + c;
-    }
-    print a + b;
+for (var a = 0; a < 1000000; a = a + 1) {
 }
-print a;
+print "done";
