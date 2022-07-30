@@ -6,7 +6,7 @@ use crate::object::Object;
 #[derive(Clone)]
 pub enum Value {
     Nil,
-    Number(f32),
+    Number(f64),
     Bool(bool),
     Object(Object),
 }

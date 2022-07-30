@@ -148,7 +148,7 @@ impl Compiler {
         }
     }
 
-    fn mut_compiler(&mut self) -> &mut Compiler {
+    fn compiler_mut(&mut self) -> &mut Compiler {
         match self.compilers.is_empty() {
             true => self,
             false => match self.compilers.last_mut() {
@@ -159,14 +159,14 @@ impl Compiler {
     }
 
     fn current_function(&mut self) -> &mut Function {
-        match self.mut_compiler().functions.last_mut() {
+        match self.compiler_mut().functions.last_mut() {
             Some(function) => function,
             None => panic!("unreachable"),
         }
     }
 
     fn chunk(&mut self) -> &mut Chunk {
-        &mut self.mut_compiler().current_function().chunk
+        &mut self.compiler_mut().current_function().chunk
     }
 
     pub fn compile(&mut self, source: &String) -> Result<Function, LoxError> {
@@ -200,21 +200,21 @@ impl Compiler {
     }
 
     fn begin_scope(&mut self) -> Result<(), LoxError> {
-        self.mut_compiler().scope_depth += 1;
+        self.compiler_mut().scope_depth += 1;
         Ok(())
     }
 
     fn end_scope(&mut self) -> Result<(), LoxError> {
-        self.mut_compiler().scope_depth -= 1;
+        self.compiler_mut().scope_depth -= 1;
 
         let mut pop_count = self.compiler().locals.len();
         let scope_depth = self.compiler().scope_depth;
-        self.mut_compiler().locals.retain(|x| x.depth.is_some() && x.depth.unwrap() <= scope_depth);
+        self.compiler_mut().locals.retain(|x| x.depth.is_some() && x.depth.unwrap() <= scope_depth);
 
         pop_count -= self.compiler().locals.len();
 
         for _ in 0..pop_count {
-            self.mut_compiler().local_count -= 1;
+            self.compiler_mut().local_count -= 1;
             self.emit_byte(OpCode::Pop)?;
         }
 
@@ -562,7 +562,7 @@ impl Compiler {
     }
 
     fn number(&mut self, _can_assign: bool) -> Result<(), LoxError> {
-        let value: f32 = match self.scanner.get_string(&self.previous).parse() {
+        let value: f64 = match self.scanner.get_string(&self.previous).parse() {
             Ok(value) => value,
             Err(_) => return self.error("unable to extract number"),
         };
@@ -729,9 +729,9 @@ impl Compiler {
             self.error("already a variable with this name in this scope")?;
         }
 
-        self.mut_compiler().local_count += 1;
+        self.compiler_mut().local_count += 1;
         let local_name = self.previous.clone();
-        self.mut_compiler().locals.push(
+        self.compiler_mut().locals.push(
             Local {
                 name: local_name,
                 depth: None,
@@ -758,7 +758,7 @@ impl Compiler {
             0 => Ok(()),
             _ => {
                 let scope_depth = self.compiler().scope_depth;
-                match self.mut_compiler().locals.last_mut() {
+                match self.compiler_mut().locals.last_mut() {
                     Some(mut local) => local.depth = Some(scope_depth),
                     None => self.error("this should never happen")?,
                 };

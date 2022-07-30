@@ -1,10 +1,19 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::SystemTime,
+};
 
 use crate::{
-    chunk::{OpCode},
+    chunk::{Chunk, OpCode},
     compiler::Compiler,
     errors::LoxError,
-    object::{Function, FunctionType, Object},
+    object::{
+        Function,
+        FunctionType,
+        NativeFn,
+        NativeFunction,
+        Object,
+    },
     value::Value,
 };
 
@@ -23,6 +32,32 @@ pub struct VirtualMachine {
     globals: HashMap<String, Value>,
 }
 
+fn _built_in_time(_: &[Value]) -> Result<Value, LoxError> {
+    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(unix_now) => Ok(Value::Number(unix_now.as_secs_f64())),
+        Err(_) => Err(LoxError::RuntimeError("time() failed, uh oh".into())),
+    }
+}
+
+fn _built_in_str(input: &[Value]) -> Result<Value, LoxError> {
+    match &input[0] {
+        Value::Object(object) => match object {
+            Object::String(string) => Ok(Value::Object(Object::String(Box::new(*string.clone())))),
+            _ => Err(LoxError::RuntimeError("string() only accepts primitives".into())),
+        },
+        _ => Ok(Value::Object(Object::String(Box::new(input[0].clone().to_string())))),
+    }
+}
+
+fn _built_in_len(input: &[Value]) -> Result<Value, LoxError> {
+    match &input[0] {
+        Value::Object(object) => match object {
+            Object::String(string) => Ok(Value::Number(string.len() as f64)),
+            _ => Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
+        },
+        _ => Ok(Value::Object(Object::String(Box::new(input[0].clone().to_string())))),
+    }
+}
 
 impl VirtualMachine {
     pub fn new() -> VirtualMachine {
@@ -31,6 +66,32 @@ impl VirtualMachine {
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::new(),
         }
+    }
+
+    pub fn define_native(&mut self, name: String, function: NativeFn, arity: usize) -> Result<(), LoxError> {
+        self.stack.push(Value::Object(Object::String(Box::new(name.clone()))));
+        let function = Value::Object(
+            Object::Native(
+                Box::new(
+                    NativeFunction {
+                        function,
+                        obj: None,
+                        name: name.clone(),
+                        arity,
+                    }
+                )
+            )
+        );
+        self.stack.push(function.clone());
+        self.globals.insert(
+            name,
+            function,
+        );
+
+        self.pop_stack()?;
+        self.pop_stack()?;
+
+        Ok(())
     }
 
     pub fn interpret(&mut self, input: String) -> Result<(), LoxError> {
@@ -54,6 +115,10 @@ impl VirtualMachine {
                 pos: 0,
             }
         );
+
+        self.define_native("len".into(), _built_in_len, 1)?;
+        self.define_native("time".into(), _built_in_time, 0)?;
+        self.define_native("str".into(), _built_in_str, 1)?;
 
         self.run()
     }
@@ -208,7 +273,7 @@ impl VirtualMachine {
                         (Value::Number(b), Value::Number(a)) => {
                             self.stack.push(Value::Number(a + b));
                         },
-                        (Value::Object(b), Value::Object(a)) => match (a, b) {
+                        (Value::Object(b), Value::Object(a)) => match (a.clone(), b.clone()) {
                             (Object::String(a), Object::String(b)) => {
                                 self.stack.push(
                                     Value::Object(
@@ -222,7 +287,7 @@ impl VirtualMachine {
                             },
                             _ => return Err(
                                 LoxError::RuntimeError(
-                                    "operation '+' only operates on numbers and strings".into()
+                                    format!("operation '+' only operates on numbers and strings, got: {} + {}", a, b),
                                 )
                             ),
                         },
@@ -321,15 +386,24 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn call(&self, callee: &Function, arg_count: usize) -> Result<CallFrame, LoxError> {
-        if callee.arity != arg_count {
+    fn check_arity(
+        &self,
+        name: &String,
+        callee_arity: usize,
+        arg_count: usize,
+    ) -> Result<(), LoxError> {
+        if callee_arity != arg_count {
             return Err(
                 LoxError::RuntimeError(
-                    format!("expected {} arguments but {} were given", callee.arity, arg_count)
+                    format!("{}: expected {} arguments but {} were given", name, callee_arity, arg_count)
                 )
             );
         }
 
+        Ok(())
+    }
+
+    fn call(&self, callee: &Function, arg_count: usize) -> Result<CallFrame, LoxError> {
         Ok(
             CallFrame {
                 function: callee.clone(),
@@ -344,8 +418,22 @@ impl VirtualMachine {
         match &self.stack[offset] {
             Value::Object(object) => match object {
                 Object::Function(function) => {
+                    self.check_arity(&function.name, function.arity, arg_count)?;
+
                     let frame = self.call(function, arg_count)?;
                     self.frames.push(frame);
+                    Ok(true)
+                },
+                Object::Native(native) => {
+                    self.check_arity(&native.name, native.arity, arg_count)?;
+
+                    let arg_range_start = self.stack.len() - arg_count;
+                    let result = (native.function)(&self.stack[arg_range_start..])?;
+
+                    self.stack.truncate(arg_range_start - 1);
+                    self.stack.push(result);
+                    self.frame_mut().pos += 1;
+
                     Ok(true)
                 },
                 _ => Err(LoxError::RuntimeError("can only call functions and classes".into()))
@@ -356,12 +444,13 @@ impl VirtualMachine {
 
     fn truthy(&self, item: &Value) -> Result<bool, LoxError> {
         match item {
-            Value::Number(number) => Ok(*number != 0.0f32),
+            Value::Number(number) => Ok(*number != 0.0f64),
             Value::Nil => Ok(false),
             Value::Bool(boolean) => Ok(*boolean),
             Value::Object(object) => match object {
                 Object::String(string) => Ok(!string.is_empty()),
                 Object::Function(_) => Ok(true),
+                Object::Native(_) => Ok(true),
             },
         }
     }
