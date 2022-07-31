@@ -41,14 +41,33 @@
 //     food(a, "beignets", "cafe au lait");
 // }
 
-fn fib(n) {
-    if (n < 2) {
-        return n;
+// fn fib(n) {
+//     if (n < 2) {
+//         return n;
+//     }
+//     return fib(n - 2) + fib(n - 1);
+// }
+
+var x = "global";
+var y = "planetary";
+fn outer() {
+    var x = "local";
+    var y = "national";
+    fn inner() {
+        fn inner_inner() {
+            print x + " " + y;
+        }
+
+        return inner_inner;
     }
-    return fib(n - 2) + fib(n - 1);
+
+    var inner_inner = inner();
+    inner_inner();
+    inner_inner();
 }
 
-print len("hello, world!");
-var start = time();
-print fib(20);
-print "completed in: " + str(time() - start) + " seconds";
+outer();
+
+// var start = time();
+// print fib(20);
+// print "completed in: " + str(time() - start) + " seconds";

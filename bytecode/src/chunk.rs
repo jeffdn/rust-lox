@@ -1,9 +1,16 @@
 use std::{
+    boxed::Box,
     fmt,
     iter::Iterator,
 };
 
 use crate::value::{Value, ValueSet};
+
+#[derive(Clone, Debug)]
+pub struct UpValue {
+    pub is_local: bool,
+    pub index: usize,
+}
 
 #[derive(Clone, Debug)]
 pub enum OpCode {
@@ -17,6 +24,8 @@ pub enum OpCode {
     GetGlobal(usize),
     DefineGlobal(usize),
     SetGlobal(usize),
+    GetUpValue(usize),
+    SetUpValue(usize),
     Equal,
     Greater,
     Less,
@@ -31,6 +40,7 @@ pub enum OpCode {
     JumpIfFalse(usize),
     Loop(usize),
     Call(usize),
+    Closure(usize, Box<Vec<UpValue>>),
     Return,
 }
 
@@ -47,6 +57,8 @@ impl fmt::Display for OpCode {
             OpCode::GetGlobal(_) => "op_get_global",
             OpCode::DefineGlobal(_) => "op_define_global",
             OpCode::SetGlobal(_) => "op_set_global",
+            OpCode::GetUpValue(_) => "op_get_upvalue",
+            OpCode::SetUpValue(_) => "op_set_upvalue",
             OpCode::Equal => "op_equal",
             OpCode::Greater => "op_greater",
             OpCode::Less => "op_less",
@@ -61,6 +73,7 @@ impl fmt::Display for OpCode {
             OpCode::JumpIfFalse(_) => "op_jump_if_false",
             OpCode::Loop(_) => "op_loop",
             OpCode::Call(_) => "op_call",
+            OpCode::Closure(_, _) => "op_closure",
             OpCode::Return => "op_return",
         };
 
@@ -68,7 +81,7 @@ impl fmt::Display for OpCode {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Chunk {
     pub code: Vec<OpCode>,
     pub constants: ValueSet,
@@ -135,6 +148,12 @@ impl Chunk {
             OpCode::SetGlobal(index) => format!(
                 "{:<20} {}", "op_set_global", *index, //self.constants.get(*index),
             ),
+            OpCode::GetUpValue(index) => format!(
+                "{:<20} {}", "op_get_upvalue", *index, //self.constants.get(*index),
+            ),
+            OpCode::SetUpValue(index) => format!(
+                "{:<20} {}", "op_set_upvalue", *index, //self.constants.get(*index),
+            ),
             OpCode::Jump(offset) => format!(
                 "{:<20} {}", "op_jump", offset,
             ),
@@ -146,6 +165,9 @@ impl Chunk {
             ),
             OpCode::Call(offset) => format!(
                 "{:<20} {}", "op_call", offset,
+            ),
+            OpCode::Closure(index, _) => format!(
+                "{:<20} {}", "op_closure", index,
             ),
             _ => code.to_string(),
         };

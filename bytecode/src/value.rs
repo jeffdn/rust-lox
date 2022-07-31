@@ -1,15 +1,20 @@
-use std::fmt;
+use std::{
+    cell::RefCell,
+    fmt,
+    rc::Rc,
+};
 
 use crate::object::Object;
 
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Nil,
     Number(f64),
     Bool(bool),
     Object(Object),
 }
+
+pub type ValuePtr = Rc<RefCell<Value>>;
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -24,9 +29,9 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ValueSet {
-    pub values: Vec<Value>,
+    pub values: Vec<ValuePtr>,
 }
 
 impl ValueSet {
@@ -37,16 +42,16 @@ impl ValueSet {
     }
 
     pub fn write(&mut self, value: Value) -> usize {
-        self.values.push(value);
+        self.values.push(Rc::new(RefCell::new(value)));
 
         self.values.len() - 1
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Value> {
+    pub fn iter(&self) -> impl Iterator<Item = &ValuePtr> {
         self.values.iter()
     }
 
-    pub fn get(&self, index: usize) -> &Value {
+    pub fn get(&self, index: usize) -> &ValuePtr {
         &self.values[index]
     }
 }

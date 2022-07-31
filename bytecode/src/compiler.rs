@@ -1,7 +1,7 @@
 use std::boxed::Box;
 
 use crate::{
-    chunk::{Chunk, OpCode},
+    chunk::{Chunk, OpCode, UpValue},
     errors::LoxError,
     object::{Function, FunctionType, Object},
     scanner::Scanner,
@@ -67,24 +67,60 @@ struct Local {
 }
 
 pub struct Compiler {
-    compilers: Vec<Compiler>,
-    functions: Vec<Function>,
+    compilers: Vec<CompilerNode>,
 
     current: Token,
     previous: Token,
     scanner: Scanner,
-    panic_mode: bool,
 
+    panic_mode: bool,
+}
+
+struct CompilerNode {
     locals: Vec<Local>,
     local_count: usize,
+    upvalues: Vec<UpValue>,
     scope_depth: usize,
+    function: Function,
+}
+
+impl CompilerNode {
+    pub fn new(function_type: FunctionType) -> CompilerNode {
+        let mut node = CompilerNode {
+            locals: Vec::with_capacity(256),
+            local_count: 1,
+            upvalues: Vec::with_capacity(256),
+            scope_depth: 0,
+            function: Function {
+                function_type,
+                obj: None,
+                arity: 0,
+                upvalue_count: 0,
+                chunk: Chunk::new(),
+                name: "<script>".into(),
+            }
+        };
+
+        node.locals.push(
+            Local {
+                name: Token {
+                    token_type: TokenType::Skip,
+                    start: 0,
+                    length: 0,
+                    line: 0,
+                },
+                depth: Some(0),
+            }
+        );
+
+        node
+    }
 }
 
 impl Compiler {
-    pub fn new(function_type: FunctionType) -> Compiler {
-        let mut compiler = Compiler {
-            compilers: Vec::new(),
-            functions: Vec::new(),
+    pub fn new(source: &String) -> Compiler {
+        Compiler {
+            compilers: vec![CompilerNode::new(FunctionType::Script)],
             current: Token {
                 token_type: TokenType::Eof,
                 start: 0,
@@ -97,81 +133,46 @@ impl Compiler {
                 length: 0,
                 line: 0,
             },
-            scanner: Scanner::new(&"".into()),
+            scanner: Scanner::new(source),
             panic_mode: false,
-
-            locals: Vec::new(),
-            local_count: 1,
-            scope_depth: 0,
-        };
-
-        compiler.locals.push(
-            Local {
-                name: Token {
-                    token_type: TokenType::Skip,
-                    start: 0,
-                    length: 0,
-                    line: 0,
-                },
-                depth: Some(0),
-            }
-        );
-
-        compiler.functions.push(
-            Function {
-                function_type,
-                obj: None,
-                arity: 0,
-                chunk: Chunk::new(),
-                name: "<script>".into(),
-            }
-        );
-
-
-        compiler
+        }
     }
 
     fn init_compiler(&mut self, function_type: FunctionType) {
-        let mut compiler = Compiler::new(function_type);
-        compiler.functions.last_mut().unwrap().name = self.scanner.get_string(&self.previous);
+        let mut compiler = CompilerNode::new(function_type);
+
+        compiler.function.name = self.scanner.get_string(&self.previous);
 
         self.compilers.push(compiler);
     }
 
-    fn compiler(&self) -> &Compiler {
-        match self.compilers.is_empty() {
-            true => self,
-            false => match self.compilers.last() {
-                Some(compiler) => compiler,
-                None => panic!("unreachable"),
-            }
-        }
+    fn compiler_at(&self, depth: usize) -> &CompilerNode {
+        let at_index = self.compilers.len() - (1 + depth);
+        &self.compilers[at_index]
     }
 
-    fn compiler_mut(&mut self) -> &mut Compiler {
-        match self.compilers.is_empty() {
-            true => self,
-            false => match self.compilers.last_mut() {
-                Some(compiler) => compiler,
-                None => panic!("unreachable"),
-            }
-        }
+    fn compiler_at_mut(&mut self, depth: usize) -> &mut CompilerNode {
+        let at_index = self.compilers.len() - (1 + depth);
+        &mut self.compilers[at_index]
+    }
+
+    fn compiler(&self) -> &CompilerNode {
+        self.compiler_at(0)
+    }
+
+    fn compiler_mut(&mut self) -> &mut CompilerNode {
+        self.compiler_at_mut(0)
     }
 
     fn current_function(&mut self) -> &mut Function {
-        match self.compiler_mut().functions.last_mut() {
-            Some(function) => function,
-            None => panic!("unreachable"),
-        }
+        &mut self.compiler_mut().function
     }
 
     fn chunk(&mut self) -> &mut Chunk {
-        &mut self.compiler_mut().current_function().chunk
+        &mut self.current_function().chunk
     }
 
-    pub fn compile(&mut self, source: &String) -> Result<Function, LoxError> {
-        self.scanner = Scanner::new(source);
-
+    pub fn compile(&mut self) -> Result<Function, LoxError> {
         self.advance()?;
 
         while !self.token_type_matches(&TokenType::Eof)? {
@@ -185,10 +186,10 @@ impl Compiler {
             self.chunk().disassemble("code");
         }
 
-        Ok(self.functions.pop().unwrap())
+        Ok(self.compilers.pop().unwrap().function)
     }
 
-    fn end_compiler(&mut self) -> Result<Function, LoxError> {
+    fn end_compiler(&mut self) -> Result<CompilerNode, LoxError> {
         self.emit_return()?;
 
         #[cfg(feature = "debug")]
@@ -196,7 +197,7 @@ impl Compiler {
             self.chunk().disassemble("code");
         }
 
-        Ok(self.compilers.pop().unwrap().functions.pop().unwrap())
+        Ok(self.compilers.pop().unwrap())
     }
 
     fn begin_scope(&mut self) -> Result<(), LoxError> {
@@ -299,14 +300,14 @@ impl Compiler {
 
         self.block()?;
 
-        let function = self.end_compiler()?;
+        let compiler = self.end_compiler()?;
         let constant = self.make_constant(
             Value::Object(
-                Object::Function(Box::new(function))
+                Object::Function(Box::new(compiler.function))
             )
         )?;
 
-        self.emit_byte(OpCode::Constant(constant))
+        self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
     }
 
     fn function_declaration(&mut self) -> Result<(), LoxError> {
@@ -592,11 +593,14 @@ impl Compiler {
     }
 
     fn named_variable(&mut self, token: &Token, can_assign: bool) -> Result<(), LoxError> {
-        let (get_op, set_op) = match self.resolve_local(&token) {
+        let (get_op, set_op) = match self.resolve_local(&token, 0) {
             Ok(index) => (OpCode::GetLocal(index), OpCode::SetLocal(index)),
-            Err(_) => {
-                let index = self.identifier_constant(&token)?;
-                (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
+            Err(_) => match self.resolve_upvalue(&token, 0) {
+                Ok(index) => (OpCode::GetUpValue(index), OpCode::SetUpValue(index)),
+                Err(_) => {
+                    let index = self.identifier_constant(&token)?;
+                    (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
+                },
             },
         };
 
@@ -610,8 +614,8 @@ impl Compiler {
         }
     }
 
-    fn resolve_local(&self, token: &Token) -> Result<usize, LoxError> {
-        match self.compiler().locals.iter().enumerate().rev().find(|(_, x)| {
+    fn resolve_local(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
+        match self.compiler_at(depth).locals.iter().enumerate().rev().find(|(_, x)| {
             self.scanner.get_string(&x.name) == self.scanner.get_string(token)
         }) {
             Some((idx, local)) => match local.depth {
@@ -623,6 +627,41 @@ impl Compiler {
             },
             None => Err(LoxError::ResolutionError),
         }
+    }
+
+    fn add_upvalue(&mut self, index: usize, is_local: bool, depth: usize) -> Result<usize, LoxError> {
+        if let Some((existing_index, _)) = self.compiler_at_mut(depth).upvalues.iter().enumerate().find(|(_, uv)| {
+            uv.is_local == is_local && uv.index == index
+        }) {
+            return Ok(existing_index)
+        }
+
+        self.compiler_at_mut(depth).upvalues.push(
+            UpValue {
+                is_local,
+                index,
+            }
+        );
+
+        self.compiler_at_mut(depth).function.upvalue_count += 1;
+
+        Ok(self.compiler_at(depth).upvalues.len())
+    }
+
+    fn resolve_upvalue(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
+        if depth + 2 >= self.compilers.len() {
+            return Err(LoxError::ResolutionError);
+        }
+
+        if let Ok(index) = self.resolve_local(&token, depth + 1) {
+            return self.add_upvalue(index, true, depth);
+        }
+
+        if let Ok(index) = self.resolve_upvalue(&token, depth + 1) {
+            return self.add_upvalue(index, false, depth);
+        }
+
+        Err(LoxError::ResolutionError)
     }
 
     fn variable(&mut self, can_assign: bool) -> Result<(), LoxError> {
@@ -707,12 +746,12 @@ impl Compiler {
     }
 
     fn identifier_constant(&mut self, token: &Token) -> Result<usize, LoxError> {
+        let constant = self.scanner.get_string(token);
+
         self.make_constant(
             Value::Object(
                 Object::String(
-                    Box::new(
-                        self.scanner.get_string(token)
-                    )
+                    Box::new(constant)
                 )
             )
         )

@@ -1,5 +1,7 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
+    rc::Rc,
     time::SystemTime,
 };
 
@@ -8,54 +10,56 @@ use crate::{
     compiler::Compiler,
     errors::LoxError,
     object::{
+        Closure,
         Function,
-        FunctionType,
         NativeFn,
         NativeFunction,
         Object,
+        ObjUpValue,
+        ObjUpValuePtr,
     },
-    value::Value,
+    value::{Value, ValuePtr},
 };
 
 static FRAMES_MAX: usize = 64;
 static STACK_MAX: usize = 256;
 
 pub struct CallFrame {
-    function: Function,
+    closure: Closure,
     stack_offset: usize,
     pos: usize,
 }
 
 pub struct VirtualMachine {
     frames: Vec<CallFrame>,
-    stack: Vec<Value>,
-    globals: HashMap<String, Value>,
+    stack: Vec<ValuePtr>,
+    globals: HashMap<String, ValuePtr>,
 }
 
-fn _built_in_time(_: &[Value]) -> Result<Value, LoxError> {
+fn _built_in_time(_: &[ValuePtr]) -> Result<Value, LoxError> {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(unix_now) => Ok(Value::Number(unix_now.as_secs_f64())),
         Err(_) => Err(LoxError::RuntimeError("time() failed, uh oh".into())),
     }
 }
 
-fn _built_in_str(input: &[Value]) -> Result<Value, LoxError> {
-    match &input[0] {
+fn _built_in_str(input: &[ValuePtr]) -> Result<Value, LoxError> {
+    match &*input[0].borrow() {
         Value::Object(object) => match object {
             Object::String(string) => Ok(Value::Object(Object::String(Box::new(*string.clone())))),
             _ => Err(LoxError::RuntimeError("string() only accepts primitives".into())),
         },
-        _ => Ok(Value::Object(Object::String(Box::new(input[0].clone().to_string())))),
+        _ => Ok(Value::Object(Object::String(Box::new((*input[0].borrow()).to_string())))),
     }
 }
 
-fn _built_in_len(input: &[Value]) -> Result<Value, LoxError> {
-    match &input[0] {
+fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
+    match &*input[0].borrow() {
         Value::Object(object) => match object {
             Object::String(string) => Ok(Value::Number(string.len() as f64)),
             _ => Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
         },
-        _ => Ok(Value::Object(Object::String(Box::new(input[0].clone().to_string())))),
+        _ => Ok(Value::Object(Object::String(Box::new((*input[0].borrow()).to_string())))),
     }
 }
 
@@ -69,16 +73,26 @@ impl VirtualMachine {
     }
 
     pub fn define_native(&mut self, name: String, function: NativeFn, arity: usize) -> Result<(), LoxError> {
-        self.stack.push(Value::Object(Object::String(Box::new(name.clone()))));
-        let function = Value::Object(
-            Object::Native(
-                Box::new(
-                    NativeFunction {
-                        function,
-                        obj: None,
-                        name: name.clone(),
-                        arity,
-                    }
+        self.stack_push_value(
+            Value::Object(
+                Object::String(
+                    Box::new(name.clone())
+                )
+            )
+        );
+        let function = Rc::new(
+            RefCell::new(
+                Value::Object(
+                    Object::Native(
+                        Box::new(
+                            NativeFunction {
+                                function,
+                                obj: None,
+                                name: name.clone(),
+                                arity,
+                            }
+                        )
+                    )
                 )
             )
         );
@@ -95,10 +109,10 @@ impl VirtualMachine {
     }
 
     pub fn interpret(&mut self, input: String) -> Result<(), LoxError> {
-        let mut compiler = Compiler::new(FunctionType::Script);
-        let function = compiler.compile(&input)?;
+        let mut compiler = Compiler::new(&input);
+        let function = compiler.compile()?;
 
-        self.stack.push(
+        self.stack_push_value(
             Value::Object(
                 Object::Function(
                     Box::new(
@@ -108,13 +122,23 @@ impl VirtualMachine {
             )
         );
 
-        self.frames.push(
-            CallFrame {
-                function,
-                stack_offset: 0,
-                pos: 0,
-            }
+        let closure = Closure {
+            upvalues: Vec::with_capacity(function.upvalue_count),
+            function,
+            obj: None,
+        };
+
+        self.pop_stack()?;
+
+        self.stack_push_value(
+            Value::Object(
+                Object::Closure(
+                    Box::new(closure.clone())
+                )
+            )
         );
+
+        self.call(&closure, 0)?;
 
         self.define_native("len".into(), _built_in_len, 1)?;
         self.define_native("time".into(), _built_in_time, 0)?;
@@ -126,14 +150,14 @@ impl VirtualMachine {
     #[cfg(feature="debug")]
     fn dump(&self, chunk: &Chunk, idx: usize) {
         let stack_str: Vec<String> = self.stack.iter()
-            .map(|v| format!("{}", v))
+            .map(|v| format!("{}", (*v.borrow())))
             .collect();
 
         println!("          [{}]", stack_str.join(", "));
         chunk.disassemble_instruction(&chunk.code[idx], idx);
     }
 
-    fn pop_stack(&mut self) -> Result<Value, LoxError> {
+    fn pop_stack(&mut self) -> Result<ValuePtr, LoxError> {
         match self.stack.pop() {
             Some(item) => Ok(item),
             None => Err(LoxError::RuntimeError("stack empty".into())),
@@ -154,21 +178,29 @@ impl VirtualMachine {
         }
     }
 
+    pub fn function(&self) -> &Function {
+        &self.frame().closure.function
+    }
+
+    fn stack_push_value(&mut self, value: Value) {
+        self.stack.push(Rc::new(RefCell::new(value)));
+    }
+
     pub fn run(&mut self) -> Result<(), LoxError> {
-        while self.frame().pos < self.frame().function.chunk.code.len() {
+        while self.frame().pos < self.function().chunk.code.len() {
             let pos = self.frame().pos;
 
             #[cfg(feature="debug")]
-            self.dump(&self.frame().function.chunk, pos);
+            self.dump(&self.function().chunk, pos);
 
-            match self.frame().function.chunk.code[pos] {
+            match self.function().chunk.code[pos] {
                 OpCode::Constant(index) => {
-                    let constant = self.frame().function.chunk.constants.get(index).clone();
+                    let constant = self.function().chunk.constants.get(index).clone();
                     self.stack.push(constant);
                 },
-                OpCode::False => self.stack.push(Value::Bool(false)),
-                OpCode::True => self.stack.push(Value::Bool(true)),
-                OpCode::Nil => self.stack.push(Value::Nil),
+                OpCode::False => self.stack_push_value(Value::Bool(false)),
+                OpCode::True => self.stack_push_value(Value::Bool(true)),
+                OpCode::Nil => self.stack_push_value(Value::Nil),
                 OpCode::Pop => { self.pop_stack()?; },
                 OpCode::GetLocal(index) => {
                     let index = index + self.frame().stack_offset;
@@ -188,7 +220,7 @@ impl VirtualMachine {
                     self.stack[index] = val;
                 },
                 OpCode::GetGlobal(index) => {
-                    let key = match self.frame().function.chunk.constants.get(index) {
+                    let key = match &*self.function().chunk.constants.get(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
                         _ => return Err(LoxError::RuntimeError("missing constant".into())),
                     };
@@ -205,7 +237,7 @@ impl VirtualMachine {
                     self.stack.push(val.clone());
                 },
                 OpCode::DefineGlobal(index) => {
-                    let key = match self.frame().function.chunk.constants.get(index) {
+                    let key = match &*self.function().chunk.constants.get(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
                         _ => return Err(LoxError::RuntimeError("missing constant".into())),
                     };
@@ -215,7 +247,7 @@ impl VirtualMachine {
                     self.globals.insert(key, val);
                 },
                 OpCode::SetGlobal(index) => {
-                    let key = match self.frame().function.chunk.constants.get(index) {
+                    let key = match &*self.function().chunk.constants.get(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
                         _ => return Err(LoxError::RuntimeError("missing constant".into())),
                     };
@@ -240,14 +272,32 @@ impl VirtualMachine {
 
                     self.globals.insert(key, val);
                 },
+                OpCode::GetUpValue(index) => {
+                    let upvalue = self.frame().closure.upvalues[index - 1].borrow().location.clone();
+                    self.stack.push(upvalue);
+                },
+                OpCode::SetUpValue(index) => {
+                    self.frame_mut().closure.upvalues[index - 1]
+                        .borrow_mut().location = self.stack.last().unwrap().clone();
+                },
                 OpCode::Equal => {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
 
-                    self.stack.push(Value::Bool(self.values_equal(&left, &right)?));
+                    self.stack_push_value(
+                        Value::Bool(
+                            self.values_equal(&*left.borrow(), &*right.borrow())?
+                        )
+                    );
                 },
                 OpCode::Greater => {
-                    let (b, a) = match (self.pop_stack()?, self.pop_stack()?) {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    let (b, a) = match (&*right, &*left) {
                         (Value::Number(b), Value::Number(a)) => (b, a),
                         _ => return Err(
                             LoxError::RuntimeError(
@@ -255,10 +305,16 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack.push(Value::Bool(a > b));
+                    self.stack_push_value(Value::Bool(a > b));
                 },
                 OpCode::Less => {
-                    let (b, a) = match (self.pop_stack()?, self.pop_stack()?) {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    let (b, a) = match (&*right, &*left) {
                         (Value::Number(b), Value::Number(a)) => (b, a),
                         _ => return Err(
                             LoxError::RuntimeError(
@@ -266,16 +322,22 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack.push(Value::Bool(a < b));
+                    self.stack_push_value(Value::Bool(a < b));
                 },
                 OpCode::Add => {
-                    match (self.pop_stack()?, self.pop_stack()?) {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    match (&*right, &*left) {
                         (Value::Number(b), Value::Number(a)) => {
-                            self.stack.push(Value::Number(a + b));
+                            self.stack_push_value(Value::Number(a + b));
                         },
-                        (Value::Object(b), Value::Object(a)) => match (a.clone(), b.clone()) {
+                        (Value::Object(b), Value::Object(a)) => match (a, b) {
                             (Object::String(a), Object::String(b)) => {
-                                self.stack.push(
+                                self.stack_push_value(
                                     Value::Object(
                                         Object::String(
                                             Box::new(
@@ -299,7 +361,13 @@ impl VirtualMachine {
                     };
                 },
                 OpCode::Subtract => {
-                    let (b, a) = match (self.pop_stack()?, self.pop_stack()?) {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    let (b, a) = match (&*right, &*left) {
                         (Value::Number(b), Value::Number(a)) => (b, a),
                         _ => return Err(
                             LoxError::RuntimeError(
@@ -307,10 +375,16 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack.push(Value::Number(a - b));
+                    self.stack_push_value(Value::Number(a - b));
                 },
                 OpCode::Multiply => {
-                    let (b, a) = match (self.pop_stack()?, self.pop_stack()?) {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    let (b, a) = match (&*right, &*left) {
                         (Value::Number(b), Value::Number(a)) => (b, a),
                         _ => return Err(
                             LoxError::RuntimeError(
@@ -318,10 +392,16 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack.push(Value::Number(a * b));
+                    self.stack_push_value(Value::Number(a * b));
                 },
                 OpCode::Divide => {
-                    let (b, a) = match (self.pop_stack()?, self.pop_stack()?) {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    let (b, a) = match (&*right, &*left) {
                         (Value::Number(b), Value::Number(a)) => (b, a),
                         _ => return Err(
                             LoxError::RuntimeError(
@@ -329,14 +409,14 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack.push(Value::Number(a / b));
+                    self.stack_push_value(Value::Number(a / b));
                 },
                 OpCode::Not => {
                     let item = self.pop_stack()?;
-                    self.stack.push(Value::Bool(!self.truthy(&item)?));
+                    self.stack_push_value(Value::Bool(!self.truthy(&item)?));
                 }
                 OpCode::Negate => {
-                    let item = match self.pop_stack()? {
+                    let item = match *(self.pop_stack()?).borrow() {
                         Value::Number(number) => number,
                         _ => return Err(
                             LoxError::RuntimeError(
@@ -344,10 +424,10 @@ impl VirtualMachine {
                             )
                         ),
                     };
-                    self.stack.push(Value::Number(-item));
+                    self.stack_push_value(Value::Number(-item));
                 },
                 OpCode::Print => {
-                    println!("{}", self.pop_stack()?);
+                    println!("{}", *(self.pop_stack()?).borrow());
                 },
                 OpCode::Jump(offset) => {
                     self.frame_mut().pos += offset;
@@ -364,6 +444,37 @@ impl VirtualMachine {
                 OpCode::Call(arg_count) => {
                     self.call_value(arg_count)?;
                     continue;
+                },
+                OpCode::Closure(index, ref upvalues) => {
+                    let constant = self.function().chunk.constants.get(index).clone();
+                    let function = match &*constant.borrow() {
+                        Value::Object(Object::Function(function)) => *function.clone(),
+                        _ => panic!("unreachable"),
+                    };
+
+                    let mut captured: Vec<ObjUpValuePtr> = Vec::with_capacity(upvalues.len());
+                    for uv in upvalues.iter() {
+                        let new_upvalue = match uv.is_local {
+                            true => self.capture_upvalue(&self.stack[self.frame().stack_offset + uv.index])?,
+                            false => self.frame().closure.upvalues[uv.index - 1].clone(),
+                        };
+
+                        captured.push(new_upvalue);
+                    }
+
+                    self.stack_push_value(
+                        Value::Object(
+                            Object::Closure(
+                                Box::new(
+                                    Closure {
+                                        obj: None,
+                                        upvalues: captured,
+                                        function,
+                                    }
+                                )
+                            )
+                        )
+                    );
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
@@ -403,25 +514,29 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn call(&self, callee: &Function, arg_count: usize) -> Result<CallFrame, LoxError> {
-        Ok(
-            CallFrame {
-                function: callee.clone(),
-                stack_offset: self.stack.len() - arg_count - 1,
-                pos: 0,
-            }
-        )
+    fn call(&mut self, callee: &Closure, arg_count: usize) -> Result<(), LoxError> {
+        let frame = CallFrame {
+            closure: callee.clone(),
+            stack_offset: self.stack.len() - arg_count - 1,
+            pos: 0,
+        };
+
+        self.frames.push(frame);
+
+        Ok(())
     }
 
     fn call_value(&mut self, arg_count: usize) -> Result<bool, LoxError> {
         let offset = self.stack.len() - arg_count - 1;
-        match &self.stack[offset] {
-            Value::Object(object) => match object {
-                Object::Function(function) => {
-                    self.check_arity(&function.name, function.arity, arg_count)?;
+        let at_offset = self.stack[offset].clone();
+        let at_offset = at_offset.borrow();
 
-                    let frame = self.call(function, arg_count)?;
-                    self.frames.push(frame);
+        match &*at_offset {
+            Value::Object(object) => match object {
+                Object::Closure(closure) => {
+                    self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
+
+                    self.call(&closure, arg_count)?;
                     Ok(true)
                 },
                 Object::Native(native) => {
@@ -431,7 +546,7 @@ impl VirtualMachine {
                     let result = (native.function)(&self.stack[arg_range_start..])?;
 
                     self.stack.truncate(arg_range_start - 1);
-                    self.stack.push(result);
+                    self.stack_push_value(result);
                     self.frame_mut().pos += 1;
 
                     Ok(true)
@@ -442,8 +557,21 @@ impl VirtualMachine {
         }
     }
 
-    fn truthy(&self, item: &Value) -> Result<bool, LoxError> {
-        match item {
+    fn capture_upvalue(&self, item: &ValuePtr) -> Result<ObjUpValuePtr, LoxError> {
+        Ok(
+            Rc::new(
+                RefCell::new(
+                    ObjUpValue {
+                        location: item.clone(),
+                        obj: None,
+                    }
+                )
+            )
+        )
+    }
+
+    fn truthy(&self, item: &ValuePtr) -> Result<bool, LoxError> {
+        match &*item.borrow() {
             Value::Number(number) => Ok(*number != 0.0f64),
             Value::Nil => Ok(false),
             Value::Bool(boolean) => Ok(*boolean),
@@ -451,6 +579,8 @@ impl VirtualMachine {
                 Object::String(string) => Ok(!string.is_empty()),
                 Object::Function(_) => Ok(true),
                 Object::Native(_) => Ok(true),
+                Object::Closure(_) => Ok(true),
+                Object::UpValue(value) => self.truthy(&value.location),
             },
         }
     }
