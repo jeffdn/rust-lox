@@ -34,6 +34,7 @@ pub struct VirtualMachine {
     frames: Vec<CallFrame>,
     stack: Vec<ValuePtr>,
     globals: HashMap<String, ValuePtr>,
+    upvalues: Vec<ObjUpValuePtr>,
 }
 
 fn _built_in_time(_: &[ValuePtr]) -> Result<Value, LoxError> {
@@ -71,7 +72,8 @@ impl VirtualMachine {
         VirtualMachine {
             frames: Vec::with_capacity(FRAMES_MAX),
             stack: Vec::with_capacity(STACK_MAX),
-            globals: HashMap::new(),
+            globals: HashMap::with_capacity(STACK_MAX),
+            upvalues: Vec::with_capacity(STACK_MAX),
         }
     }
 
@@ -170,14 +172,14 @@ impl VirtualMachine {
     pub fn frame(&self) -> &CallFrame {
         match self.frames.last() {
             Some(frame) => frame,
-            None => panic!("unreachable"),
+            None => unreachable!(),
         }
     }
 
     pub fn frame_mut(&mut self) -> &mut CallFrame {
         match self.frames.last_mut() {
             Some(frame) => frame,
-            None => panic!("unreachable"),
+            None => unreachable!(),
         }
     }
 
@@ -387,13 +389,13 @@ impl VirtualMachine {
                     let constant = self.function().chunk.constants.get(index).clone();
                     let function = match &*constant.borrow() {
                         Value::Object(Object::Function(function)) => *function.clone(),
-                        _ => panic!("unreachable"),
+                        _ => unreachable!(),
                     };
 
                     let mut captured: Vec<ObjUpValuePtr> = Vec::with_capacity(upvalues.len());
-                    for uv in upvalues.iter() {
+                    for uv in upvalues.clone().iter() {
                         let new_upvalue = match uv.is_local {
-                            true => self.capture_upvalue(&self.stack[self.frame().stack_offset + uv.index])?,
+                            true => self.capture_upvalue(uv.index)?,
                             false => self.frame().closure.upvalues[uv.index - 1].clone(),
                         };
 
@@ -413,6 +415,18 @@ impl VirtualMachine {
                             )
                         )
                     );
+                },
+                OpCode::CloseUpValue => {
+                    let Some(value) = self.stack.last() else {
+                        return Err(
+                            LoxError::RuntimeError(
+                                "can't close an upvalue without a stack!".into()
+                            )
+                        );
+                    };
+
+                    self.close_upvalues(value.clone());
+                    self.pop_stack()?;
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
@@ -495,17 +509,45 @@ impl VirtualMachine {
         }
     }
 
-    fn capture_upvalue(&self, item: &ValuePtr) -> Result<ObjUpValuePtr, LoxError> {
-        Ok(
-            Rc::new(
-                RefCell::new(
-                    ObjUpValue {
-                        location: item.clone(),
-                        obj: None,
-                    }
-                )
+    fn capture_upvalue(&mut self, upvalue_index: usize) -> Result<ObjUpValuePtr, LoxError> {
+        let item = &self.stack[self.frame().stack_offset + upvalue_index];
+
+        for (idx, upvalue) in self.upvalues.iter().enumerate() {
+            if idx == upvalue_index - 1 {
+                return Ok(upvalue.clone());
+            }
+        }
+
+        let new_upvalue = Rc::new(
+            RefCell::new(
+                ObjUpValue {
+                    location: item.clone(),
+                    location_index: upvalue_index,
+                    obj: None,
+                }
             )
-        )
+        );
+
+        self.upvalues.push(new_upvalue.clone());
+
+        Ok(new_upvalue)
+    }
+
+    fn close_upvalues(&mut self, value: ValuePtr) {
+        for idx in (0..self.upvalues.len()).rev() {
+            if self.upvalues[idx].borrow().location != value {
+                break;
+            }
+
+            self.upvalues.remove(idx);
+        }
+
+        // let last = self.stack.last().unwrap();
+        // println!("closing {}", upvalue_index);
+        // while !self.upvalues.is_empty() && self.upvalues.last().unwrap().borrow().location_index >= upvalue_index {
+        //     println!("popping {:?}", self.upvalues.last().unwrap());
+        //     self.upvalues.pop();
+        // }
     }
 
     #[allow(clippy::only_used_in_recursion)]

@@ -6,7 +6,7 @@ use std::{
 
 use crate::object::Object;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Nil,
     Number(f64),
@@ -29,7 +29,7 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ValueSet {
     pub values: Vec<ValuePtr>,
 }

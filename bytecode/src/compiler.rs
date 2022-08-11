@@ -64,6 +64,7 @@ impl Precedence {
 struct Local {
     name: Token,
     depth: Option<usize>,
+    is_captured: bool,
 }
 
 pub struct Compiler {
@@ -112,6 +113,7 @@ impl CompilerNode {
                     line: 0,
                 },
                 depth: Some(0),
+                is_captured: false,
             }
         );
 
@@ -210,15 +212,25 @@ impl Compiler {
     fn end_scope(&mut self) -> Result<(), LoxError> {
         self.compiler_mut().scope_depth -= 1;
 
-        let mut pop_count = self.compiler().locals.len();
-        let scope_depth = self.compiler().scope_depth;
-        self.compiler_mut().locals.retain(|x| x.depth.is_some() && x.depth.unwrap() <= scope_depth);
+        loop {
+            if self.compiler().local_count == 0 {
+                break;
+            }
 
-        pop_count -= self.compiler().locals.len();
+            let idx = self.compiler().local_count - 1;
+            if self.compiler().locals[idx].depth.is_some() &&
+                self.compiler().locals[idx].depth.unwrap() <= self.compiler().scope_depth {
+                break;
+            }
 
-        for _ in 0..pop_count {
+            let local = self.compiler_mut().locals.pop().unwrap();
+
+            match local.is_captured {
+                true => self.emit_byte(OpCode::CloseUpValue)?,
+                false => self.emit_byte(OpCode::Pop)?,
+            };
+
             self.compiler_mut().local_count -= 1;
-            self.emit_byte(OpCode::Pop)?;
         }
 
         Ok(())
@@ -629,10 +641,10 @@ impl Compiler {
     }
 
     fn add_upvalue(&mut self, index: usize, is_local: bool, depth: usize) -> Result<usize, LoxError> {
-        if let Some((existing_index, _)) = self.compiler_at_mut(depth).upvalues.iter().enumerate().find(|(_, uv)| {
+        if let Some(uv) = self.compiler_at_mut(depth).upvalues.iter().find(|uv| {
             uv.is_local == is_local && uv.index == index
         }) {
-            return Ok(existing_index)
+            return Ok(uv.index)
         }
 
         self.compiler_at_mut(depth).upvalues.push(
@@ -644,7 +656,7 @@ impl Compiler {
 
         self.compiler_at_mut(depth).function.upvalue_count += 1;
 
-        Ok(self.compiler_at(depth).upvalues.len())
+        Ok(index)
     }
 
     fn resolve_upvalue(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
@@ -653,6 +665,7 @@ impl Compiler {
         }
 
         if let Ok(index) = self.resolve_local(token, depth + 1) {
+            self.compiler_at_mut(depth + 1).locals[index].is_captured = true;
             return self.add_upvalue(index, true, depth);
         }
 
@@ -773,6 +786,7 @@ impl Compiler {
             Local {
                 name: local_name,
                 depth: None,
+                is_captured: false,
             }
         );
 

@@ -41,6 +41,7 @@ pub enum OpCode {
     Loop(usize),
     Call(usize),
     Closure(usize, Box<Vec<UpValue>>),
+    CloseUpValue,
     Return,
 }
 
@@ -74,6 +75,7 @@ impl fmt::Display for OpCode {
             OpCode::Loop(_) => "op_loop",
             OpCode::Call(_) => "op_call",
             OpCode::Closure(_, _) => "op_closure",
+            OpCode::CloseUpValue => "op_close_upvalue",
             OpCode::Return => "op_return",
         };
 
@@ -81,7 +83,7 @@ impl fmt::Display for OpCode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Chunk {
     pub code: Vec<OpCode>,
     pub constants: ValueSet,
@@ -156,7 +158,7 @@ impl Chunk {
                 "{:<20} {}", "op_get_upvalue", *index, //self.constants.get(*index),
             ),
             OpCode::SetUpValue(index) => format!(
-                "{:<20} {}", "op_set_upvalue", *index, //self.constants.get(*index),
+                "{:<20} {}, {:?}", "op_set_upvalue", *index, self.constants.get(*index),
             ),
             OpCode::Jump(offset) => format!(
                 "{:<20} {}", "op_jump", offset,

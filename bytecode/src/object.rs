@@ -11,7 +11,7 @@ use crate::{
     value::{Value, ValuePtr},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Object {
     String(Box<String>),
     Function(Box<Function>),
@@ -20,24 +20,24 @@ pub enum Object {
     UpValue(Box<ObjUpValue>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ObjUpValue {
     pub location: ValuePtr,
+    pub location_index: usize, // the position of `location` in the stack
     pub obj: Option<Object>,
 }
 
 pub type ObjUpValuePtr = Rc<RefCell<ObjUpValue>>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FunctionType {
     Function,
     Script,
 }
 
-
 pub type NativeFn = fn(&[ValuePtr]) -> Result<Value, LoxError>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub obj: Option<Object>,
     pub upvalues: Vec<ObjUpValuePtr>,
@@ -52,12 +52,18 @@ pub struct NativeFunction {
     pub arity: usize,
 }
 
+impl PartialEq for NativeFunction {
+    fn eq(&self, rhs: &Self) -> bool {
+        self.name == rhs.name
+    }
+}
+
 impl fmt::Debug for NativeFunction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<native function>")
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub function_type: FunctionType,
     pub obj: Option<Object>,
