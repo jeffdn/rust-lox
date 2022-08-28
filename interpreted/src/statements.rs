@@ -7,40 +7,16 @@ use crate::{
 pub trait StatementVisitor {
     fn accept_statement(&mut self, stmt: &Statement) -> Result<(), LoxError> {
         match stmt {
-            Statement::Block { statements: _ } => self.visit_block(stmt),
-            Statement::Class {
-                name: _,
-                methods: _,
-            } => self.visit_class(stmt),
-            Statement::Expression { expression: _ } => self.visit_expression(stmt),
-            Statement::Foreach {
-                iterator: _,
-                iterable: _,
-                body: _,
-            } => self.visit_foreach(stmt),
-            Statement::Function {
-                name: _,
-                params: _,
-                body: _,
-            } => self.visit_function(stmt),
-            Statement::If {
-                condition: _,
-                then_branch: _,
-                else_branch: _,
-            } => self.visit_if(stmt),
-            Statement::Print { expression: _ } => self.visit_print(stmt),
-            Statement::Return {
-                keyword: _,
-                value: _,
-            } => self.visit_return(stmt),
-            Statement::While {
-                condition: _,
-                body: _,
-            } => self.visit_while(stmt),
-            Statement::Var {
-                name: _,
-                initializer: _,
-            } => self.visit_var(stmt),
+            Statement::Block { .. } => self.visit_block(stmt),
+            Statement::Class { .. } => self.visit_class(stmt),
+            Statement::Expression { .. } => self.visit_expression(stmt),
+            Statement::Foreach { .. } => self.visit_foreach(stmt),
+            Statement::Function { .. } => self.visit_function(stmt),
+            Statement::If { .. } => self.visit_if(stmt),
+            Statement::Print { .. } => self.visit_print(stmt),
+            Statement::Return { .. } => self.visit_return(stmt),
+            Statement::While { .. } => self.visit_while(stmt),
+            Statement::Var { .. } => self.visit_var(stmt),
         }
     }
 

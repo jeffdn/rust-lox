@@ -9,49 +9,20 @@ use crate::{
 pub trait ExpressionVisitor<T> {
     fn accept_expression(&mut self, expr: &Expression) -> Result<T, LoxError> {
         match expr {
-            Expression::Assignment {
-                name: _,
-                expression: _,
-            } => self.visit_assignment(expr),
-            Expression::Binary {
-                left: _,
-                operator: _,
-                right: _,
-            } => self.visit_binary(expr),
-            Expression::Call {
-                callee: _,
-                paren: _,
-                arguments: _,
-            } => self.visit_call(expr),
-            Expression::Get { name: _, object: _ } => self.visit_get(expr),
-            Expression::Grouping { expression: _ } => self.visit_grouping(expr),
-            Expression::Index {
-                item: _,
-                index: _,
-                slice: _,
-            } => self.visit_index(expr),
-            Expression::IndexedAssignment {
-                indexed_item: _,
-                expression: _,
-            } => self.visit_indexed_assignment(expr),
-            Expression::List { expressions: _ } => self.visit_list(expr),
-            Expression::Literal { value: _ } => self.visit_literal(expr),
-            Expression::Logical {
-                left: _,
-                operator: _,
-                right: _,
-            } => self.visit_logical(expr),
-            Expression::Map { expression_map: _ } => self.visit_map(expr),
-            Expression::Set {
-                name: _,
-                object: _,
-                value: _,
-            } => self.visit_set(expr),
-            Expression::Unary {
-                operator: _,
-                right: _,
-            } => self.visit_unary(expr),
-            Expression::Variable { name: _ } => self.visit_variable(expr),
+            Expression::Assignment { .. } => self.visit_assignment(expr),
+            Expression::Binary { .. } => self.visit_binary(expr),
+            Expression::Call { .. } => self.visit_call(expr),
+            Expression::Get { .. } => self.visit_get(expr),
+            Expression::Grouping { .. } => self.visit_grouping(expr),
+            Expression::Index { .. } => self.visit_index(expr),
+            Expression::IndexedAssignment { .. } => self.visit_indexed_assignment(expr),
+            Expression::List { .. } => self.visit_list(expr),
+            Expression::Literal { .. } => self.visit_literal(expr),
+            Expression::Logical { .. } => self.visit_logical(expr),
+            Expression::Map { .. } => self.visit_map(expr),
+            Expression::Set { .. } => self.visit_set(expr),
+            Expression::Unary { .. } => self.visit_unary(expr),
+            Expression::Variable { .. } => self.visit_variable(expr),
         }
     }
 

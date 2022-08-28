@@ -33,16 +33,12 @@ pub enum LoxCallable {
 impl fmt::Display for LoxCallable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {
-            LoxCallable::Function {
-                statement,
-                environment: _,
-            } => match statement {
+            LoxCallable::Function { statement, .. } => match statement {
                 Statement::Function {
                     name,
-                    params: _,
-                    body: _,
+                    ..
                 } => format!("function '{}'", name.lexeme),
-                _ => "this shouldn't be happening!".to_string(),
+                _ => unreachable!(),
             },
             LoxCallable::Class { class } => format!("class '{}'", class.name.lexeme),
             LoxCallable::Len => "function 'len'".to_string(),
@@ -235,12 +231,12 @@ impl LoxCallable {
                                 Literal::String("built-in function".into()),
                             )
                         ),
-                        LoxCallable::Function { statement: _, environment: _, } => Ok(
+                        LoxCallable::Function { .. } => Ok(
                             LoxEntity::Literal(
                                 Literal::String("function".into())
                             )
                         ),
-                        LoxCallable::Class { class: _ } => Ok(
+                        LoxCallable::Class { .. } => Ok(
                             LoxEntity::Literal(
                                 Literal::String("class".into())
                             )
@@ -255,7 +251,7 @@ impl LoxCallable {
         match self {
             LoxCallable::Function {
                 statement,
-                environment: _,
+                ..
             } => match statement {
                 Statement::Function {
                     name: _,
@@ -268,7 +264,7 @@ impl LoxCallable {
                     ),
                 ),
             },
-            LoxCallable::Class { class: _ } => Ok(0),
+            LoxCallable::Class { .. } => Ok(0),
             LoxCallable::Len => Ok(1),
             LoxCallable::Range => Ok(2),
             LoxCallable::Time => Ok(0),

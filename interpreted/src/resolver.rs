@@ -309,7 +309,7 @@ impl ExpressionVisitor<()> for Resolver {
 
     fn visit_literal(&mut self, expr: &Expression) -> Result<(), LoxError> {
         match expr {
-            Expression::Literal { value: _ } => { Ok(()) },
+            Expression::Literal { .. } => { Ok(()) },
             _ => Err(
                 LoxError::ResolutionError(
                     "attempted to visit literal with a non-literal expression".to_string()
@@ -514,8 +514,7 @@ impl StatementVisitor for Resolver {
         let name =match stmt {
             Statement::Function {
                 name,
-                params: _,
-                body: _,
+                ..
             } => name,
             _ => return Err(
                 LoxError::ResolutionError(

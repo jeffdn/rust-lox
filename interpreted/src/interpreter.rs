@@ -59,22 +59,11 @@ impl Interpreter {
     fn is_truthy(&mut self, expr: &Expression) -> Result<bool, LoxError> {
         match expr {
             Expression::Literal { value } => self._is_truthy(value),
-            Expression::Unary {
-                operator: _,
-                right: _,
-            }
-            | Expression::Binary {
-                left: _,
-                operator: _,
-                right: _,
-            }
-            | Expression::Logical {
-                left: _,
-                operator: _,
-                right: _,
-            }
-            | Expression::Variable { name: _ }
-            | Expression::Grouping { expression: _ } => match self.evaluate(expr)? {
+            Expression::Unary { .. }
+            | Expression::Binary { .. }
+            | Expression::Logical { .. }
+            | Expression::Variable { .. }
+            | Expression::Grouping { .. } => match self.evaluate(expr)? {
                 LoxEntity::Literal(output) => self._is_truthy(&output),
                 LoxEntity::Callable(_) => Ok(true),
                 LoxEntity::List(list) => Ok(!list.is_empty()),
@@ -443,20 +432,13 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                     _ => return Err(LoxError::AstError),
                 }
             },
-            Expression::Get {
-                name: _,
-                object: _,
-            } => {
+            Expression::Get { .. } => {
                 match self.evaluate(callee)? {
                     LoxEntity::Callable(callable) => callable,
                     _ => return Err(LoxError::AstError),
                 }
             },
-            Expression::Index {
-                item: _,
-                index: _,
-                slice: _,
-            } => {
+            Expression::Index { .. } => {
                 match self.evaluate(callee)? {
                     LoxEntity::Callable(callable) => callable,
                     _ => return Err(LoxError::AstError),
@@ -878,8 +860,7 @@ impl StatementVisitor for Interpreter {
             match method {
                 Statement::Function {
                     name: method_name,
-                    params: _,
-                    body: _,
+                    ..
                 } => {
                     class_methods.insert(
                         method_name.lexeme.clone(),
@@ -1000,8 +981,7 @@ impl StatementVisitor for Interpreter {
         let name = match stmt {
             Statement::Function {
                 name,
-                params: _,
-                body: _,
+                ..
             } => name,
             _ => return Err(LoxError::AstError),
         };
