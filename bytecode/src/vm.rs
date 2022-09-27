@@ -59,7 +59,7 @@ fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
             Object::String(string) => Ok(Value::Number(string.len() as f64)),
             _ => Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
         },
-        _ => Ok(Value::Object(Object::String(Box::new((*input[0].borrow()).to_string())))),
+        _ => Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
     }
 }
 
@@ -187,6 +187,28 @@ impl VirtualMachine {
     }
 
     pub fn run(&mut self) -> Result<(), LoxError> {
+        macro_rules! binary_opcode {
+            ( $op:tt, $op_char:expr, $output:expr ) => {
+                {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+                    let left = left.borrow();
+
+                    let (b, a) = match (&*right, &*left) {
+                        (Value::Number(b), Value::Number(a)) => (b, a),
+                        _ => return Err(
+                            LoxError::RuntimeError(
+                                format!("comparison '{}' only operates on numbers", $op_char)
+                            )
+                        ),
+                    };
+                    self.stack_push_value($output(a $op b));
+                }
+            };
+        }
+
         while self.frame().pos < self.function().chunk.code.len() {
             let pos = self.frame().pos;
 
@@ -290,40 +312,8 @@ impl VirtualMachine {
                         )
                     );
                 },
-                OpCode::Greater => {
-                    let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let (b, a) = match (&*right, &*left) {
-                        (Value::Number(b), Value::Number(a)) => (b, a),
-                        _ => return Err(
-                            LoxError::RuntimeError(
-                                "comparison '>' only operates on numbers".into()
-                            )
-                        ),
-                    };
-                    self.stack_push_value(Value::Bool(a > b));
-                },
-                OpCode::Less => {
-                    let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let (b, a) = match (&*right, &*left) {
-                        (Value::Number(b), Value::Number(a)) => (b, a),
-                        _ => return Err(
-                            LoxError::RuntimeError(
-                                "comparison '<' only operates on numbers".into()
-                            )
-                        ),
-                    };
-                    self.stack_push_value(Value::Bool(a < b));
-                },
+                OpCode::Greater => binary_opcode! { >, '>', Value::Bool },
+                OpCode::Less => binary_opcode! { <, '<', Value::Bool },
                 OpCode::Add => {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
@@ -360,57 +350,9 @@ impl VirtualMachine {
                         ),
                     };
                 },
-                OpCode::Subtract => {
-                    let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let (b, a) = match (&*right, &*left) {
-                        (Value::Number(b), Value::Number(a)) => (b, a),
-                        _ => return Err(
-                            LoxError::RuntimeError(
-                                "operation '-' only operates on numbers".into()
-                            )
-                        ),
-                    };
-                    self.stack_push_value(Value::Number(a - b));
-                },
-                OpCode::Multiply => {
-                    let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let (b, a) = match (&*right, &*left) {
-                        (Value::Number(b), Value::Number(a)) => (b, a),
-                        _ => return Err(
-                            LoxError::RuntimeError(
-                                "operation '*' only operates on numbers".into()
-                            )
-                        ),
-                    };
-                    self.stack_push_value(Value::Number(a * b));
-                },
-                OpCode::Divide => {
-                    let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let (b, a) = match (&*right, &*left) {
-                        (Value::Number(b), Value::Number(a)) => (b, a),
-                        _ => return Err(
-                            LoxError::RuntimeError(
-                                "operation '/' only operates on numbers".into()
-                            )
-                        ),
-                    };
-                    self.stack_push_value(Value::Number(a / b));
-                },
+                OpCode::Subtract => binary_opcode! { -, '-', Value::Number },
+                OpCode::Multiply => binary_opcode! { *, '*', Value::Number },
+                OpCode::Divide => binary_opcode! { /, '/', Value::Number },
                 OpCode::Not => {
                     let item = self.pop_stack()?;
                     self.stack_push_value(Value::Bool(!self.truthy(&item)?));
