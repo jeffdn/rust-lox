@@ -6,13 +6,13 @@ use std::{
 
 use crate::value::{Value, ValueSet};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UpValue {
     pub is_local: bool,
     pub index: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OpCode {
     Constant(usize),
     False,

@@ -11,7 +11,7 @@ pub struct Scanner {
 }
 
 impl Scanner {
-    pub fn new(source: &String) -> Scanner {
+    pub fn new(source: &str) -> Scanner {
         Scanner {
             chars: source.chars().collect(),
             start: 0,

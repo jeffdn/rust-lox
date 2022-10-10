@@ -118,7 +118,7 @@ impl CompilerNode {
 }
 
 impl Compiler {
-    pub fn new(source: &String) -> Compiler {
+    pub fn new(source: &str) -> Compiler {
         Compiler {
             compilers: vec![CompilerNode::new(FunctionType::Script)],
             current: Token {
@@ -909,5 +909,58 @@ impl Compiler {
 
     fn error_at_current(&self, message: &str) -> Result<(), LoxError> {
         self.error_at(self.current.clone(), message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_basic() {
+        let input = "var foo = 123;\nprint foo;\n";
+        let mut compiler = Compiler::new(&input);
+        let function = compiler.compile().unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Constant(1),
+                OpCode::DefineGlobal(0),
+                OpCode::GetGlobal(2),
+                OpCode::Print,
+                OpCode::Nil,
+                OpCode::Return,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_scope() {
+        let input = r#"
+            fn bar() {
+                var foo = 123;
+                return foo;
+            }
+            var foo = bar();
+            print foo;
+        "#;
+        let mut compiler = Compiler::new(&input);
+        let function = compiler.compile().unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Closure(1, Box::new(vec![])),
+                OpCode::DefineGlobal(0),
+                OpCode::GetGlobal(3),
+                OpCode::Call(0),
+                OpCode::DefineGlobal(2),
+                OpCode::GetGlobal(5),
+                OpCode::Print,
+                OpCode::Nil,
+                OpCode::Return,
+            ],
+        );
     }
 }
