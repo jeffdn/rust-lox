@@ -111,9 +111,8 @@ impl Interpreter {
 
 impl ExpressionVisitor<LoxEntity> for Interpreter {
     fn visit_assignment(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (name, expression) = match expr {
-            Expression::Assignment { name, expression } => (name, expression),
-            _ => return Err(LoxError::AstError),
+        let Expression::Assignment { name, expression } = expr else {
+            return Err(LoxError::AstError);
         };
 
         let value = self.evaluate(expression)?;
@@ -134,13 +133,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     }
 
     fn visit_binary(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (left, operator, right) = match expr {
-            Expression::Binary {
-                left,
-                operator,
-                right,
-            } => (left, operator, right),
-            _ => return Err(LoxError::AstError),
+        let Expression::Binary { left, operator, right } = expr else {
+            return Err(LoxError::AstError);
         };
 
         let eval_left = self.evaluate(left)?;
@@ -408,13 +402,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     }
 
     fn visit_call(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (callee, arguments) = match expr {
-            Expression::Call {
-                callee,
-                paren: _,
-                arguments,
-            } => (callee, arguments),
-            _ => return Err(LoxError::AstError),
+        let Expression::Call { callee, paren: _, arguments } = expr else {
+            return Err(LoxError::AstError);
         };
 
         let mut real_arguments: Vec<LoxEntity> = Vec::new();
@@ -463,12 +452,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     }
 
     fn visit_get(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (name, object) = match expr {
-            Expression::Get {
-                name,
-                object,
-            } => (name, object),
-            _ => return Err(LoxError::AstError),
+        let Expression::Get { name, object } = expr else {
+            return Err(LoxError::AstError);
         };
 
         match self.evaluate(object)? {
@@ -488,170 +473,155 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     }
 
     fn visit_index(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        match expr {
-            Expression::Index {
-                item,
-                index,
-                slice,
-            } => {
-                let item = self.evaluate(item)?;
-                let index = self.evaluate(index)?;
+        let Expression::Index { item, index, slice } = expr else {
+            return Err(LoxError::AstError);
+        };
 
-                match (item, index, slice) {
-                    (
-                        LoxEntity::List(list),
-                        LoxEntity::Literal(Literal::Number(index)),
-                        None,
-                    ) => {
-                        let list_index = self._convert_index(list.len(), index);
+        let item = self.evaluate(item)?;
+        let index = self.evaluate(index)?;
 
-                        if list_index > list.len() - 1 {
-                            return Err(LoxError::AstError);
-                        }
+        match (item, index, slice) {
+            (
+                LoxEntity::List(list),
+                LoxEntity::Literal(Literal::Number(index)),
+                None,
+            ) => {
+                let list_index = self._convert_index(list.len(), index);
 
-                        Ok(list[list_index].clone())
-                    },
-                    (
-                        LoxEntity::List(list),
-                        LoxEntity::Literal(Literal::Number(index)),
-                        Some(slice),
-                    ) => {
-                        let slice = match self.evaluate(slice)? {
-                            LoxEntity::Literal(Literal::Number(slice)) => slice,
-                            _ => return Err(LoxError::AstError),
-                        };
-
-                        let list_len = list.len();
-                        let mut slice_start = self._convert_index(list_len, index);
-                        let mut slice_end = self._convert_index(list_len, slice);
-
-                        if slice_start > list_len - 1 {
-                            slice_start = list_len - 1;
-                        }
-
-                        if slice_end > list_len - 1 {
-                            slice_end = list_len - 1;
-                        }
-
-                        if slice_start >= slice_end {
-                            return Ok(LoxEntity::List(vec![]));
-                        }
-
-                        let output: Vec<LoxEntity> = list[slice_start..(slice_end + 1)]
-                            .iter()
-                            .cloned()
-                            .collect();
-
-                        Ok(LoxEntity::List(output))
-                    },
-                    (
-                        LoxEntity::Map(map),
-                        LoxEntity::Literal(index),
-                        None,
-                    ) => {
-                        if !map.contains_key(&index) {
-                            return Err(LoxError::AstError);
-                        }
-
-                        Ok(map[&index].clone())
-                    },
-                    _ => Err(LoxError::AstError),
+                if list_index > list.len() - 1 {
+                    return Err(LoxError::AstError);
                 }
+
+                Ok(list[list_index].clone())
+            },
+            (
+                LoxEntity::List(list),
+                LoxEntity::Literal(Literal::Number(index)),
+                Some(slice),
+            ) => {
+                let slice = match self.evaluate(slice)? {
+                    LoxEntity::Literal(Literal::Number(slice)) => slice,
+                    _ => return Err(LoxError::AstError),
+                };
+
+                let list_len = list.len();
+                let mut slice_start = self._convert_index(list_len, index);
+                let mut slice_end = self._convert_index(list_len, slice);
+
+                if slice_start > list_len - 1 {
+                    slice_start = list_len - 1;
+                }
+
+                if slice_end > list_len - 1 {
+                    slice_end = list_len - 1;
+                }
+
+                if slice_start >= slice_end {
+                    return Ok(LoxEntity::List(vec![]));
+                }
+
+                let output: Vec<LoxEntity> = list[slice_start..(slice_end + 1)]
+                    .iter()
+                    .cloned()
+                    .collect();
+
+                Ok(LoxEntity::List(output))
+            },
+            (
+                LoxEntity::Map(map),
+                LoxEntity::Literal(index),
+                None,
+            ) => {
+                if !map.contains_key(&index) {
+                    return Err(LoxError::AstError);
+                }
+
+                Ok(map[&index].clone())
             },
             _ => Err(LoxError::AstError),
         }
     }
 
     fn visit_indexed_assignment(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        match expr {
-            Expression::IndexedAssignment {
-                indexed_item,
-                expression,
-            } => match &**indexed_item {
-                Expression::Index {
-                    item,
-                    index,
-                    slice,
-                } => {
-                    if slice.is_some() {
-                        return Err(LoxError::AstError);
-                    }
+        let Expression::IndexedAssignment { indexed_item, expression } = expr else {
+            return Err(LoxError::AstError);
+        };
+            let Expression::Index { item, index, slice } = &**indexed_item else {
+                return Err(LoxError::AstError);
+            };
 
-                    let name = match &**item {
-                        Expression::Variable { name } => name.clone(),
-                        _ => return Err(LoxError::AstError),
+            if slice.is_some() {
+                return Err(LoxError::AstError);
+            }
+
+            let name = match &**item {
+                Expression::Variable { name } => name.clone(),
+                _ => return Err(LoxError::AstError),
+            };
+
+            let distance = self.locals.borrow().get(expr);
+
+            let item = self.evaluate(item)?;
+            let index = self.evaluate(index)?;
+
+            match (item, index) {
+                (
+                    LoxEntity::List(mut list),
+                    LoxEntity::Literal(Literal::Number(index))
+                ) => {
+                    let list_index = self._convert_index(list.len(), index);
+
+                    list[list_index] = self.evaluate(expression)?;
+
+                    match distance {
+                        Ok(_) => self.environment.borrow_mut().assign(
+                            name.lexeme,
+                            LoxEntity::List(list),
+                        )?,
+                        Err(_) => self.globals.borrow_mut().assign(
+                            name.lexeme,
+                            LoxEntity::List(list),
+                        )?,
                     };
-
-                    let distance = self.locals.borrow().get(expr);
-
-                    let item = self.evaluate(item)?;
-                    let index = self.evaluate(index)?;
-
-                    match (item, index) {
-                        (
-                            LoxEntity::List(mut list),
-                            LoxEntity::Literal(Literal::Number(index))
-                        ) => {
-                            let list_index = self._convert_index(list.len(), index);
-
-                            list[list_index] = self.evaluate(expression)?;
-
-                            match distance {
-                                Ok(_) => self.environment.borrow_mut().assign(
-                                    name.lexeme,
-                                    LoxEntity::List(list),
-                                )?,
-                                Err(_) => self.globals.borrow_mut().assign(
-                                    name.lexeme,
-                                    LoxEntity::List(list),
-                                )?,
-                            };
-                        },
-                        (
-                            LoxEntity::Map(mut map),
-                            LoxEntity::Literal(index)
-                        ) => {
-                            let value = self.evaluate(expression)?;
-
-                            map.insert(index, value);
-
-                            match distance {
-                                Ok(_) => self.environment.borrow_mut().assign(
-                                    name.lexeme,
-                                    LoxEntity::Map(map),
-                                )?,
-                                Err(_) => self.globals.borrow_mut().assign(
-                                    name.lexeme,
-                                    LoxEntity::Map(map),
-                                )?,
-                            };
-                        },
-                        _ => return Err(LoxError::AstError),
-                    };
-
-                    Ok(LoxEntity::Literal(Literal::Nil))
                 },
-                _ => Err(LoxError::AstError),
+                (
+                    LoxEntity::Map(mut map),
+                    LoxEntity::Literal(index)
+                ) => {
+                    let value = self.evaluate(expression)?;
 
-            },
-            _ => Err(LoxError::AstError),
-        }
+                    map.insert(index, value);
+
+                    match distance {
+                        Ok(_) => self.environment.borrow_mut().assign(
+                            name.lexeme,
+                            LoxEntity::Map(map),
+                        )?,
+                        Err(_) => self.globals.borrow_mut().assign(
+                            name.lexeme,
+                            LoxEntity::Map(map),
+                        )?,
+                    };
+                },
+                _ => return Err(LoxError::AstError),
+            };
+
+        Ok(LoxEntity::Literal(Literal::Nil))
     }
 
     fn visit_list(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        match expr {
-            Expression::List { expressions } => {
-                let mut list: Vec<LoxEntity> = vec![];
+        let Expression::List { expressions } = expr else {
+            return Err(LoxError::AstError);
+        };
 
-                for expression in expressions.iter() {
-                    let value = self.evaluate(expression)?;
-                    list.push(value);
-                }
+        let mut list: Vec<LoxEntity> = vec![];
 
-                Ok(LoxEntity::List(list))
-            },
-            _ => Err(LoxError::AstError),
+        for expression in expressions.iter() {
+            let value = self.evaluate(expression)?;
+            list.push(value);
         }
+
+        Ok(LoxEntity::List(list))
     }
 
     fn visit_literal(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
@@ -662,13 +632,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     }
 
     fn visit_logical(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (left, operator, right) = match expr {
-            Expression::Logical {
-                left,
-                operator,
-                right,
-            } => (left, operator, right),
-            _ => return Err(LoxError::AstError),
+        let Expression::Logical { left, operator, right } = expr else {
+            return Err(LoxError::AstError);
         };
 
         match self.evaluate(left)? {
@@ -692,34 +657,28 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
     }
 
     fn visit_map(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        match expr {
-            Expression::Map { expression_map } => {
-                let mut map: HashMap<Literal, LoxEntity> = HashMap::new();
+        let Expression::Map { expression_map } = expr else {
+            return Err(LoxError::AstError);
+        };
 
-                for (key, value) in expression_map.iter() {
-                    let key = match self.evaluate(&key)? {
-                        LoxEntity::Literal(literal) => literal,
-                        _ => return Err(LoxError::AstError),
-                    };
-                    let value = self.evaluate(value)?;
+        let mut map: HashMap<Literal, LoxEntity> = HashMap::new();
 
-                    map.insert(key, value);
-                }
+        for (key, value) in expression_map.iter() {
+            let key = match self.evaluate(&key)? {
+                LoxEntity::Literal(literal) => literal,
+                _ => return Err(LoxError::AstError),
+            };
+            let value = self.evaluate(value)?;
 
-                Ok(LoxEntity::Map(map))
-            },
-            _ => Err(LoxError::AstError),
+            map.insert(key, value);
         }
+
+        Ok(LoxEntity::Map(map))
     }
 
     fn visit_set(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (name, object, value) = match expr {
-            Expression::Set {
-                name,
-                object,
-                value,
-            } => (name, object, value),
-            _ => return Err(LoxError::AstError),
+        let Expression::Set { name, object, value } = expr else {
+            return Err(LoxError::AstError);
         };
 
         match (self.evaluate(object)?, &**object) {
@@ -760,12 +719,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
 
     fn visit_unary(&mut self, expr: &Expression) -> Result<LoxEntity, LoxError> {
-        let (operator, right) = match expr {
-            Expression::Unary {
-                operator,
-                right,
-            } => (operator, right),
-            _ => return Err(LoxError::AstError),
+        let Expression::Unary { operator, right } = expr else {
+            return Err(LoxError::AstError);
         };
 
         match operator.token_type {
@@ -822,11 +777,8 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
 
 impl StatementVisitor for Interpreter {
     fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let statements = match stmt {
-            Statement::Block {
-                statements,
-            } => statements,
-            _ => return Err(LoxError::AstError),
+        let Statement::Block { statements } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         let new_env = Rc::new(
@@ -839,12 +791,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_class(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let (name, methods) = match stmt {
-            Statement::Class {
-                name,
-                methods,
-            } => (name, methods),
-            _ => return Err(LoxError::AstError),
+        let Statement::Class { name, methods } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         self.environment.borrow_mut().define(
@@ -892,11 +840,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_expression(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let expression = match stmt {
-            Statement::Expression {
-                expression,
-            } => expression,
-            _ => return Err(LoxError::AstError),
+        let Statement::Expression { expression } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         let _ = self.evaluate(expression)?;
@@ -904,13 +849,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_foreach(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let (iterator, iterable, body) = match stmt {
-            Statement::Foreach {
-                iterator,
-                iterable,
-                body,
-            } => (iterator, iterable, body),
-            _ => return Err(LoxError::AstError),
+        let Statement::Foreach { iterator, iterable, body } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         match (&**body, self.evaluate(iterable)?) {
@@ -978,12 +918,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let name = match stmt {
-            Statement::Function {
-                name,
-                ..
-            } => name,
-            _ => return Err(LoxError::AstError),
+        let Statement::Function { name, .. } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         let callable = LoxCallable::Function {
@@ -1006,13 +942,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_if(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let (condition, then_branch, else_branch) = match stmt {
-            Statement::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => (condition, then_branch, else_branch),
-            _ => return Err(LoxError::AstError),
+        let Statement::If { condition, then_branch, else_branch } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         match self.is_truthy(condition)? {
@@ -1027,9 +958,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_print(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let expression = match stmt {
-            Statement::Print { expression } => expression,
-            _ => return Err(LoxError::AstError),
+        let Statement::Print { expression } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         println!("{}", self.evaluate(expression)?);
@@ -1038,18 +968,16 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_return(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let value = match stmt {
-            Statement::Return { keyword: _, value } => value,
-            _ => return Err(LoxError::AstError),
+        let Statement::Return { keyword: _, value } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         Err(LoxError::FunctionReturn(Box::new(self.evaluate(value)?)))
     }
 
     fn visit_while(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let (condition, body) = match stmt {
-            Statement::While { condition, body } => (condition, body),
-            _ => return Err(LoxError::AstError),
+        let Statement::While { condition, body } = stmt else {
+            return Err(LoxError::AstError);
         };
 
         while self.is_truthy(condition)? {
@@ -1060,9 +988,8 @@ impl StatementVisitor for Interpreter {
     }
 
     fn visit_var(&mut self, stmt: &Statement) -> Result<(), LoxError> {
-        let (name, initializer) = match stmt {
-            Statement::Var { name, initializer } => (name, initializer),
-            _ => return Err(LoxError::AstError),
+        let Statement::Var { name, initializer } = stmt else {
+            return Err(LoxError::AstError)
         };
 
         let value = match initializer {
