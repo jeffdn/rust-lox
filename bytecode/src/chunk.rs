@@ -6,13 +6,13 @@ use std::{
 
 use crate::value::{Value, ValueSet};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UpValue {
     pub is_local: bool,
     pub index: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpCode {
     Constant(usize),
     False,
@@ -88,7 +88,11 @@ pub struct Chunk {
     pub lines: Vec<usize>,
 }
 
-
+impl Default for Chunk {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Chunk {
     pub fn new() -> Chunk {

@@ -34,6 +34,12 @@ pub struct ValueSet {
     pub values: Vec<ValuePtr>,
 }
 
+impl Default for ValueSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ValueSet {
     pub fn new() -> ValueSet {
         ValueSet {

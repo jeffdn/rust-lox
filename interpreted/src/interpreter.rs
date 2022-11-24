@@ -19,6 +19,12 @@ pub struct Interpreter {
     pub locals: Rc<RefCell<Environment<Expression, usize>>>,
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Interpreter {
         let mut inner_globals: Environment<String, LoxEntity> = Environment::new(None);
@@ -520,10 +526,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
                     return Ok(LoxEntity::List(vec![]));
                 }
 
-                let output: Vec<LoxEntity> = list[slice_start..(slice_end + 1)]
-                    .iter()
-                    .cloned()
-                    .collect();
+                let output: Vec<LoxEntity> = list[slice_start..(slice_end + 1)].to_vec();
 
                 Ok(LoxEntity::List(output))
             },
@@ -546,65 +549,66 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
         let Expression::IndexedAssignment { indexed_item, expression } = expr else {
             return Err(LoxError::AstError);
         };
-            let Expression::Index { item, index, slice } = &**indexed_item else {
-                return Err(LoxError::AstError);
-            };
 
-            if slice.is_some() {
-                return Err(LoxError::AstError);
-            }
+        let Expression::Index { item, index, slice } = &**indexed_item else {
+            return Err(LoxError::AstError);
+        };
 
-            let name = match &**item {
-                Expression::Variable { name } => name.clone(),
-                _ => return Err(LoxError::AstError),
-            };
+        if slice.is_some() {
+            return Err(LoxError::AstError);
+        }
 
-            let distance = self.locals.borrow().get(expr);
+        let name = match &**item {
+            Expression::Variable { name } => name.clone(),
+            _ => return Err(LoxError::AstError),
+        };
 
-            let item = self.evaluate(item)?;
-            let index = self.evaluate(index)?;
+        let distance = self.locals.borrow().get(expr);
 
-            match (item, index) {
-                (
-                    LoxEntity::List(mut list),
-                    LoxEntity::Literal(Literal::Number(index))
-                ) => {
-                    let list_index = self._convert_index(list.len(), index);
+        let item = self.evaluate(item)?;
+        let index = self.evaluate(index)?;
 
-                    list[list_index] = self.evaluate(expression)?;
+        match (item, index) {
+            (
+                LoxEntity::List(mut list),
+                LoxEntity::Literal(Literal::Number(index))
+            ) => {
+                let list_index = self._convert_index(list.len(), index);
 
-                    match distance {
-                        Ok(_) => self.environment.borrow_mut().assign(
-                            name.lexeme,
-                            LoxEntity::List(list),
-                        )?,
-                        Err(_) => self.globals.borrow_mut().assign(
-                            name.lexeme,
-                            LoxEntity::List(list),
-                        )?,
-                    };
-                },
-                (
-                    LoxEntity::Map(mut map),
-                    LoxEntity::Literal(index)
-                ) => {
-                    let value = self.evaluate(expression)?;
+                list[list_index] = self.evaluate(expression)?;
 
-                    map.insert(index, value);
+                match distance {
+                    Ok(_) => self.environment.borrow_mut().assign(
+                        name.lexeme,
+                        LoxEntity::List(list),
+                    )?,
+                    Err(_) => self.globals.borrow_mut().assign(
+                        name.lexeme,
+                        LoxEntity::List(list),
+                    )?,
+                };
+            },
+            (
+                LoxEntity::Map(mut map),
+                LoxEntity::Literal(index)
+            ) => {
+                let value = self.evaluate(expression)?;
 
-                    match distance {
-                        Ok(_) => self.environment.borrow_mut().assign(
-                            name.lexeme,
-                            LoxEntity::Map(map),
-                        )?,
-                        Err(_) => self.globals.borrow_mut().assign(
-                            name.lexeme,
-                            LoxEntity::Map(map),
-                        )?,
-                    };
-                },
-                _ => return Err(LoxError::AstError),
-            };
+                map.insert(index, value);
+
+                match distance {
+                    Ok(_) => self.environment.borrow_mut().assign(
+                        name.lexeme,
+                        LoxEntity::Map(map),
+                    )?,
+                    Err(_) => self.globals.borrow_mut().assign(
+                        name.lexeme,
+                        LoxEntity::Map(map),
+                    )?,
+                };
+            },
+            _ => return Err(LoxError::AstError),
+        };
 
         Ok(LoxEntity::Literal(Literal::Nil))
     }
@@ -664,7 +668,7 @@ impl ExpressionVisitor<LoxEntity> for Interpreter {
         let mut map: HashMap<Literal, LoxEntity> = HashMap::new();
 
         for (key, value) in expression_map.iter() {
-            let key = match self.evaluate(&key)? {
+            let key = match self.evaluate(key)? {
                 LoxEntity::Literal(literal) => literal,
                 _ => return Err(LoxError::AstError),
             };

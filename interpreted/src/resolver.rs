@@ -20,6 +20,12 @@ pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
 }
 
+impl Default for Resolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Resolver {
     pub fn new() -> Resolver {
         Resolver {
@@ -87,7 +93,7 @@ impl Resolver {
         }
 
         let scope = self.scopes.last_mut()
-            .ok_or(
+            .ok_or_else(||
                 LoxError::ResolutionError(
                     "can't define a variable without a scope!".to_string()
                 )
@@ -157,7 +163,7 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&**expression)?;
+        self.resolve_expression(expression)?;
         self.resolve_local(expr, name)?;
 
         Ok(())
@@ -172,8 +178,8 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*left)?;
-        self.resolve_expression(&*right)?;
+        self.resolve_expression(left)?;
+        self.resolve_expression(right)?;
 
         Ok(())
     }
@@ -187,7 +193,7 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*callee)?;
+        self.resolve_expression(callee)?;
 
         for argument in arguments.iter() {
             self.resolve_expression(argument)?;
@@ -205,7 +211,7 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*object)?;
+        self.resolve_expression(object)?;
 
         Ok(())
     }
@@ -219,7 +225,7 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*expression)?;
+        self.resolve_expression(expression)?;
 
         Ok(())
     }
@@ -233,11 +239,11 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*item)?;
-        self.resolve_expression(&*index)?;
+        self.resolve_expression(item)?;
+        self.resolve_expression(index)?;
 
         if let Some(slice) = slice {
-            self.resolve_expression(&*slice)?;
+            self.resolve_expression(slice)?;
         }
 
         Ok(())
@@ -252,8 +258,8 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*indexed_item)?;
-        self.resolve_expression(&*expression)?;
+        self.resolve_expression(indexed_item)?;
+        self.resolve_expression(expression)?;
 
         Ok(())
     }
@@ -294,8 +300,8 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*left)?;
-        self.resolve_expression(&*right)?;
+        self.resolve_expression(left)?;
+        self.resolve_expression(right)?;
 
         Ok(())
     }
@@ -326,8 +332,8 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*value)?;
-        self.resolve_expression(&*object)?;
+        self.resolve_expression(value)?;
+        self.resolve_expression(object)?;
 
         Ok(())
     }
@@ -341,7 +347,7 @@ impl ExpressionVisitor<()> for Resolver {
             );
         };
 
-        self.resolve_expression(&*right)?;
+        self.resolve_expression(right)?;
 
         Ok(())
     }
@@ -525,7 +531,7 @@ impl StatementVisitor for Resolver {
         self.declare(name)?;
 
         match initializer {
-            Some(init) => self.resolve_expression(&**init)?,
+            Some(init) => self.resolve_expression(init)?,
             None => {}
         };
 

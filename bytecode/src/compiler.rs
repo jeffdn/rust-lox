@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 enum Precedence {
-    NoPrecedence,
+    None,
     Assignment,
     Or,
     And,
@@ -27,7 +27,7 @@ enum Precedence {
 impl Precedence {
     fn get_parent(&self) -> Self {
         match self {
-            Precedence::NoPrecedence => Precedence::Assignment,
+            Precedence::None => Precedence::Assignment,
             Precedence::Assignment => Precedence::Or,
             Precedence::Or => Precedence::And,
             Precedence::And => Precedence::Equality,
@@ -37,7 +37,7 @@ impl Precedence {
             Precedence::Factor => Precedence::Unary,
             Precedence::Unary => Precedence::Call,
             Precedence::Call => Precedence::Primary,
-            Precedence::Primary => Precedence::NoPrecedence,
+            Precedence::Primary => Precedence::None,
         }
     }
 
@@ -56,7 +56,7 @@ impl Precedence {
             TokenType::And => Precedence::And,
             TokenType::Or => Precedence::Or,
             TokenType::LeftParen => Precedence::Call,
-            _ => Precedence::NoPrecedence,
+            _ => Precedence::None,
         }
     }
 }
@@ -83,6 +83,8 @@ struct CompilerNode {
     scope_depth: usize,
     function: Function,
 }
+
+type FixRule = fn(&mut Compiler, bool) -> Result<(), LoxError>;
 
 impl CompilerNode {
     pub fn new(function_type: FunctionType) -> CompilerNode {
@@ -381,12 +383,9 @@ impl Compiler {
         self.statement()?;
         self.emit_loop(loop_start)?;
 
-        match exit_jump {
-            Some(exit_jump) => {
-                self.patch_jump(exit_jump)?;
-                self.emit_byte(OpCode::Pop)?;
-            },
-            None => {},
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(exit_jump)?;
+            self.emit_byte(OpCode::Pop)?;
         };
 
         self.end_scope()
@@ -548,10 +547,10 @@ impl Compiler {
     }
 
     fn literal(&mut self, _can_assign: bool) -> Result<(), LoxError> {
-        match &self.previous.token_type {
-            &TokenType::Nil => self.emit_byte(OpCode::Nil),
-            &TokenType::False => self.emit_byte(OpCode::False),
-            &TokenType::True => self.emit_byte(OpCode::True),
+        match self.previous.token_type {
+            TokenType::Nil => self.emit_byte(OpCode::Nil),
+            TokenType::False => self.emit_byte(OpCode::False),
+            TokenType::True => self.emit_byte(OpCode::True),
             _ => self.error("unreachable"),
         }
     }
@@ -593,12 +592,12 @@ impl Compiler {
     }
 
     fn named_variable(&mut self, token: &Token, can_assign: bool) -> Result<(), LoxError> {
-        let (get_op, set_op) = match self.resolve_local(&token, 0) {
+        let (get_op, set_op) = match self.resolve_local(token, 0) {
             Ok(index) => (OpCode::GetLocal(index), OpCode::SetLocal(index)),
-            Err(_) => match self.resolve_upvalue(&token, 0) {
+            Err(_) => match self.resolve_upvalue(token, 0) {
                 Ok(index) => (OpCode::GetUpValue(index), OpCode::SetUpValue(index)),
                 Err(_) => {
-                    let index = self.identifier_constant(&token)?;
+                    let index = self.identifier_constant(token)?;
                     (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
                 },
             },
@@ -653,11 +652,11 @@ impl Compiler {
             return Err(LoxError::ResolutionError);
         }
 
-        if let Ok(index) = self.resolve_local(&token, depth + 1) {
+        if let Ok(index) = self.resolve_local(token, depth + 1) {
             return self.add_upvalue(index, true, depth);
         }
 
-        if let Ok(index) = self.resolve_upvalue(&token, depth + 1) {
+        if let Ok(index) = self.resolve_upvalue(token, depth + 1) {
             return self.add_upvalue(index, false, depth);
         }
 
@@ -680,7 +679,7 @@ impl Compiler {
         }
     }
 
-    fn get_prefix_rule(&mut self, token_type: &TokenType) -> Option<fn(&mut Self, bool) -> Result<(), LoxError>> {
+    fn get_prefix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
         match token_type {
             &TokenType::LeftParen => Some(Compiler::grouping),
             &TokenType::Minus |
@@ -695,7 +694,7 @@ impl Compiler {
         }
     }
 
-    fn get_infix_rule(&mut self, token_type: &TokenType) -> Option<fn(&mut Self, bool) -> Result<(), LoxError>> {
+    fn get_infix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
         match token_type {
             &TokenType::Minus |
             &TokenType::Plus |
@@ -847,7 +846,7 @@ impl Compiler {
     fn make_constant(&mut self, value: Value) -> Result<usize, LoxError> {
         let constant = self.chunk().add_constant(value);
 
-        if constant > usize::MAX {
+        if constant == usize::MAX {
             self.error("too many constants in one chunk")?;
         }
 
@@ -860,7 +859,7 @@ impl Compiler {
             return Ok(());
         }
 
-        self.error_at_current(message.into())
+        self.error_at_current(message)
     }
 
     fn token_type_matches(&mut self, token_type: &TokenType) -> Result<bool, LoxError> {

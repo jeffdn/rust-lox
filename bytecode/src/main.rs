@@ -60,13 +60,9 @@ fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
 fn main() -> Result<(), LoxError> {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 2 {
-        return Err(LoxError::UsageError);
-    } else if args.len() == 2 {
-        run_lox_file(&args[1])?;
-    } else {
-        run_lox_repl()?;
+    match args.len() {
+        1 => run_lox_repl(),
+        2 => run_lox_file(&args[1]),
+        _ => Err(LoxError::UsageError),
     }
-
-    Ok(())
 }

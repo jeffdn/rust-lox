@@ -90,12 +90,14 @@ fn integer_decode(val: f64) -> (u64, i16, i8) {
     (mantissa, exponent, sign)
 }
 
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for Literal {
     fn cmp(&self, other: &Self) -> Ordering {
         self.to_string().cmp(&other.to_string())
     }
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Literal {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {

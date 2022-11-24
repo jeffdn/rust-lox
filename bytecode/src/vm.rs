@@ -54,12 +54,15 @@ fn _built_in_str(input: &[ValuePtr]) -> Result<Value, LoxError> {
 }
 
 fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
-    match &*input[0].borrow() {
-        Value::Object(object) => match object {
-            Object::String(string) => Ok(Value::Number(string.len() as f64)),
-            _ => Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
-        },
-        _ => Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
+    let Value::Object(Object::String(string)) = &*input[0].borrow() else {
+        return Err(LoxError::RuntimeError("len() only accepts strings and lists".into()));
+    };
+    Ok(Value::Number(string.len() as f64))
+}
+
+impl Default for VirtualMachine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -193,17 +196,14 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
 
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let (b, a) = match (&*right, &*left) {
-                        (Value::Number(b), Value::Number(a)) => (b, a),
-                        _ => return Err(
+                    let (Value::Number(b), Value::Number(a)) = (&*right.borrow(), &*left.borrow()) else {
+                        return Err(
                             LoxError::RuntimeError(
                                 format!("comparison '{}' only operates on numbers", $op_char)
                             )
-                        ),
+                        );
                     };
+
                     self.stack_push_value($output(a $op b));
                 }
             };
@@ -233,9 +233,7 @@ impl VirtualMachine {
                         Some(val) => val.clone(),
                         None =>
                             return Err(
-                            LoxError::RuntimeError(
-                                format!("empty stack")
-                            )
+                            LoxError::RuntimeError("empty stack".to_string())
                         ),
                     };
                     let index = index + self.frame().stack_offset;
@@ -286,9 +284,7 @@ impl VirtualMachine {
                         Some(val) => val.clone(),
                         None =>
                             return Err(
-                            LoxError::RuntimeError(
-                                format!("empty stack")
-                            )
+                            LoxError::RuntimeError("empty stack".to_string())
                         ),
                     };
 
@@ -308,7 +304,7 @@ impl VirtualMachine {
 
                     self.stack_push_value(
                         Value::Bool(
-                            self.values_equal(&*left.borrow(), &*right.borrow())?
+                            self.values_equal(&left.borrow(), &right.borrow())?
                         )
                     );
                 },
@@ -478,7 +474,7 @@ impl VirtualMachine {
                 Object::Closure(closure) => {
                     self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
 
-                    self.call(&closure, arg_count)?;
+                    self.call(closure, arg_count)?;
                     Ok(true)
                 },
                 Object::Native(native) => {
@@ -512,6 +508,7 @@ impl VirtualMachine {
         )
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn truthy(&self, item: &ValuePtr) -> Result<bool, LoxError> {
         match &*item.borrow() {
             Value::Number(number) => Ok(*number != 0.0f64),
