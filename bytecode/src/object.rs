@@ -14,19 +14,31 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
-    String(Box<String>),
-    Function(Box<Function>),
-    Native(Box<NativeFunction>),
-    Closure(Box<Closure>),
+    BoundMethod(Box<BoundMethod>),
     Class(Box<Class>),
+    Closure(Box<Closure>),
+    Function(Box<Function>),
     Instance(Box<Instance>),
-    UpValue(Box<ObjUpValue>),
+    Native(Box<NativeFunction>),
+    String(Box<String>),
+    UpValue(Box<UpValue>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
     pub name: String,
+    pub methods: HashMap<String, ValuePtr>,
     pub obj: Option<Object>,
+}
+
+impl Class {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            methods: HashMap::new(),
+            obj: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -47,17 +59,25 @@ impl Instance {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ObjUpValue {
+pub struct BoundMethod {
+    pub receiver: ValuePtr,
+    pub closure: ValuePtr,
+    pub obj: Option<Object>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UpValue {
     pub location: ValuePtr,
     pub location_index: usize, // the position of `location` in the stack
     pub obj: Option<Object>,
 }
 
-pub type ObjUpValuePtr = Rc<RefCell<ObjUpValue>>;
+pub type UpValuePtr = Rc<RefCell<UpValue>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FunctionType {
     Function,
+    Method,
     Script,
 }
 
@@ -66,7 +86,7 @@ pub type NativeFn = fn(&[ValuePtr]) -> Result<Value, LoxError>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub obj: Option<Object>,
-    pub upvalues: Vec<ObjUpValuePtr>,
+    pub upvalues: Vec<UpValuePtr>,
     pub function: Function,
 }
 
@@ -89,6 +109,7 @@ impl fmt::Debug for NativeFunction {
         write!(f, "<native function>")
     }
 }
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub function_type: FunctionType,
@@ -102,11 +123,26 @@ pub struct Function {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {
-            Object::String(string) => *string.clone(),
-            Object::Function(function) => function.name.clone(),
-            Object::Native(_) => "built-in".into(),
-            Object::Closure(closure) => closure.function.name.clone(),
+            Object::BoundMethod(method) => {
+                let Value::Object(Object::Instance(receiver)) = &*method.receiver.borrow() else {
+                    unreachable!();
+                };
+                let Value::Object(Object::Class(class)) = &*receiver.class.borrow() else {
+                    unreachable!();
+                };
+                let Value::Object(Object::Closure(closure)) = &*method.closure.borrow() else {
+                    unreachable!();
+                };
+
+                format!(
+                    "<method {} on {} instance>",
+                    closure.function.name,
+                    class.name,
+                )
+            },
             Object::Class(class) => class.name.clone(),
+            Object::Closure(closure) => closure.function.name.clone(),
+            Object::Function(function) => function.name.clone(),
             Object::Instance(instance) => {
                 let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
                     unreachable!();
@@ -114,6 +150,8 @@ impl fmt::Display for Object {
 
                 format!("<{} instance>", class.name)
             },
+            Object::Native(_) => "built-in".into(),
+            Object::String(string) => *string.clone(),
             Object::UpValue(_) => "up-value".into(),
         };
 

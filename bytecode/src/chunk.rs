@@ -46,6 +46,7 @@ pub enum OpCode {
     CloseUpValue,
     Return,
     Class(usize),
+    Method(usize),
 }
 
 impl fmt::Display for OpCode {
@@ -83,6 +84,7 @@ impl fmt::Display for OpCode {
             OpCode::CloseUpValue => "op_close_upvalue",
             OpCode::Return => "op_return",
             OpCode::Class(_) => "op_class",
+            OpCode::Method(_) => "op_method",
         };
 
         write!(f, "{:<20}", as_string)
@@ -188,6 +190,7 @@ impl Chunk {
                 "{:<20} {}", "op_closure", index,
             ),
             OpCode::Class(index) => format!("{:<20} {}", "op_class", index),
+            OpCode::Method(index) => format!("{:<20} {}", "op_method", index),
             _ => code.to_string(),
         };
 

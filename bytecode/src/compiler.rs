@@ -96,7 +96,7 @@ impl CompilerNode {
             upvalues: Vec::with_capacity(256),
             scope_depth: 0,
             function: Function {
-                function_type,
+                function_type: function_type.clone(),
                 obj: None,
                 arity: 0,
                 upvalue_count: 0,
@@ -105,12 +105,17 @@ impl CompilerNode {
             }
         };
 
+        let (token_type, length) = match function_type {
+            FunctionType::Method => (TokenType::This, 4),
+            _ => (TokenType::Skip, 0),
+        };
+
         node.locals.push(
             Local {
                 name: Token {
-                    token_type: TokenType::Skip,
+                    token_type,
+                    length,
                     start: 0,
-                    length: 0,
                     line: 0,
                 },
                 depth: Some(0),
@@ -325,15 +330,34 @@ impl Compiler {
         self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
     }
 
+    fn method(&mut self) -> Result<(), LoxError> {
+        self.consume(TokenType::Identifier, "expect method name")?;
+        let name_constant = self.identifier_constant(&self.previous.clone())?;
+
+        self.function(FunctionType::Method)?;
+
+        self.emit_byte(OpCode::Method(name_constant))?;
+
+        Ok(())
+    }
+
     fn class_declaration(&mut self) -> Result<(), LoxError> {
         self.consume(TokenType::Identifier, "expect class name")?;
-        let name_constant = self.identifier_constant(&self.previous.clone())?;
+        let class_name = self.previous.clone();
+        let name_constant = self.identifier_constant(&class_name)?;
         self.declare_variable()?;
 
         self.emit_byte(OpCode::Class(name_constant))?;
         self.define_variable(name_constant)?;
 
+        self.named_variable(&class_name, false)?;
         self.consume(TokenType::LeftBrace, "expect '{' before class body")?;
+
+        while !self.check_current_token(&TokenType::RightBrace) &&
+              !self.check_current_token(&TokenType::Eof) {
+            self.method()?;
+        }
+
         self.consume(TokenType::RightBrace, "expect '}' after class body")?;
 
         Ok(())
@@ -658,7 +682,8 @@ impl Compiler {
 
     fn resolve_local(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
         match self.compiler_at(depth).locals.iter().enumerate().rev().find(|(_, x)| {
-            self.scanner.get_string(&x.name) == self.scanner.get_string(token)
+            self.scanner.get_string(&x.name) == self.scanner.get_string(token) ||
+                x.name.token_type == TokenType::This
         }) {
             Some((idx, local)) => match local.depth {
                 Some(_) => Ok(idx),
@@ -711,6 +736,10 @@ impl Compiler {
         self.named_variable(&self.previous.clone(), can_assign)
     }
 
+    fn this_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        self.variable(false)
+    }
+
     fn unary(&mut self, _can_assign: bool) -> Result<(), LoxError> {
         let operator_type = self.previous.token_type.clone();
 
@@ -734,6 +763,7 @@ impl Compiler {
             &TokenType::True |
             &TokenType::False => Some(Compiler::literal),
             &TokenType::Identifier => Some(Compiler::variable),
+            &TokenType::This => Some(Compiler::this_),
             _ => None,
         }
     }

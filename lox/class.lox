@@ -1,21 +1,20 @@
-// class Foo {
-//   bar(who) {
-//     print who + " says: crunch crunch crunch";
-//   }
-// }
-//
-// var foo = Foo();
-//
-// foo.bar("coco");
-// foo.bar("melvin");
-
-class Foo {}
+class Foo {
+  bar() {
+    print this.name + " says: crunch crunch crunch";
+  }
+  set_who(name) {
+    this.name = name;
+  }
+}
 
 var foo = Foo();
 
-foo.a = 1;
-foo.b = 2;
+foo.set_who("Coco");
+foo.bar();
 
-print foo.a + foo.b;
-
-print foo.fruit = "grape";
+// foo.a = 1;
+// foo.b = 2;
+//
+// print foo.a + foo.b;
+//
+// print foo.fruit = "grape";

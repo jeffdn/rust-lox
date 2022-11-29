@@ -10,6 +10,7 @@ use crate::{
     compiler::Compiler,
     errors::LoxError,
     object::{
+        BoundMethod,
         Class,
         Closure,
         Function,
@@ -17,8 +18,8 @@ use crate::{
         NativeFn,
         NativeFunction,
         Object,
-        ObjUpValue,
-        ObjUpValuePtr,
+        UpValue,
+        UpValuePtr,
     },
     value::{Value, ValuePtr},
 };
@@ -36,7 +37,7 @@ pub struct VirtualMachine {
     frames: Vec<CallFrame>,
     stack: Vec<ValuePtr>,
     globals: HashMap<String, ValuePtr>,
-    upvalues: Vec<ObjUpValuePtr>,
+    upvalues: Vec<UpValuePtr>,
 }
 
 fn _built_in_time(_: &[ValuePtr]) -> Result<Value, LoxError> {
@@ -317,13 +318,7 @@ impl VirtualMachine {
                             self.pop_stack()?;
                             self.stack.push(prop.clone());
                         },
-                        None => {
-                            return Err(
-                                LoxError::RuntimeError(
-                                    format!("'{}' not a valid property", &**prop_name)
-                                )
-                            );
-                        },
+                        None => self.bind_method(instance.class.clone(), &**prop_name)?,
                     };
                 },
                 OpCode::SetProperty(index) => {
@@ -434,7 +429,7 @@ impl VirtualMachine {
                         _ => unreachable!(),
                     };
 
-                    let mut captured: Vec<ObjUpValuePtr> = Vec::with_capacity(upvalues.len());
+                    let mut captured: Vec<UpValuePtr> = Vec::with_capacity(upvalues.len());
                     for uv in upvalues.clone().iter() {
                         let new_upvalue = match uv.is_local {
                             true => self.capture_upvalue(uv.index)?,
@@ -484,23 +479,20 @@ impl VirtualMachine {
                     self.stack.push(result);
                 },
                 OpCode::Class(index) => {
-                    let name_constant = self.function().chunk.constants.get(index).clone();
-                    let Value::Object(Object::String(name)) = &*name_constant.borrow() else {
-                        unreachable!();
-                    };
+                    let class_name = self.read_string(index)?;
 
                     self.stack_push_value(
                         Value::Object(
                             Object::Class(
                                 Box::new(
-                                    Class {
-                                        name: *name.clone(),
-                                        obj: None,
-                                    }
+                                    Class::new(class_name)
                                 )
                             )
                         )
                     );
+                },
+                OpCode::Method(index) => {
+                    self.define_method(self.read_string(index)?)?;
                 },
             };
 
@@ -508,6 +500,19 @@ impl VirtualMachine {
         }
 
         Ok(())
+    }
+
+    fn read_string(&self, index: usize) -> Result<String, LoxError> {
+        let name_constant = self.function().chunk.constants.get(index).clone();
+        let Value::Object(Object::String(name)) = &*name_constant.borrow() else {
+            return Err(
+                LoxError::RuntimeError(
+                    "tried to read a string and failed".into()
+                )
+            );
+        };
+
+        Ok(*name.clone())
     }
 
     fn check_arity(
@@ -546,21 +551,14 @@ impl VirtualMachine {
 
         match &*borrowed_at_offset {
             Value::Object(object) => match object {
-                Object::Closure(closure) => {
-                    self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
+                Object::BoundMethod(bound_method) => {
+                    let Value::Object(Object::Closure(closure)) = &*bound_method.closure.borrow() else {
+                        unreachable!();
+                    };
+                    let arg_range_start = self.stack.len() - arg_count;
+                    self.stack[arg_range_start - 1] = bound_method.receiver.clone();
 
                     self.call(closure, arg_count)?;
-                    Ok(true)
-                },
-                Object::Native(native) => {
-                    self.check_arity(&native.name, native.arity, arg_count)?;
-
-                    let arg_range_start = self.stack.len() - arg_count;
-                    let result = (native.function)(&self.stack[arg_range_start..])?;
-
-                    self.stack.truncate(arg_range_start - 1);
-                    self.stack_push_value(result);
-                    self.frame_mut().pos += 1;
 
                     Ok(true)
                 },
@@ -583,13 +581,63 @@ impl VirtualMachine {
 
                     Ok(true)
                 },
+                Object::Closure(closure) => {
+                    self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
+
+                    self.call(closure, arg_count)?;
+                    Ok(true)
+                },
+                Object::Native(native) => {
+                    self.check_arity(&native.name, native.arity, arg_count)?;
+
+                    let arg_range_start = self.stack.len() - arg_count;
+                    let result = (native.function)(&self.stack[arg_range_start..])?;
+
+                    self.stack.truncate(arg_range_start - 1);
+                    self.stack_push_value(result);
+                    self.frame_mut().pos += 1;
+
+                    Ok(true)
+                },
                 _ => Err(LoxError::RuntimeError("can only call functions and classes".into()))
             },
             _ => Err(LoxError::RuntimeError("can only call functions and classes".into()))
         }
     }
 
-    fn capture_upvalue(&mut self, upvalue_index: usize) -> Result<ObjUpValuePtr, LoxError> {
+    fn bind_method(&mut self, class_ptr: ValuePtr, name: &String) -> Result<(), LoxError> {
+        let Value::Object(Object::Class(class)) = &*class_ptr.borrow() else {
+            unreachable!();
+        };
+
+        match class.methods.get(name) {
+            Some(method) => {
+                let bound_method = Value::Object(
+                    Object::BoundMethod(
+                        Box::new(
+                            BoundMethod {
+                                receiver: self.stack.last().unwrap().clone(),
+                                closure: method.clone(),
+                                obj: None,
+                            }
+                        )
+                    )
+                );
+
+                self.pop_stack()?;
+                self.stack_push_value(bound_method);
+
+                Ok(())
+            },
+            None => Err(
+                LoxError::RuntimeError(
+                    format!("'{}' not a valid property", name)
+                )
+            )
+        }
+    }
+
+    fn capture_upvalue(&mut self, upvalue_index: usize) -> Result<UpValuePtr, LoxError> {
         let item = &self.stack[self.frame().stack_offset + upvalue_index];
 
         for (idx, upvalue) in self.upvalues.iter().enumerate() {
@@ -600,7 +648,7 @@ impl VirtualMachine {
 
         let new_upvalue = Rc::new(
             RefCell::new(
-                ObjUpValue {
+                UpValue {
                     location: item.clone(),
                     location_index: upvalue_index,
                     obj: None,
@@ -630,19 +678,37 @@ impl VirtualMachine {
         // }
     }
 
+    fn define_method(&mut self, name: String) -> Result<(), LoxError> {
+        let method = self.stack.last().unwrap();
+        let class_ptr = self.stack[self.stack.len() - 2].clone();
+        let Value::Object(Object::Class(class)) = &mut *class_ptr.borrow_mut() else {
+            return Err(
+                LoxError::RuntimeError(
+                    "attempting to define a method, no class on stack".into()
+                )
+            );
+        };
+
+        class.methods.insert(name, method.clone());
+        self.stack.pop();
+
+        Ok(())
+    }
+
     #[allow(clippy::only_used_in_recursion)]
     fn truthy(&self, item: &ValuePtr) -> Result<bool, LoxError> {
         match &*item.borrow() {
-            Value::Number(number) => Ok(*number != 0.0f64),
-            Value::Nil => Ok(false),
             Value::Bool(boolean) => Ok(*boolean),
+            Value::Nil => Ok(false),
+            Value::Number(number) => Ok(*number != 0.0f64),
             Value::Object(object) => match object {
-                Object::String(string) => Ok(!string.is_empty()),
-                Object::Function(_) => Ok(true),
-                Object::Native(_) => Ok(true),
-                Object::Closure(_) => Ok(true),
+                Object::BoundMethod(_) => Ok(true),
                 Object::Class(_) => Ok(true),
+                Object::Closure(_) => Ok(true),
+                Object::Function(_) => Ok(true),
                 Object::Instance(_) => Ok(true),
+                Object::Native(_) => Ok(true),
+                Object::String(string) => Ok(!string.is_empty()),
                 Object::UpValue(value) => self.truthy(&value.location),
             },
         }
@@ -650,12 +716,12 @@ impl VirtualMachine {
 
     fn values_equal(&self, left: &Value, right: &Value) -> Result<bool, LoxError> {
         match (left, right) {
-            (Value::Number(left), Value::Number(right)) => Ok(left == right),
-            (Value::Nil, Value::Nil) => Ok(true),
             (Value::Bool(left), Value::Bool(right)) => Ok(left == right),
+            (Value::Nil, Value::Nil) => Ok(true),
+            (Value::Number(left), Value::Number(right)) => Ok(left == right),
             (Value::Object(left), Value::Object(right)) => match (left, right) {
-                (Object::String(left), Object::String(right)) => Ok(left == right),
                 (Object::Function(left), Object::Function(right)) => Ok(left.name == right.name),
+                (Object::String(left), Object::String(right)) => Ok(left == right),
                 _ => Ok(false),
             },
             _ => Ok(false),
