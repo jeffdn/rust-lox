@@ -1,6 +1,7 @@
 use std::{
     boxed::Box,
     cell::RefCell,
+    collections::HashMap,
     fmt,
     rc::Rc,
 };
@@ -17,7 +18,32 @@ pub enum Object {
     Function(Box<Function>),
     Native(Box<NativeFunction>),
     Closure(Box<Closure>),
+    Class(Box<Class>),
+    Instance(Box<Instance>),
     UpValue(Box<ObjUpValue>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Class {
+    pub name: String,
+    pub obj: Option<Object>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Instance {
+    pub class: ValuePtr,
+    pub fields: HashMap<String, ValuePtr>,
+    pub obj: Option<Object>,
+}
+
+impl Instance {
+    pub fn new(class: ValuePtr) -> Self {
+        Self {
+            class,
+            fields: HashMap::new(),
+            obj: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -80,6 +106,14 @@ impl fmt::Display for Object {
             Object::Function(function) => function.name.clone(),
             Object::Native(_) => "built-in".into(),
             Object::Closure(closure) => closure.function.name.clone(),
+            Object::Class(class) => class.name.clone(),
+            Object::Instance(instance) => {
+                let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
+                    unreachable!();
+                };
+
+                format!("<{} instance>", class.name)
+            },
             Object::UpValue(_) => "up-value".into(),
         };
 

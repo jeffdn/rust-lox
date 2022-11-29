@@ -10,8 +10,10 @@ use crate::{
     compiler::Compiler,
     errors::LoxError,
     object::{
+        Class,
         Closure,
         Function,
+        Instance,
         NativeFn,
         NativeFunction,
         Object,
@@ -300,6 +302,46 @@ impl VirtualMachine {
                     self.frame_mut().closure.upvalues[index - 1]
                         .borrow_mut().location = self.stack.last().unwrap().clone();
                 },
+                OpCode::GetProperty(index) => {
+                    let instance_ptr = self.stack.last().unwrap().clone();
+                    let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
+                        return Err(LoxError::RuntimeError("not an instance".into()));
+                    };
+                    let name_constant = self.function().chunk.constants.get(index).clone();
+                    let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
+                        unreachable!();
+                    };
+
+                    match instance.fields.get(&**prop_name) {
+                        Some(prop) => {
+                            self.pop_stack()?;
+                            self.stack.push(prop.clone());
+                        },
+                        None => {
+                            return Err(
+                                LoxError::RuntimeError(
+                                    format!("'{}' not a valid property", &**prop_name)
+                                )
+                            );
+                        },
+                    };
+                },
+                OpCode::SetProperty(index) => {
+                    let instance_ptr = self.stack[self.stack.len() - 2].clone();
+                    let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut() else {
+                        return Err(LoxError::RuntimeError("not an instance".into()));
+                    };
+                    let name_constant = self.function().chunk.constants.get(index).clone();
+                    let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
+                        unreachable!();
+                    };
+
+                    let value = self.pop_stack()?;
+                    self.pop_stack()?;
+
+                    instance.fields.insert(*prop_name.clone(), value.clone());
+                    self.stack.push(value);
+                },
                 OpCode::Equal => {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
@@ -441,6 +483,25 @@ impl VirtualMachine {
                     self.stack.truncate(old_frame.stack_offset);
                     self.stack.push(result);
                 },
+                OpCode::Class(index) => {
+                    let name_constant = self.function().chunk.constants.get(index).clone();
+                    let Value::Object(Object::String(name)) = &*name_constant.borrow() else {
+                        unreachable!();
+                    };
+
+                    self.stack_push_value(
+                        Value::Object(
+                            Object::Class(
+                                Box::new(
+                                    Class {
+                                        name: *name.clone(),
+                                        obj: None,
+                                    }
+                                )
+                            )
+                        )
+                    );
+                },
             };
 
             self.frame_mut().pos += 1;
@@ -481,9 +542,9 @@ impl VirtualMachine {
     fn call_value(&mut self, arg_count: usize) -> Result<bool, LoxError> {
         let offset = self.stack.len() - arg_count - 1;
         let at_offset = self.stack[offset].clone();
-        let at_offset = at_offset.borrow();
+        let borrowed_at_offset = at_offset.borrow();
 
-        match &*at_offset {
+        match &*borrowed_at_offset {
             Value::Object(object) => match object {
                 Object::Closure(closure) => {
                     self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
@@ -499,6 +560,25 @@ impl VirtualMachine {
 
                     self.stack.truncate(arg_range_start - 1);
                     self.stack_push_value(result);
+                    self.frame_mut().pos += 1;
+
+                    Ok(true)
+                },
+                Object::Class(_) => {
+                    let position = self.stack.len() - arg_count - 1;
+                    self.stack[position] = Rc::new(
+                        RefCell::new(
+                            Value::Object(
+                                Object::Instance(
+                                    Box::new(
+                                        Instance::new(
+                                            at_offset.clone()
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    );
                     self.frame_mut().pos += 1;
 
                     Ok(true)
@@ -561,6 +641,8 @@ impl VirtualMachine {
                 Object::Function(_) => Ok(true),
                 Object::Native(_) => Ok(true),
                 Object::Closure(_) => Ok(true),
+                Object::Class(_) => Ok(true),
+                Object::Instance(_) => Ok(true),
                 Object::UpValue(value) => self.truthy(&value.location),
             },
         }

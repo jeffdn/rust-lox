@@ -55,6 +55,7 @@ impl Precedence {
             TokenType::LessEqual => Precedence::Comparison,
             TokenType::And => Precedence::And,
             TokenType::Or => Precedence::Or,
+            TokenType::Dot |
             TokenType::LeftParen => Precedence::Call,
             _ => Precedence::None,
         }
@@ -324,6 +325,20 @@ impl Compiler {
         self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
     }
 
+    fn class_declaration(&mut self) -> Result<(), LoxError> {
+        self.consume(TokenType::Identifier, "expect class name")?;
+        let name_constant = self.identifier_constant(&self.previous.clone())?;
+        self.declare_variable()?;
+
+        self.emit_byte(OpCode::Class(name_constant))?;
+        self.define_variable(name_constant)?;
+
+        self.consume(TokenType::LeftBrace, "expect '{' before class body")?;
+        self.consume(TokenType::RightBrace, "expect '}' after class body")?;
+
+        Ok(())
+    }
+
     fn function_declaration(&mut self) -> Result<(), LoxError> {
         let global = self.parse_variable("expect function name")?;
 
@@ -486,7 +501,9 @@ impl Compiler {
     }
 
     fn declaration(&mut self) -> Result<(), LoxError> {
-        if self.token_type_matches(&TokenType::Function)? {
+        if self.token_type_matches(&TokenType::Class)? {
+            self.class_declaration()?;
+        } else if self.token_type_matches(&TokenType::Function)? {
             self.function_declaration()?;
         } else if self.token_type_matches(&TokenType::Var)? {
             self.var_declaration()?;
@@ -554,6 +571,20 @@ impl Compiler {
         let arg_count = self.argument_list()?;
 
         self.emit_byte(OpCode::Call(arg_count))?;
+
+        Ok(())
+    }
+
+    fn dot(&mut self, can_assign: bool) -> Result<(), LoxError> {
+        self.consume(TokenType::Identifier, "expect property name after '.'")?;
+        let name = self.identifier_constant(&self.previous.clone())?;
+
+        if can_assign && self.token_type_matches(&TokenType::Equal)? {
+            self.expression()?;
+            self.emit_byte(OpCode::SetProperty(name))?;
+        } else {
+            self.emit_byte(OpCode::GetProperty(name))?;
+        }
 
         Ok(())
     }
@@ -719,6 +750,7 @@ impl Compiler {
             &TokenType::GreaterEqual |
             &TokenType::Less |
             &TokenType::LessEqual => Some(Compiler::binary),
+            &TokenType::Dot => Some(Compiler::dot),
             &TokenType::And => Some(Compiler::and_),
             &TokenType::Or => Some(Compiler::or_),
             &TokenType::LeftParen => Some(Compiler::call),

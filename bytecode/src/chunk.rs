@@ -26,6 +26,8 @@ pub enum OpCode {
     SetGlobal(usize),
     GetUpValue(usize),
     SetUpValue(usize),
+    GetProperty(usize),
+    SetProperty(usize),
     Equal,
     Greater,
     Less,
@@ -43,6 +45,7 @@ pub enum OpCode {
     Closure(usize, Box<Vec<UpValue>>),
     CloseUpValue,
     Return,
+    Class(usize),
 }
 
 impl fmt::Display for OpCode {
@@ -60,6 +63,8 @@ impl fmt::Display for OpCode {
             OpCode::SetGlobal(_) => "op_set_global",
             OpCode::GetUpValue(_) => "op_get_upvalue",
             OpCode::SetUpValue(_) => "op_set_upvalue",
+            OpCode::GetProperty(_) => "op_get_property",
+            OpCode::SetProperty(_) => "op_set_property",
             OpCode::Equal => "op_equal",
             OpCode::Greater => "op_greater",
             OpCode::Less => "op_less",
@@ -77,6 +82,7 @@ impl fmt::Display for OpCode {
             OpCode::Closure(_, _) => "op_closure",
             OpCode::CloseUpValue => "op_close_upvalue",
             OpCode::Return => "op_return",
+            OpCode::Class(_) => "op_class",
         };
 
         write!(f, "{:<20}", as_string)
@@ -160,6 +166,12 @@ impl Chunk {
             OpCode::SetUpValue(index) => format!(
                 "{:<20} {}, {:?}", "op_set_upvalue", *index, self.constants.get(*index),
             ),
+            OpCode::GetProperty(index) => format!(
+                "{:<20} {}", "op_get_property", *index, //self.constants.get(*index),
+            ),
+            OpCode::SetProperty(index) => format!(
+                "{:<20} {}", "op_set_property", *index,
+            ),
             OpCode::Jump(offset) => format!(
                 "{:<20} {}", "op_jump", offset,
             ),
@@ -175,6 +187,7 @@ impl Chunk {
             OpCode::Closure(index, _) => format!(
                 "{:<20} {}", "op_closure", index,
             ),
+            OpCode::Class(index) => format!("{:<20} {}", "op_class", index),
             _ => code.to_string(),
         };
 
