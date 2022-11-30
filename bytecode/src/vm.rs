@@ -38,6 +38,8 @@ pub struct VirtualMachine {
     stack: Vec<ValuePtr>,
     globals: HashMap<String, ValuePtr>,
     upvalues: Vec<UpValuePtr>,
+
+    init_string: String,
 }
 
 fn _built_in_time(_: &[ValuePtr]) -> Result<Value, LoxError> {
@@ -77,6 +79,7 @@ impl VirtualMachine {
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::with_capacity(STACK_MAX),
             upvalues: Vec::with_capacity(STACK_MAX),
+            init_string: "init".into(),
         }
     }
 
@@ -562,7 +565,7 @@ impl VirtualMachine {
 
                     Ok(true)
                 },
-                Object::Class(_) => {
+                Object::Class(class) => {
                     let position = self.stack.len() - arg_count - 1;
                     self.stack[position] = Rc::new(
                         RefCell::new(
@@ -577,7 +580,22 @@ impl VirtualMachine {
                             )
                         )
                     );
-                    self.frame_mut().pos += 1;
+
+                    if let Some(initializer_ptr) = class.methods.get(&self.init_string) {
+                        let Value::Object(Object::Closure(initializer)) = &*initializer_ptr.borrow() else {
+                            unreachable!();
+                        };
+
+                        self.call(initializer, arg_count)?;
+                    } else if arg_count != 0 {
+                        return Err(
+                            LoxError::RuntimeError(
+                                format!("expected no arguments on initialization but got {}", arg_count)
+                            )
+                        );
+                    } else {
+                        self.frame_mut().pos += 1;
+                    }
 
                     Ok(true)
                 },

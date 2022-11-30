@@ -1,16 +1,18 @@
-class Foo {
-  bar() {
-    print this.name + " says: crunch crunch crunch";
-  }
-  set_who(name) {
+class Cat {
+  init(name) {
     this.name = name;
+  }
+
+  eat() {
+    print this.name + " says: crunch crunch crunch";
   }
 }
 
-var foo = Foo();
+var coco = Cat("Coco");
+var melvin = Cat("Melvin");
 
-foo.set_who("Coco");
-foo.bar();
+coco.eat();
+melvin.eat();
 
 // foo.a = 1;
 // foo.b = 2;

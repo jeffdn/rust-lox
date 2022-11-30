@@ -77,6 +77,7 @@ pub type UpValuePtr = Rc<RefCell<UpValue>>;
 #[derive(Clone, Debug, PartialEq)]
 pub enum FunctionType {
     Function,
+    Initializer,
     Method,
     Script,
 }

@@ -68,8 +68,11 @@ struct Local {
     is_captured: bool,
 }
 
+struct ClassCompiler;
+
 pub struct Compiler {
     compilers: Vec<CompilerNode>,
+    classes: Vec<ClassCompiler>,
 
     current: Token,
     previous: Token,
@@ -106,7 +109,7 @@ impl CompilerNode {
         };
 
         let (token_type, length) = match function_type {
-            FunctionType::Method => (TokenType::This, 4),
+            FunctionType::Method | FunctionType::Initializer => (TokenType::This, 4),
             _ => (TokenType::Skip, 0),
         };
 
@@ -131,6 +134,7 @@ impl Compiler {
     pub fn new(source: &str) -> Compiler {
         Compiler {
             compilers: vec![CompilerNode::new(FunctionType::Script)],
+            classes: Vec::new(),
             current: Token {
                 token_type: TokenType::Eof,
                 start: 0,
@@ -263,7 +267,11 @@ impl Compiler {
     }
 
     fn emit_return(&mut self) -> Result<(), LoxError> {
-        self.emit_byte(OpCode::Nil)?;
+        match self.current_function().function_type {
+            FunctionType::Initializer => self.emit_byte(OpCode::GetLocal(0))?,
+            _ => self.emit_byte(OpCode::Nil)?,
+        };
+
         self.emit_byte(OpCode::Return)
     }
 
@@ -332,9 +340,17 @@ impl Compiler {
 
     fn method(&mut self) -> Result<(), LoxError> {
         self.consume(TokenType::Identifier, "expect method name")?;
-        let name_constant = self.identifier_constant(&self.previous.clone())?;
 
-        self.function(FunctionType::Method)?;
+        let previous = self.previous.clone();
+        let name_constant = self.identifier_constant(&previous)?;
+        let name = self.scanner.get_string(&previous);
+
+        let function_type = match name.as_str() {
+            "init" => FunctionType::Initializer,
+            _ => FunctionType::Method,
+        };
+
+        self.function(function_type)?;
 
         self.emit_byte(OpCode::Method(name_constant))?;
 
@@ -350,6 +366,8 @@ impl Compiler {
         self.emit_byte(OpCode::Class(name_constant))?;
         self.define_variable(name_constant)?;
 
+        self.classes.push(ClassCompiler);
+
         self.named_variable(&class_name, false)?;
         self.consume(TokenType::LeftBrace, "expect '{' before class body")?;
 
@@ -359,6 +377,9 @@ impl Compiler {
         }
 
         self.consume(TokenType::RightBrace, "expect '}' after class body")?;
+        self.emit_byte(OpCode::Pop)?;
+
+        self.classes.pop();
 
         Ok(())
     }
@@ -476,6 +497,14 @@ impl Compiler {
         match self.token_type_matches(&TokenType::Semicolon)? {
             true => self.emit_return(),
             false => {
+                if self.current_function().function_type == FunctionType::Initializer {
+                    return Err(
+                        LoxError::ParseError(
+                            "can't return from a class initializer".into()
+                        )
+                    );
+                }
+
                 self.expression()?;
                 self.consume(TokenType::Semicolon, "expect ';' after value")?;
                 self.emit_byte(OpCode::Return)
@@ -737,6 +766,12 @@ impl Compiler {
     }
 
     fn this_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        if self.classes.is_empty() {
+            return Err(
+                LoxError::ParseError("can't use 'this' outside of classes".into())
+            );
+        }
+
         self.variable(false)
     }
 
