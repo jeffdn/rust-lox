@@ -340,6 +340,76 @@ impl VirtualMachine {
                     instance.fields.insert(*prop_name.clone(), value.clone());
                     self.stack.push(value);
                 },
+                OpCode::GetIndex => {
+                    let index = self.pop_stack()?;
+                    let container = self.pop_stack()?;
+
+                    let value = match (&*index.borrow(), &*container.borrow()) {
+                        (Value::Number(number), Value::List(list)) => {
+                            if number < &0.0f64 {
+                                return Err(
+                                    LoxError::RuntimeError(
+                                        "cannot index lists with negative numbers".into()
+                                    )
+                                );
+                            }
+
+                            let index_usize = *number as usize;
+                            if index_usize >= list.len() {
+                                return Err(
+                                    LoxError::RuntimeError(
+                                        format!("{} exceeds length of list", index_usize)
+                                    )
+                                );
+                            }
+
+                            list[index_usize].clone()
+                        },
+                        _ => return Err(
+                            LoxError::RuntimeError(
+                                "lists can only be indexed with integers".into()
+                            )
+                        ),
+                    };
+
+                    self.stack.push(value);
+                },
+                OpCode::SetIndex => {
+                    let value = self.pop_stack()?;
+                    let index = self.pop_stack()?;
+                    let container = self.pop_stack()?;
+
+                    match (&*index.borrow(), &mut *container.borrow_mut()) {
+                        (Value::Number(number), Value::List(list)) => {
+                            if number < &0.0f64 {
+                                return Err(
+                                    LoxError::RuntimeError(
+                                        "cannot index lists with negative numbers".into()
+                                    )
+                                );
+                            }
+
+                            let index_usize = *number as usize;
+                            if index_usize >= list.len() {
+                                return Err(
+                                    LoxError::RuntimeError(
+                                        format!("{} exceeds length of list", index_usize)
+                                    )
+                                );
+                            }
+
+
+                            list[index_usize] = value.clone();
+                        },
+                        _ => return Err(
+                            LoxError::RuntimeError(
+                                "lists can only be indexed with integers".into()
+                            )
+                        ),
+                    };
+
+                    self.stack.push(value);
+                },
                 OpCode::Equal => {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
@@ -420,6 +490,13 @@ impl VirtualMachine {
                 OpCode::Loop(offset) => {
                     self.frame_mut().pos -= offset;
                     continue;
+                },
+                OpCode::List(item_count) => {
+                    let range_start = self.stack.len() - item_count;
+                    let list: Vec<ValuePtr> = self.stack[range_start..].iter().cloned().collect();
+
+                    self.stack.truncate(range_start);
+                    self.stack_push_value(Value::List(Box::new(list)));
                 },
                 OpCode::Call(arg_count) => {
                     self.call_value(arg_count)?;
@@ -717,6 +794,7 @@ impl VirtualMachine {
     fn truthy(&self, item: &ValuePtr) -> Result<bool, LoxError> {
         match &*item.borrow() {
             Value::Bool(boolean) => Ok(*boolean),
+            Value::List(list) => Ok(!list.is_empty()),
             Value::Nil => Ok(false),
             Value::Number(number) => Ok(*number != 0.0f64),
             Value::Object(object) => match object {
@@ -735,6 +813,7 @@ impl VirtualMachine {
     fn values_equal(&self, left: &Value, right: &Value) -> Result<bool, LoxError> {
         match (left, right) {
             (Value::Bool(left), Value::Bool(right)) => Ok(left == right),
+            (Value::List(left), Value::List(right)) => Ok(left == right),
             (Value::Nil, Value::Nil) => Ok(true),
             (Value::Number(left), Value::Number(right)) => Ok(left == right),
             (Value::Object(left), Value::Object(right)) => match (left, right) {

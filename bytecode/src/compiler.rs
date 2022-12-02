@@ -56,6 +56,7 @@ impl Precedence {
             TokenType::And => Precedence::And,
             TokenType::Or => Precedence::Or,
             TokenType::Dot |
+            TokenType::LeftBracket |
             TokenType::LeftParen => Precedence::Call,
             _ => Precedence::None,
         }
@@ -642,6 +643,39 @@ impl Compiler {
         Ok(())
     }
 
+    fn index(&mut self, can_assign: bool) -> Result<(), LoxError> {
+        self.expression()?;
+
+        self.consume(TokenType::RightBracket, "expect ']' after index eexpression")?;
+
+        if can_assign && self.token_type_matches(&TokenType::Equal)? {
+            self.expression()?;
+            self.emit_byte(OpCode::SetIndex)?;
+        } else {
+            self.emit_byte(OpCode::GetIndex)?;
+        }
+
+        Ok(())
+    }
+
+    fn list(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let mut item_count: usize = 0;
+
+        if !self.check_current_token(&TokenType::RightBracket) {
+            loop {
+                self.expression()?;
+                item_count += 1;
+
+                if !self.token_type_matches(&TokenType::Comma)? {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightBracket, "expect list to end with ']'")?;
+        self.emit_byte(OpCode::List(item_count))
+    }
+
     fn literal(&mut self, _can_assign: bool) -> Result<(), LoxError> {
         match self.previous.token_type {
             TokenType::Nil => self.emit_byte(OpCode::Nil),
@@ -789,6 +823,7 @@ impl Compiler {
 
     fn get_prefix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
         match token_type {
+            &TokenType::LeftBracket => Some(Compiler::list),
             &TokenType::LeftParen => Some(Compiler::grouping),
             &TokenType::Minus |
             &TokenType::Bang => Some(Compiler::unary),
@@ -819,6 +854,7 @@ impl Compiler {
             &TokenType::And => Some(Compiler::and_),
             &TokenType::Or => Some(Compiler::or_),
             &TokenType::LeftParen => Some(Compiler::call),
+            &TokenType::LeftBracket => Some(Compiler::index),
             _ => None,
         }
     }

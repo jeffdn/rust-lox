@@ -12,6 +12,7 @@ pub enum Value {
     Number(f64),
     Bool(bool),
     Object(Object),
+    List(Box<Vec<ValuePtr>>),
 }
 
 pub type ValuePtr = Rc<RefCell<Value>>;
@@ -19,9 +20,16 @@ pub type ValuePtr = Rc<RefCell<Value>>;
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {
+            Value::Bool(boolean) => boolean.to_string(),
+            Value::List(list) => format!(
+                "[{}]",
+                list.iter()
+                    .map(|x| x.borrow().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Value::Nil => "nil".into(),
             Value::Number(number) => number.to_string(),
-            Value::Bool(boolean) => boolean.to_string(),
             Value::Object(object) => object.to_string(),
         };
 
