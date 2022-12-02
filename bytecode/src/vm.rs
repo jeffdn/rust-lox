@@ -60,10 +60,11 @@ fn _built_in_str(input: &[ValuePtr]) -> Result<Value, LoxError> {
 }
 
 fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
-    let Value::Object(Object::String(string)) = &*input[0].borrow() else {
-        return Err(LoxError::RuntimeError("len() only accepts strings and lists".into()));
-    };
-    Ok(Value::Number(string.len() as f64))
+    match &*input[0].borrow() {
+        Value::List(list) => Ok(Value::Number(list.len() as f64)),
+        Value::Object(Object::String(string)) => Ok(Value::Number(string.len() as f64)),
+        _ => return Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
+    }
 }
 
 impl Default for VirtualMachine {
@@ -430,26 +431,54 @@ impl VirtualMachine {
                     let left = left.borrow();
 
                     match (&*right, &*left) {
+                        (Value::List(b), Value::List(a)) => {
+                            let mut new_list: Vec<ValuePtr> = Vec::new();
+
+                            for item in a.iter() {
+                                new_list.push(item.clone());
+                            }
+
+                            for item in b.iter() {
+                                new_list.push(item.clone());
+                            }
+
+                            self.stack_push_value(Value::List(Box::new(new_list)));
+                        },
                         (Value::Number(b), Value::Number(a)) => {
                             self.stack_push_value(Value::Number(a + b));
                         },
-                        (Value::Object(b), Value::Object(a)) => match (a, b) {
-                            (Object::String(a), Object::String(b)) => {
-                                self.stack_push_value(
-                                    Value::Object(
-                                        Object::String(
-                                            Box::new(
-                                                format!("{}{}", a, b)
-                                            )
+                        (Value::Number(b), Value::Object(Object::String(a))) => {
+                            self.stack_push_value(
+                                Value::Object(
+                                    Object::String(
+                                        Box::new(
+                                            format!("{}{}", a, b)
                                         )
                                     )
-                                );
-                            },
-                            _ => return Err(
-                                LoxError::RuntimeError(
-                                    format!("operation '+' only operates on numbers and strings, got: {} + {}", a, b),
                                 )
-                            ),
+                            );
+                        },
+                        (Value::Object(Object::String(b)), Value::Number(a)) => {
+                            self.stack_push_value(
+                                Value::Object(
+                                    Object::String(
+                                        Box::new(
+                                            format!("{}{}", a, b)
+                                        )
+                                    )
+                                )
+                            );
+                        },
+                        (Value::Object(Object::String(b)), Value::Object(Object::String(a))) => {
+                            self.stack_push_value(
+                                Value::Object(
+                                    Object::String(
+                                        Box::new(
+                                            format!("{}{}", a, b)
+                                        )
+                                    )
+                                )
+                            );
                         },
                         _ => return Err(
                             LoxError::RuntimeError(

@@ -18,6 +18,14 @@ var foo = [1, 2, 3];
 print foo;
 print foo[1];
 
+var bar = [4, 5, 6];
+foo = foo + bar;
+print foo;
+
+for (var i = 0; i < len(foo); i = i + 1) {
+  print i + " " + foo[i];
+}
+
 foo[1] = 4;
 print foo;
 print foo[1];
