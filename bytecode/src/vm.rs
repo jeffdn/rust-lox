@@ -423,6 +423,27 @@ impl VirtualMachine {
                 },
                 OpCode::Greater => binary_opcode! { >, '>', Value::Bool },
                 OpCode::Less => binary_opcode! { <, '<', Value::Bool },
+                OpCode::In => {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    let right = right.borrow();
+
+                    match &*right {
+                        Value::List(list) => {
+                            self.stack_push_value(
+                                Value::Bool(
+                                    list.contains(&left)
+                                )
+                            );
+                        },
+                        _ => return Err(
+                            LoxError::RuntimeError(
+                                "'in' operator only functions on lists".into()
+                            )
+                        ),
+                    };
+                },
                 OpCode::Add => {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;

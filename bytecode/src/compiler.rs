@@ -49,6 +49,8 @@ impl Precedence {
             TokenType::Star => Precedence::Factor,
             TokenType::BangEqual |
             TokenType::EqualEqual => Precedence::Equality,
+            TokenType::In |
+            TokenType::NotIn |
             TokenType::Greater |
             TokenType::GreaterEqual |
             TokenType::Less |
@@ -617,6 +619,11 @@ impl Compiler {
                 self.emit_byte(OpCode::Greater)?;
                 self.emit_byte(OpCode::Not)
             },
+            TokenType::In => self.emit_byte(OpCode::In),
+            TokenType::NotIn => {
+                self.emit_byte(OpCode::In)?;
+                self.emit_byte(OpCode::Not)
+            },
             _ => self.error("unreachable"),
         }
     }
@@ -848,6 +855,8 @@ impl Compiler {
             &TokenType::EqualEqual |
             &TokenType::Greater |
             &TokenType::GreaterEqual |
+            &TokenType::In |
+            &TokenType::NotIn |
             &TokenType::Less |
             &TokenType::LessEqual => Some(Compiler::binary),
             &TokenType::Dot => Some(Compiler::dot),
@@ -874,6 +883,11 @@ impl Compiler {
 
         while precedence_val <= Precedence::for_token_type(&self.current.token_type) as u8 {
             self.advance()?;
+
+            if self.previous.token_type == TokenType::NotIn &&
+                self.current.token_type == TokenType::In {
+                self.skip()?;
+            }
 
             let infix_rule = match self.get_infix_rule(&self.previous.token_type.clone()) {
                 Some(rule) => rule,
@@ -1023,9 +1037,7 @@ impl Compiler {
         &self.current.token_type == token_type
     }
 
-    fn advance(&mut self) -> Result<(), LoxError> {
-        self.previous = self.current.clone();
-
+    fn advance_until_error(&mut self) -> Result<(), LoxError> {
         loop {
             self.current = self.scanner.scan_token()?;
 
@@ -1037,6 +1049,15 @@ impl Compiler {
         }
 
         Ok(())
+    }
+
+    fn skip(&mut self) -> Result<(), LoxError> {
+        self.advance_until_error()
+    }
+
+    fn advance(&mut self) -> Result<(), LoxError> {
+        self.previous = self.current.clone();
+        self.advance_until_error()
     }
 
     fn error_at(&self, token: Token, message: &str) -> Result<(), LoxError> {
