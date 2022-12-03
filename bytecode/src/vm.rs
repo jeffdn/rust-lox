@@ -71,6 +71,28 @@ fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
     }
 }
 
+fn _built_in_type(input: &[ValuePtr]) -> Result<Value, LoxError> {
+    let output: &str = match &*input[0].borrow() {
+        Value::Bool(_) => "bool",
+        Value::List(_) => "list",
+        Value::Map(_) => "map",
+        Value::Nil => "nil",
+        Value::Number(_) => "number",
+        Value::Object(object) => match object {
+            Object::BoundMethod(_) => "method",
+            Object::Class(_) => "class",
+            Object::Closure(_) => "closure",
+            Object::Function(_) => "function",
+            Object::Instance(_) => "object",
+            Object::Native(_) => "function",
+            Object::String(_) => "string",
+            Object::UpValue(uv) => return _built_in_type(&[uv.location.clone()]),
+        },
+    };
+
+    Ok(Value::Object(Object::String(Box::new(output.into()))))
+}
+
 impl Default for VirtualMachine {
     fn default() -> Self {
         Self::new()
@@ -155,8 +177,9 @@ impl VirtualMachine {
         self.call(&closure, 0)?;
 
         self.define_native("len".into(), _built_in_len, 1)?;
-        self.define_native("time".into(), _built_in_time, 0)?;
         self.define_native("str".into(), _built_in_str, 1)?;
+        self.define_native("time".into(), _built_in_time, 0)?;
+        self.define_native("type".into(), _built_in_type, 1)?;
 
         self.run()
     }

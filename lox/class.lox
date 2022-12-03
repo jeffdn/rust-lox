@@ -27,6 +27,10 @@ foo["c"] = 3;
 print foo;
 print "c" in foo;
 print "c" not in foo;
+print "c" in foo;
+print "c" not in foo;
+
+print type(foo);
 
 // var foo = [1, 2, 3];
 // print foo;
