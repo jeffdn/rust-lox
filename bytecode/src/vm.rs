@@ -21,7 +21,11 @@ use crate::{
         UpValue,
         UpValuePtr,
     },
-    value::{Value, ValuePtr},
+    value::{
+        Value,
+        ValueMap,
+        ValuePtr,
+    },
 };
 
 static FRAMES_MAX: usize = 64;
@@ -92,18 +96,16 @@ impl VirtualMachine {
                 )
             )
         );
-        let function = Rc::new(
-            RefCell::new(
-                Value::Object(
-                    Object::Native(
-                        Box::new(
-                            NativeFunction {
-                                function,
-                                obj: None,
-                                name: name.clone(),
-                                arity,
-                            }
-                        )
+        let function = ValuePtr::new(
+            Value::Object(
+                Object::Native(
+                    Box::new(
+                        NativeFunction {
+                            function,
+                            obj: None,
+                            name: name.clone(),
+                            arity,
+                        }
                     )
                 )
             )
@@ -195,7 +197,7 @@ impl VirtualMachine {
     }
 
     fn stack_push_value(&mut self, value: Value) {
-        self.stack.push(Rc::new(RefCell::new(value)));
+        self.stack.push(ValuePtr::new(value));
     }
 
     pub fn run(&mut self) -> Result<(), LoxError> {
@@ -345,30 +347,47 @@ impl VirtualMachine {
                     let index = self.pop_stack()?;
                     let container = self.pop_stack()?;
 
-                    let value = match (&*index.borrow(), &*container.borrow()) {
-                        (Value::Number(number), Value::List(list)) => {
-                            if number < &0.0f64 {
-                                return Err(
-                                    LoxError::RuntimeError(
-                                        "cannot index lists with negative numbers".into()
-                                    )
-                                );
-                            }
+                    let value = match &*container.borrow() {
+                        Value::List(list) => match &*index.borrow() {
+                            Value::Number(number) => {
+                                if number < &0.0f64 {
+                                    return Err(
+                                        LoxError::RuntimeError(
+                                            "cannot index lists with negative numbers".into()
+                                        )
+                                    );
+                                }
 
-                            let index_usize = *number as usize;
-                            if index_usize >= list.len() {
-                                return Err(
-                                    LoxError::RuntimeError(
-                                        format!("{} exceeds length of list", index_usize)
-                                    )
-                                );
-                            }
+                                let index_usize = *number as usize;
+                                if index_usize >= list.len() {
+                                    return Err(
+                                        LoxError::RuntimeError(
+                                            format!("{} exceeds length of list", index_usize)
+                                        )
+                                    );
+                                }
 
-                            list[index_usize].clone()
+                                list[index_usize].clone()
+                            },
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "lists can only be indexed with integers".into()
+                                )
+                            ),
+                        },
+                        Value::Map(hmap) => {
+                            match hmap.map.get(&index) {
+                                Some(value) => value.clone(),
+                                None => return Err(
+                                    LoxError::RuntimeError(
+                                        format!("no entry for key {:?}", index)
+                                    )
+                                ),
+                            }
                         },
                         _ => return Err(
                             LoxError::RuntimeError(
-                                "lists can only be indexed with integers".into()
+                                "only lists and maps can be indexed into".into()
                             )
                         ),
                     };
@@ -380,31 +399,40 @@ impl VirtualMachine {
                     let index = self.pop_stack()?;
                     let container = self.pop_stack()?;
 
-                    match (&*index.borrow(), &mut *container.borrow_mut()) {
-                        (Value::Number(number), Value::List(list)) => {
-                            if number < &0.0f64 {
-                                return Err(
-                                    LoxError::RuntimeError(
-                                        "cannot index lists with negative numbers".into()
-                                    )
-                                );
-                            }
+                    match &mut *container.borrow_mut() {
+                        Value::List(list) => match &*index.borrow() {
+                            Value::Number(number) => {
+                                if number < &0.0f64 {
+                                    return Err(
+                                        LoxError::RuntimeError(
+                                            "cannot index lists with negative numbers".into()
+                                        )
+                                    );
+                                }
 
-                            let index_usize = *number as usize;
-                            if index_usize >= list.len() {
-                                return Err(
-                                    LoxError::RuntimeError(
-                                        format!("{} exceeds length of list", index_usize)
-                                    )
-                                );
-                            }
+                                let index_usize = *number as usize;
+                                if index_usize >= list.len() {
+                                    return Err(
+                                        LoxError::RuntimeError(
+                                            format!("{} exceeds length of list", index_usize)
+                                        )
+                                    );
+                                }
 
-
-                            list[index_usize] = value.clone();
+                                list[index_usize] = value.clone();
+                            },
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "lists can only be indexed with integers".into()
+                                )
+                            ),
+                        },
+                        Value::Map(hmap) => {
+                            hmap.map.insert(index.clone(), value.clone());
                         },
                         _ => return Err(
                             LoxError::RuntimeError(
-                                "lists can only be indexed with integers".into()
+                                "only lists and maps can be indexed into".into()
                             )
                         ),
                     };
@@ -434,6 +462,13 @@ impl VirtualMachine {
                             self.stack_push_value(
                                 Value::Bool(
                                     list.contains(&left)
+                                )
+                            );
+                        },
+                        Value::Map(hmap) => {
+                            self.stack_push_value(
+                                Value::Bool(
+                                    hmap.map.contains_key(&left)
                                 )
                             );
                         },
@@ -541,12 +576,34 @@ impl VirtualMachine {
                     self.frame_mut().pos -= offset;
                     continue;
                 },
-                OpCode::List(item_count) => {
+                OpCode::BuildList(item_count) => {
                     let range_start = self.stack.len() - item_count;
                     let list: Vec<ValuePtr> = self.stack[range_start..].iter().cloned().collect();
 
                     self.stack.truncate(range_start);
                     self.stack_push_value(Value::List(Box::new(list)));
+                },
+                OpCode::BuildMap(item_count) => {
+                    let range_start = self.stack.len() - item_count;
+                    let mut map: HashMap<ValuePtr, ValuePtr> = HashMap::new();
+
+                    while map.len() * 2 < item_count {
+                        let val = self.pop_stack()?;
+                        let key = self.pop_stack()?;
+
+                        map.insert(key.clone(), val.clone());
+                    }
+
+                    self.stack.truncate(range_start);
+                    self.stack_push_value(
+                        Value::Map(
+                            Box::new(
+                                ValueMap {
+                                    map,
+                                }
+                            )
+                        )
+                    );
                 },
                 OpCode::Call(arg_count) => {
                     self.call_value(arg_count)?;
@@ -694,14 +751,12 @@ impl VirtualMachine {
                 },
                 Object::Class(class) => {
                     let position = self.stack.len() - arg_count - 1;
-                    self.stack[position] = Rc::new(
-                        RefCell::new(
-                            Value::Object(
-                                Object::Instance(
-                                    Box::new(
-                                        Instance::new(
-                                            at_offset.clone()
-                                        )
+                    self.stack[position] = ValuePtr::new(
+                        Value::Object(
+                            Object::Instance(
+                                Box::new(
+                                    Instance::new(
+                                        at_offset.clone()
                                     )
                                 )
                             )
@@ -845,6 +900,7 @@ impl VirtualMachine {
         match &*item.borrow() {
             Value::Bool(boolean) => Ok(*boolean),
             Value::List(list) => Ok(!list.is_empty()),
+            Value::Map(hmap) => Ok(!hmap.map.is_empty()),
             Value::Nil => Ok(false),
             Value::Number(number) => Ok(*number != 0.0f64),
             Value::Object(object) => match object {

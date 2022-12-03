@@ -44,7 +44,8 @@ pub enum OpCode {
     Jump(usize),
     JumpIfFalse(usize),
     Loop(usize),
-    List(usize),
+    BuildList(usize),
+    BuildMap(usize),
     Call(usize),
     Closure(usize, Box<Vec<UpValue>>),
     CloseUpValue,
@@ -86,7 +87,8 @@ impl fmt::Display for OpCode {
             OpCode::Jump(_) => "op_jump",
             OpCode::JumpIfFalse(_) => "op_jump_if_false",
             OpCode::Loop(_) => "op_loop",
-            OpCode::List(_) => "op_list",
+            OpCode::BuildList(_) => "op_build_list",
+            OpCode::BuildMap(_) => "op_build_list",
             OpCode::Call(_) => "op_call",
             OpCode::Closure(_, _) => "op_closure",
             OpCode::CloseUpValue => "op_close_upvalue",
@@ -191,8 +193,11 @@ impl Chunk {
             OpCode::Loop(offset) => format!(
                 "{:<20} {}", "op_loop", offset,
             ),
-            OpCode::List(item_count) => format!(
-                "{:<20} {}", "op_list", item_count,
+            OpCode::BuildList(item_count) => format!(
+                "{:<20} {}", "op_build_list", item_count,
+            ),
+            OpCode::BuildMap(item_count) => format!(
+                "{:<20} {}", "op_build_map", item_count,
             ),
             OpCode::Call(offset) => format!(
                 "{:<20} {}", "op_call", offset,

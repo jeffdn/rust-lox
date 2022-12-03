@@ -680,7 +680,28 @@ impl Compiler {
         }
 
         self.consume(TokenType::RightBracket, "expect list to end with ']'")?;
-        self.emit_byte(OpCode::List(item_count))
+        self.emit_byte(OpCode::BuildList(item_count))
+    }
+
+    fn map(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let mut item_count: usize = 0;
+
+        if !self.check_current_token(&TokenType::RightBrace) {
+            loop {
+                self.expression()?;
+                self.consume(TokenType::Colon, "expect ':' to separate key and value")?;
+                self.expression()?;
+
+                item_count += 2;
+
+                if !self.token_type_matches(&TokenType::Comma)? {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "expect map to end with '}'")?;
+        self.emit_byte(OpCode::BuildMap(item_count))
     }
 
     fn literal(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -830,6 +851,7 @@ impl Compiler {
 
     fn get_prefix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
         match token_type {
+            &TokenType::LeftBrace => Some(Compiler::map),
             &TokenType::LeftBracket => Some(Compiler::list),
             &TokenType::LeftParen => Some(Compiler::grouping),
             &TokenType::Minus |

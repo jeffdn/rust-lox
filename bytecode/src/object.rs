@@ -125,13 +125,13 @@ impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {
             Object::BoundMethod(method) => {
-                let Value::Object(Object::Instance(receiver)) = &*method.receiver.borrow() else {
+                let Value::Object(Object::Instance(receiver)) = &*method.receiver.0.borrow() else {
                     unreachable!();
                 };
-                let Value::Object(Object::Class(class)) = &*receiver.class.borrow() else {
+                let Value::Object(Object::Class(class)) = &*receiver.class.0.borrow() else {
                     unreachable!();
                 };
-                let Value::Object(Object::Closure(closure)) = &*method.closure.borrow() else {
+                let Value::Object(Object::Closure(closure)) = &*method.closure.0.borrow() else {
                     unreachable!();
                 };
 
@@ -145,7 +145,7 @@ impl fmt::Display for Object {
             Object::Closure(closure) => closure.function.name.clone(),
             Object::Function(function) => function.name.clone(),
             Object::Instance(instance) => {
-                let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
+                let Value::Object(Object::Class(class)) = &*instance.class.0.borrow() else {
                     unreachable!();
                 };
 
