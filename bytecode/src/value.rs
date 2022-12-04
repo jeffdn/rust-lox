@@ -1,6 +1,5 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
     fmt,
     hash::{Hash, Hasher},
     rc::Rc,
@@ -11,8 +10,6 @@ use crate::object::Object;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Bool(bool),
-    List(Box<Vec<ValuePtr>>),
-    Map(Box<ValueMap>),
     Nil,
     Number(f64),
     Object(Object),
@@ -46,11 +43,6 @@ impl ValuePtr {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ValueMap {
-    pub map: HashMap<ValuePtr, ValuePtr>,
-}
-
 fn integer_decode(val: f64) -> (u64, i16, i8) {
     let bits: u64 = val.to_bits();
     let sign: i8 = if bits >> 63 == 0 { 1 } else { -1 };
@@ -79,19 +71,6 @@ impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Value::Bool(boolean) => boolean.hash(state),
-            Value::List(list) => {
-                LIST_HASH.hash(state);
-                for item in list.iter() {
-                    item.borrow().hash(state);
-                }
-            },
-            Value::Map(hmap) => {
-                MAP_HASH.hash(state);
-                for (key, val) in hmap.map.iter() {
-                    key.borrow().hash(state);
-                    val.borrow().hash(state);
-                }
-            },
             Value::Nil => 0.hash(state),
             Value::Number(number) => {
                 let (mantissa, exponent, sign) = integer_decode(*number);
@@ -107,12 +86,25 @@ impl Hash for Value {
                     Object::Closure(_) => CLOSURE_HASH.hash(state),
                     Object::Function(_) | Object::Native(_) => FUNCTION_HASH.hash(state),
                     Object::Instance(_) => INSTANCE_HASH.hash(state),
+                    Object::List(list) => {
+                        LIST_HASH.hash(state);
+                        for item in list.iter() {
+                            item.borrow().hash(state);
+                        }
+                    },
+                    Object::Map(hmap) => {
+                        MAP_HASH.hash(state);
+                        for (key, val) in hmap.map.iter() {
+                            key.borrow().hash(state);
+                            val.borrow().hash(state);
+                        }
+                    },
                     Object::String(_) => {},
                     Object::UpValue(uv) => uv.location.borrow().hash(state),
                 };
 
                 match object {
-                    Object::UpValue(_) => {},
+                    Object::List(_) | Object::Map(_) | Object::UpValue(_) => {},
                     _ => object.to_string().hash(state),
                 };
             },
@@ -120,43 +112,10 @@ impl Hash for Value {
     }
 }
 
-impl PartialEq for ValueMap {
-    fn eq(&self, other: &Self) -> bool {
-        if self.map.len() != other.map.len() {
-            return false;
-        }
-
-        for (key, val) in self.map.iter() {
-            if let Some(other_val) = other.map.get(key) {
-                if val != other_val {
-                    return false;
-                }
-            }
-        }
-
-        true
-    }
-}
-
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {
             Value::Bool(boolean) => boolean.to_string(),
-            Value::List(list) => format!(
-                "[{}]",
-                list.iter()
-                    .map(|x| x.borrow().to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
-            Value::Map(hmap) => format!(
-                "{{{}}}",
-                hmap.map
-                    .iter()
-                    .map(|(k, v)| format!("{}: {}", k.borrow().to_string(), v.borrow().to_string()))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ),
             Value::Nil => "nil".into(),
             Value::Number(number) => number.to_string(),
             Value::Object(object) => object.to_string(),

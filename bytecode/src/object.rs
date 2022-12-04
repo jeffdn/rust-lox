@@ -19,9 +19,34 @@ pub enum Object {
     Closure(Box<Closure>),
     Function(Box<Function>),
     Instance(Box<Instance>),
+    List(Box<Vec<ValuePtr>>),
+    Map(Box<ValueMap>),
     Native(Box<NativeFunction>),
     String(Box<String>),
     UpValue(Box<UpValue>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ValueMap {
+    pub map: HashMap<ValuePtr, ValuePtr>,
+}
+
+impl PartialEq for ValueMap {
+    fn eq(&self, other: &Self) -> bool {
+        if self.map.len() != other.map.len() {
+            return false;
+        }
+
+        for (key, val) in self.map.iter() {
+            if let Some(other_val) = other.map.get(key) {
+                if val != other_val {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -151,6 +176,21 @@ impl fmt::Display for Object {
 
                 format!("<{} instance>", class.name)
             },
+            Object::List(list) => format!(
+                "[{}]",
+                list.iter()
+                    .map(|x| x.borrow().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Object::Map(hmap) => format!(
+                "{{{}}}",
+                hmap.map
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k.borrow().to_string(), v.borrow().to_string()))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Object::Native(_) => "built-in".into(),
             Object::String(string) => *string.clone(),
             Object::UpValue(_) => "up-value".into(),

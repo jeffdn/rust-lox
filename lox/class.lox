@@ -14,6 +14,8 @@ var melvin = Cat("Melvin");
 coco.eat();
 melvin.eat();
 
+print "";
+print "maps";
 var foo = {
     "a": 1,
     "b": 2
@@ -27,37 +29,30 @@ foo["c"] = 3;
 print foo;
 print "c" in foo;
 print "c" not in foo;
-print "c" in foo;
-print "c" not in foo;
 
 print type(foo);
 
-// var foo = [1, 2, 3];
-// print foo;
-// print foo[1];
-//
-// print 4 in foo;
-// print 4 not in foo;
-// foo[1] = 4;
-// print 4 in foo;
-// print 4 not in foo;
-//
-// var bar = [4, 5, 6];
-// foo = foo + bar;
-// print foo;
-//
-// var baz = [];
-// for (var i = 0; i < len(foo); i = i + 1) {
-//   print i + " " + foo[i];
-//   baz = baz + [foo[i]];
-// }
-//
-// print foo;
-// print foo[1];
+print "";
+print "lists";
+var foo = [1, 2, 3];
+print foo;
+print foo[1];
 
-// foo.a = 1;
-// foo.b = 2;
-//
-// print foo.a + foo.b;
-//
-// print foo.fruit = "grape";
+print 4 in foo;
+print 4 not in foo;
+foo[1] = 4;
+print 4 in foo;
+print 4 not in foo;
+
+var bar = [4, 5, 6];
+foo = foo + bar;
+print foo;
+
+var baz = [];
+for (var i = 0; i < len(foo); i = i + 1) {
+  print i + " " + foo[i];
+  baz = baz + [foo[i]];
+}
+
+print foo;
+print foo[1];

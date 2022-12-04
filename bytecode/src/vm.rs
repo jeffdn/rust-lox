@@ -20,10 +20,10 @@ use crate::{
         Object,
         UpValue,
         UpValuePtr,
+        ValueMap,
     },
     value::{
         Value,
-        ValueMap,
         ValuePtr,
     },
 };
@@ -65,17 +65,19 @@ fn _built_in_str(input: &[ValuePtr]) -> Result<Value, LoxError> {
 
 fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
     match &*input[0].borrow() {
-        Value::List(list) => Ok(Value::Number(list.len() as f64)),
-        Value::Object(Object::String(string)) => Ok(Value::Number(string.len() as f64)),
-        _ => return Err(LoxError::RuntimeError("len() only accepts strings and lists".into())),
+        Value::Object(object) => match object {
+            Object::List(list) => Ok(Value::Number(list.len() as f64)),
+            Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
+            Object::String(string) => Ok(Value::Number(string.len() as f64)),
+            _ => return Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
+        },
+        _ => return Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
     }
 }
 
 fn _built_in_type(input: &[ValuePtr]) -> Result<Value, LoxError> {
     let output: &str = match &*input[0].borrow() {
         Value::Bool(_) => "bool",
-        Value::List(_) => "list",
-        Value::Map(_) => "map",
         Value::Nil => "nil",
         Value::Number(_) => "number",
         Value::Object(object) => match object {
@@ -84,6 +86,8 @@ fn _built_in_type(input: &[ValuePtr]) -> Result<Value, LoxError> {
             Object::Closure(_) => "closure",
             Object::Function(_) => "function",
             Object::Instance(_) => "object",
+            Object::List(_) => "list",
+            Object::Map(_) => "map",
             Object::Native(_) => "function",
             Object::String(_) => "string",
             Object::UpValue(uv) => return _built_in_type(&[uv.location.clone()]),
@@ -371,7 +375,7 @@ impl VirtualMachine {
                     let container = self.pop_stack()?;
 
                     let value = match &*container.borrow() {
-                        Value::List(list) => match &*index.borrow() {
+                        Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
                                 if number < &0.0f64 {
                                     return Err(
@@ -398,7 +402,7 @@ impl VirtualMachine {
                                 )
                             ),
                         },
-                        Value::Map(hmap) => {
+                        Value::Object(Object::Map(hmap)) => {
                             match hmap.map.get(&index) {
                                 Some(value) => value.clone(),
                                 None => return Err(
@@ -423,7 +427,7 @@ impl VirtualMachine {
                     let container = self.pop_stack()?;
 
                     match &mut *container.borrow_mut() {
-                        Value::List(list) => match &*index.borrow() {
+                        Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
                                 if number < &0.0f64 {
                                     return Err(
@@ -450,7 +454,7 @@ impl VirtualMachine {
                                 )
                             ),
                         },
-                        Value::Map(hmap) => {
+                        Value::Object(Object::Map(hmap)) => {
                             hmap.map.insert(index.clone(), value.clone());
                         },
                         _ => return Err(
@@ -481,14 +485,14 @@ impl VirtualMachine {
                     let right = right.borrow();
 
                     match &*right {
-                        Value::List(list) => {
+                        Value::Object(Object::List(list)) => {
                             self.stack_push_value(
                                 Value::Bool(
                                     list.contains(&left)
                                 )
                             );
                         },
-                        Value::Map(hmap) => {
+                        Value::Object(Object::Map(hmap)) => {
                             self.stack_push_value(
                                 Value::Bool(
                                     hmap.map.contains_key(&left)
@@ -510,7 +514,10 @@ impl VirtualMachine {
                     let left = left.borrow();
 
                     match (&*right, &*left) {
-                        (Value::List(b), Value::List(a)) => {
+                        (
+                            Value::Object(Object::List(b)),
+                            Value::Object(Object::List(a)),
+                        ) => {
                             let mut new_list: Vec<ValuePtr> = Vec::new();
 
                             for item in a.iter() {
@@ -521,7 +528,13 @@ impl VirtualMachine {
                                 new_list.push(item.clone());
                             }
 
-                            self.stack_push_value(Value::List(Box::new(new_list)));
+                            self.stack_push_value(
+                                Value::Object(
+                                    Object::List(
+                                        Box::new(new_list)
+                                    )
+                                )
+                            );
                         },
                         (Value::Number(b), Value::Number(a)) => {
                             self.stack_push_value(Value::Number(a + b));
@@ -604,7 +617,13 @@ impl VirtualMachine {
                     let list: Vec<ValuePtr> = self.stack[range_start..].iter().cloned().collect();
 
                     self.stack.truncate(range_start);
-                    self.stack_push_value(Value::List(Box::new(list)));
+                    self.stack_push_value(
+                        Value::Object(
+                            Object::List(
+                                Box::new(list)
+                            )
+                        )
+                    );
                 },
                 OpCode::BuildMap(item_count) => {
                     let range_start = self.stack.len() - item_count;
@@ -619,11 +638,13 @@ impl VirtualMachine {
 
                     self.stack.truncate(range_start);
                     self.stack_push_value(
-                        Value::Map(
-                            Box::new(
-                                ValueMap {
-                                    map,
-                                }
+                        Value::Object(
+                            Object::Map(
+                                Box::new(
+                                    ValueMap {
+                                        map,
+                                    }
+                                )
                             )
                         )
                     );
@@ -922,8 +943,6 @@ impl VirtualMachine {
     fn truthy(&self, item: &ValuePtr) -> Result<bool, LoxError> {
         match &*item.borrow() {
             Value::Bool(boolean) => Ok(*boolean),
-            Value::List(list) => Ok(!list.is_empty()),
-            Value::Map(hmap) => Ok(!hmap.map.is_empty()),
             Value::Nil => Ok(false),
             Value::Number(number) => Ok(*number != 0.0f64),
             Value::Object(object) => match object {
@@ -932,6 +951,8 @@ impl VirtualMachine {
                 Object::Closure(_) => Ok(true),
                 Object::Function(_) => Ok(true),
                 Object::Instance(_) => Ok(true),
+                Object::List(list) => Ok(!list.is_empty()),
+                Object::Map(hmap) => Ok(!hmap.map.is_empty()),
                 Object::Native(_) => Ok(true),
                 Object::String(string) => Ok(!string.is_empty()),
                 Object::UpValue(value) => self.truthy(&value.location),
@@ -942,10 +963,10 @@ impl VirtualMachine {
     fn values_equal(&self, left: &Value, right: &Value) -> Result<bool, LoxError> {
         match (left, right) {
             (Value::Bool(left), Value::Bool(right)) => Ok(left == right),
-            (Value::List(left), Value::List(right)) => Ok(left == right),
             (Value::Nil, Value::Nil) => Ok(true),
             (Value::Number(left), Value::Number(right)) => Ok(left == right),
             (Value::Object(left), Value::Object(right)) => match (left, right) {
+                (Object::List(left), Object::List(right)) => Ok(left == right),
                 (Object::Function(left), Object::Function(right)) => Ok(left.name == right.name),
                 (Object::String(left), Object::String(right)) => Ok(left == right),
                 _ => Ok(false),
