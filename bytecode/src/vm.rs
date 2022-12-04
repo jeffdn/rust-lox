@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    chunk::{Chunk, OpCode},
+    chunk::OpCode,
     compiler::Compiler,
     errors::LoxError,
     object::{
@@ -27,6 +27,9 @@ use crate::{
         ValuePtr,
     },
 };
+
+#[cfg(feature="debug")]
+use crate::chunk::Chunk;
 
 static FRAMES_MAX: usize = 64;
 static STACK_MAX: usize = 256;
