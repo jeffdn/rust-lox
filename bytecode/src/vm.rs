@@ -72,9 +72,9 @@ fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
             Object::List(list) => Ok(Value::Number(list.len() as f64)),
             Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
             Object::String(string) => Ok(Value::Number(string.len() as f64)),
-            _ => return Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
+            _ => Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
         },
-        _ => return Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
+        _ => Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
     }
 }
 
@@ -354,7 +354,7 @@ impl VirtualMachine {
                             self.pop_stack()?;
                             self.stack.push(prop.clone());
                         },
-                        None => self.bind_method(instance.class.clone(), &**prop_name)?,
+                        None => self.bind_method(instance.class.clone(), prop_name)?,
                     };
                 },
                 OpCode::SetProperty(index) => {
@@ -617,7 +617,7 @@ impl VirtualMachine {
                 },
                 OpCode::BuildList(item_count) => {
                     let range_start = self.stack.len() - item_count;
-                    let list: Vec<ValuePtr> = self.stack[range_start..].iter().cloned().collect();
+                    let list: Vec<ValuePtr> = self.stack[range_start..].to_vec();
 
                     self.stack.truncate(range_start);
                     self.stack_push_value(
@@ -970,6 +970,7 @@ impl VirtualMachine {
             (Value::Number(left), Value::Number(right)) => Ok(left == right),
             (Value::Object(left), Value::Object(right)) => match (left, right) {
                 (Object::List(left), Object::List(right)) => Ok(left == right),
+                (Object::Map(left), Object::Map(right)) => Ok(left == right),
                 (Object::Function(left), Object::Function(right)) => Ok(left.name == right.name),
                 (Object::String(left), Object::String(right)) => Ok(left == right),
                 _ => Ok(false),

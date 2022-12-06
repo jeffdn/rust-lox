@@ -99,7 +99,7 @@ pub struct UpValue {
 
 pub type UpValuePtr = Rc<RefCell<UpValue>>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FunctionType {
     Function,
     Initializer,
@@ -187,7 +187,7 @@ impl fmt::Display for Object {
                 "{{{}}}",
                 hmap.map
                     .iter()
-                    .map(|(k, v)| format!("{}: {}", k.borrow().to_string(), v.borrow().to_string()))
+                    .map(|(k, v)| format!("{}: {}", k.borrow(), v.borrow()))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),

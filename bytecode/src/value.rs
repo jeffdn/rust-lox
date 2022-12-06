@@ -19,6 +19,8 @@ pub enum Value {
 pub struct ValuePtr(pub Rc<RefCell<Value>>);
 
 impl Eq for ValuePtr {}
+
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for ValuePtr {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.borrow().hash(state);
@@ -67,6 +69,8 @@ static MAP_HASH: u64 = 3238540539993370792;
 static METHOD_HASH: u64 = 16751306561248198995;
 
 impl Eq for Value {}
+
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
@@ -125,7 +129,7 @@ impl fmt::Display for Value {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValueSet {
     pub values: Vec<ValuePtr>,
 }
