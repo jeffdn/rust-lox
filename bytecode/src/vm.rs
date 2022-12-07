@@ -583,6 +583,7 @@ impl VirtualMachine {
                     };
                 },
                 OpCode::Subtract => binary_opcode! { -, '-', Value::Number },
+                OpCode::Modulo => binary_opcode! { %, '%', Value::Number },
                 OpCode::Multiply => binary_opcode! { *, '*', Value::Number },
                 OpCode::Divide => binary_opcode! { /, '/', Value::Number },
                 OpCode::Not => {

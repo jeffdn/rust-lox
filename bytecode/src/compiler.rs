@@ -44,6 +44,7 @@ impl Precedence {
     fn for_token_type(token_type: &TokenType) -> Self {
         match token_type {
             TokenType::Minus => Precedence::Term,
+            TokenType::Percent => Precedence::Factor,
             TokenType::Plus => Precedence::Term,
             TokenType::Slash => Precedence::Factor,
             TokenType::Star => Precedence::Factor,
@@ -600,8 +601,9 @@ impl Compiler {
         self.parse_precedence(&precedence.get_parent())?;
 
         match operator_type {
-            TokenType::Plus => self.emit_byte(OpCode::Add),
             TokenType::Minus => self.emit_byte(OpCode::Subtract),
+            TokenType::Percent => self.emit_byte(OpCode::Modulo),
+            TokenType::Plus => self.emit_byte(OpCode::Add),
             TokenType::Star => self.emit_byte(OpCode::Multiply),
             TokenType::Slash => self.emit_byte(OpCode::Divide),
             TokenType::BangEqual => {
@@ -870,9 +872,10 @@ impl Compiler {
     fn get_infix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
         match token_type {
             &TokenType::Minus |
+            &TokenType::Percent |
             &TokenType::Plus |
-            &TokenType::Star |
             &TokenType::Slash |
+            &TokenType::Star |
             &TokenType::BangEqual |
             &TokenType::EqualEqual |
             &TokenType::Greater |
