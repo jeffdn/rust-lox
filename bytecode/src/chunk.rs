@@ -30,6 +30,7 @@ pub enum OpCode {
     SetProperty(usize),
     GetIndex,
     SetIndex,
+    GetSlice(bool, bool),
     Add,
     Divide,
     Equal,
@@ -74,6 +75,7 @@ impl fmt::Display for OpCode {
             OpCode::SetProperty(_) => "op_set_property",
             OpCode::GetIndex => "op_get_index",
             OpCode::SetIndex => "op_set_index",
+            OpCode::GetSlice(_, _) => "op_get_slice",
             OpCode::Add => "op_add",
             OpCode::Divide => "op_divide",
             OpCode::Equal => "op_equal",
@@ -185,6 +187,9 @@ impl Chunk {
             ),
             OpCode::SetProperty(index) => format!(
                 "{:<20} {}", "op_set_property", *index,
+            ),
+            OpCode::GetSlice(left, right) => format!(
+                "{:<20} {} {}", "op_get_slice", left, right,
             ),
             OpCode::Jump(offset) => format!(
                 "{:<20} {}", "op_jump", offset,

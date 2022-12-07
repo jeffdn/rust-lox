@@ -652,19 +652,43 @@ impl Compiler {
         Ok(())
     }
 
-    fn index(&mut self, can_assign: bool) -> Result<(), LoxError> {
+    fn finish_slice(&mut self, has_left: bool) -> Result<(), LoxError> {
+        if self.token_type_matches(&TokenType::RightBracket)? {
+            return self.emit_byte(OpCode::GetSlice(has_left, false));
+        }
+
         self.expression()?;
 
-        self.consume(TokenType::RightBracket, "expect ']' after index eexpression")?;
+        self.consume(
+            TokenType::RightBracket,
+            "expect ']' after slice expressions",
+        )?;
+
+        self.emit_byte(OpCode::GetSlice(has_left, true))
+    }
+
+    fn index(&mut self, can_assign: bool) -> Result<(), LoxError> {
+        if self.token_type_matches(&TokenType::Colon)? {
+            return self.finish_slice(false);
+        }
+
+        self.expression()?;
+
+        if self.token_type_matches(&TokenType::Colon)? {
+            return self.finish_slice(true);
+        }
+
+        self.consume(
+            TokenType::RightBracket,
+            "expect ']' after index expressions",
+        )?;
 
         if can_assign && self.token_type_matches(&TokenType::Equal)? {
             self.expression()?;
-            self.emit_byte(OpCode::SetIndex)?;
+            self.emit_byte(OpCode::SetIndex)
         } else {
-            self.emit_byte(OpCode::GetIndex)?;
+            self.emit_byte(OpCode::GetIndex)
         }
-
-        Ok(())
     }
 
     fn list(&mut self, _can_assign: bool) -> Result<(), LoxError> {

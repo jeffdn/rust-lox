@@ -230,6 +230,22 @@ impl VirtualMachine {
         self.stack.push(ValuePtr::new(value));
     }
 
+    fn _convert_index(&self, len: usize, index: i32) -> Result<usize, LoxError> {
+        let len = len as i32;
+        if index > len {
+            return Err(
+                LoxError::RuntimeError(
+                    format!("{} exceeds length of list", index)
+                )
+            );
+        }
+
+        match index < 0 {
+            true => Ok((len + index) as usize),
+            false => Ok(index as usize),
+        }
+    }
+
     pub fn run(&mut self) -> Result<(), LoxError> {
         macro_rules! binary_opcode {
             ( $op:tt, $op_char:expr, $output:expr ) => {
@@ -468,6 +484,82 @@ impl VirtualMachine {
                     };
 
                     self.stack.push(value);
+                },
+                OpCode::GetSlice(has_left, has_right) => {
+                    let right: Option<i32> = match has_right {
+                        true => match &*self.pop_stack()?.borrow() {
+                            Value::Number(number) => Some(*number as i32),
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "only numbers can be used to slice containers".into(),
+                                )
+                            ),
+                        },
+                        false => None,
+                    };
+                    let left: Option<i32> = match has_left {
+                        true => match &*self.pop_stack()?.borrow() {
+                            Value::Number(number) => Some(*number as i32),
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "only numbers can be used to slice containers".into(),
+                                )
+                            ),
+                        },
+                        false => None,
+                    };
+
+                    let value = match &*self.pop_stack()?.borrow() {
+                        Value::Object(Object::List(list)) => {
+                            let left = match left {
+                                Some(left) => self._convert_index(list.len(), left)?,
+                                None => 0,
+                            };
+                            let right = match right {
+                                Some(right) => self._convert_index(list.len(), right)?,
+                                None => list.len(),
+                            };
+
+                            let tmp_value = match left > right {
+                                true => vec![],
+                                false => list[left..right].to_vec(),
+                            };
+
+                            Value::Object(
+                                Object::List(
+                                    Box::new(tmp_value)
+                                )
+                            )
+                        },
+                        Value::Object(Object::String(string)) => {
+                            let left = match left {
+                                Some(left) => self._convert_index(string.len(), left)?,
+                                None => 0,
+                            };
+                            let right = match right {
+                                Some(right) => self._convert_index(string.len(), right)?,
+                                None => string.len(),
+                            };
+
+                            let tmp_value = match left > right {
+                                true => "".to_string(),
+                                false => string[left..right].to_string(),
+                            };
+
+                            Value::Object(
+                                Object::String(
+                                    Box::new(tmp_value)
+                                )
+                            )
+                        },
+                        _ => return Err(
+                            LoxError::RuntimeError(
+                                "only lists and strings can be sliced".into(),
+                            )
+                        ),
+                    };
+
+                    self.stack_push_value(value);
                 },
                 OpCode::Equal => {
                     let right = self.pop_stack()?;
