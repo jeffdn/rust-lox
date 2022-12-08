@@ -20,6 +20,7 @@ use crate::{
         Object,
         UpValue,
         UpValuePtr,
+        ValueIter,
         ValueMap,
     },
     value::{
@@ -47,6 +48,47 @@ pub struct VirtualMachine {
     upvalues: Vec<UpValuePtr>,
 
     init_string: String,
+}
+
+fn _built_in_range(input: &[ValuePtr]) -> Result<Value, LoxError> {
+    match (&*input[0].borrow(), &*input[1].borrow()) {
+        (Value::Number(start), Value::Number(stop)) => {
+            let start = *start as i32;
+            let stop = *stop as i32;
+
+            if stop > start {
+                Ok(
+                    Value::Object(
+                        Object::List(
+                            Box::new(
+                                (start..stop)
+                                    .map(|x| ValuePtr::new(Value::Number(x.into())))
+                                    .collect()
+                            )
+                        )
+                    )
+                )
+            } else {
+                Ok(
+                    Value::Object(
+                        Object::List(
+                            Box::new(
+                                (stop..start)
+                                    .map(|x| ValuePtr::new(Value::Number(x.into())))
+                                    .collect()
+                            )
+                        )
+                    )
+                )
+            }
+
+        },
+        _ => Err(
+            LoxError::RuntimeError(
+                "range(start, stop) takes two numbers".into()
+            )
+        ),
+    }
 }
 
 fn _built_in_time(_: &[ValuePtr]) -> Result<Value, LoxError> {
@@ -89,6 +131,7 @@ fn _built_in_type(input: &[ValuePtr]) -> Result<Value, LoxError> {
             Object::Closure(_) => "closure",
             Object::Function(_) => "function",
             Object::Instance(_) => "object",
+            Object::Iterator(_) => "iterator",
             Object::List(_) => "list",
             Object::Map(_) => "map",
             Object::Native(_) => "function",
@@ -184,6 +227,7 @@ impl VirtualMachine {
         self.call(&closure, 0)?;
 
         self.define_native("len".into(), _built_in_len, 1)?;
+        self.define_native("range".into(), _built_in_range, 2)?;
         self.define_native("str".into(), _built_in_str, 1)?;
         self.define_native("time".into(), _built_in_time, 0)?;
         self.define_native("type".into(), _built_in_type, 1)?;
@@ -708,6 +752,37 @@ impl VirtualMachine {
                     self.frame_mut().pos -= offset;
                     continue;
                 },
+                OpCode::DefineIterator => {
+                    let to_iterate = self.pop_stack()?;
+                    let value_iter = ValueIter::new(to_iterate)?;
+
+                    self.stack_push_value(
+                        Value::Object(
+                            Object::Iterator(
+                                Box::new(value_iter)
+                            )
+                        )
+                    );
+                },
+                OpCode::IteratorNext(index, jump) => {
+                    let iterator_ptr = self.pop_stack()?;
+                    let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut() else {
+                        unreachable!();
+                    };
+
+                    let constant = self.function().chunk.constants.get(index).clone();
+                    self.stack.push(constant);
+
+                    if iterator.next == iterator.items.len() {
+                        self.frame_mut().pos += jump;
+                    } else {
+                        let index = index + self.frame().stack_offset;
+                        self.stack[index] = iterator.items[iterator.next].clone();
+                        iterator.next += 1;
+                    }
+
+                    self.stack.push(iterator_ptr.clone());
+                },
                 OpCode::BuildList(item_count) => {
                     let range_start = self.stack.len() - item_count;
                     let list: Vec<ValuePtr> = self.stack[range_start..].to_vec();
@@ -1047,6 +1122,7 @@ impl VirtualMachine {
                 Object::Closure(_) => Ok(true),
                 Object::Function(_) => Ok(true),
                 Object::Instance(_) => Ok(true),
+                Object::Iterator(_) => Ok(true),
                 Object::List(list) => Ok(!list.is_empty()),
                 Object::Map(hmap) => Ok(!hmap.map.is_empty()),
                 Object::Native(_) => Ok(true),

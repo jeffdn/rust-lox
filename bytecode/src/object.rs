@@ -19,11 +19,70 @@ pub enum Object {
     Closure(Box<Closure>),
     Function(Box<Function>),
     Instance(Box<Instance>),
+    Iterator(Box<ValueIter>),
     List(Box<Vec<ValuePtr>>),
     Map(Box<ValueMap>),
     Native(Box<NativeFunction>),
     String(Box<String>),
     UpValue(Box<UpValue>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ValueIter {
+    pub items: Vec<ValuePtr>,
+    pub next: usize,
+}
+
+impl ValueIter {
+    pub fn new(instance: ValuePtr) -> Result<Self, LoxError> {
+        let value = match &*instance.borrow() {
+            Value::Object(object) => match object {
+                Object::List(list) => {
+                    ValueIter {
+                        items: (0..list.len())
+                            .map(|x| ValuePtr::new(Value::Number(x as f64)))
+                            .collect(),
+                        next: 0,
+                    }
+                },
+                Object::Map(hmap) => {
+                    ValueIter {
+                        items: hmap.map
+                            .iter()
+                            .map(|(k, _)| k.clone())
+                            .collect(),
+                        next: 0,
+                    }
+                },
+                Object::String(string) => {
+                    ValueIter {
+                        items: string.chars()
+                            .map(|x| ValuePtr::new(
+                                Value::Object(
+                                    Object::String(
+                                        Box::new(x.into())
+                                    )
+                                )
+                            ))
+                            .collect(),
+                        next: 0,
+                    }
+                },
+                _ => return Err(
+                    LoxError::RuntimeError(
+                        "only lists, maps, and strings can be iterated".into(),
+                    )
+                ),
+            },
+            _ => return Err(
+                LoxError::RuntimeError(
+                    "only lists, maps, and strings can be iterated".into(),
+                )
+            ),
+        };
+
+        Ok(value)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -176,6 +235,7 @@ impl fmt::Display for Object {
 
                 format!("<{} instance>", class.name)
             },
+            Object::Iterator(iter) => format!("<iterator: {:?}>", iter.items),
             Object::List(list) => format!(
                 "[{}]",
                 list.iter()

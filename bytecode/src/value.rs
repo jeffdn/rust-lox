@@ -90,6 +90,12 @@ impl Hash for Value {
                     Object::Closure(_) => CLOSURE_HASH.hash(state),
                     Object::Function(_) | Object::Native(_) => FUNCTION_HASH.hash(state),
                     Object::Instance(_) => INSTANCE_HASH.hash(state),
+                    Object::Iterator(iterator) => {
+                        LIST_HASH.hash(state);
+                        for item in iterator.items.iter() {
+                            item.borrow().hash(state);
+                        }
+                    },
                     Object::List(list) => {
                         LIST_HASH.hash(state);
                         for item in list.iter() {

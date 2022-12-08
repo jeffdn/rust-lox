@@ -285,6 +285,7 @@ impl Compiler {
         self.chunk().code[offset - 1] = match self.chunk().code[offset - 1] {
             OpCode::Jump(_) => OpCode::Jump(jump),
             OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump),
+            OpCode::IteratorNext(index, _) => OpCode::IteratorNext(index, jump),
             _ => return Err(LoxError::RuntimeError("unreachable".into())),
         };
 
@@ -467,6 +468,34 @@ impl Compiler {
         self.end_scope()
     }
 
+    fn foreach_statement(&mut self) -> Result<(), LoxError> {
+        self.begin_scope()?;
+
+        self.consume(TokenType::LeftParen, "expect '(' after 'foreach'")?;
+        self.consume(TokenType::Var, "expect 'var' after 'foreach ('")?;
+        let global: usize = self.parse_variable("expect variable name")?;
+        self.define_variable(global)?;
+        let offset = self.compiler().locals.last().unwrap().depth.unwrap();
+
+        self.consume(TokenType::In, "expect 'in' after 'foreach (var iter'")?;
+        self.expression()?;
+        self.emit_byte(OpCode::DefineIterator)?;
+
+        self.consume(TokenType::RightParen, "expect ')' after for clauses")?;
+
+        let loop_start = self.chunk().code.len();
+
+        self.emit_byte(OpCode::IteratorNext(offset, 0))?;
+
+        self.statement()?;
+        self.emit_loop(loop_start)?;
+
+        self.patch_jump(loop_start + 1)?;
+        self.emit_byte(OpCode::Pop)?;
+
+        self.end_scope()
+    }
+
     fn if_statement(&mut self) -> Result<(), LoxError> {
         self.consume(TokenType::LeftParen, "expect '(' after 'if'")?;
         self.expression()?;
@@ -546,6 +575,7 @@ impl Compiler {
                 TokenType::Function |
                 TokenType::Var |
                 TokenType::For |
+                TokenType::Foreach |
                 TokenType::If |
                 TokenType::While |
                 TokenType::Print |
@@ -580,6 +610,8 @@ impl Compiler {
             self.print_statement()
         } else if self.token_type_matches(&TokenType::For)? {
             self.for_statement()
+        } else if self.token_type_matches(&TokenType::Foreach)? {
+            self.foreach_statement()
         } else if self.token_type_matches(&TokenType::If)? {
             self.if_statement()
         } else if self.token_type_matches(&TokenType::Return)? {
