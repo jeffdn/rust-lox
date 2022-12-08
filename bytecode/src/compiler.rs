@@ -579,6 +579,7 @@ impl Compiler {
                 TokenType::If |
                 TokenType::While |
                 TokenType::Print |
+                TokenType::Delete |
                 TokenType::Return => break,
                 _ => self.advance()?,
             };
@@ -608,6 +609,8 @@ impl Compiler {
     fn statement(&mut self) -> Result<(), LoxError> {
         if self.token_type_matches(&TokenType::Print)? {
             self.print_statement()
+        } else if self.token_type_matches(&TokenType::Delete)? {
+            self.delete_statement()
         } else if self.token_type_matches(&TokenType::For)? {
             self.for_statement()
         } else if self.token_type_matches(&TokenType::Foreach)? {
@@ -697,6 +700,25 @@ impl Compiler {
         )?;
 
         self.emit_byte(OpCode::GetSlice(has_left, true))
+    }
+
+    fn delete_statement(&mut self) -> Result<(), LoxError> {
+        self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+
+        match self.chunk().code.last() {
+            Some(OpCode::GetIndex) => {},
+            _ => return Err(
+                LoxError::CompileError(
+                    "invalid 'delete' statement".into()
+                )
+            ),
+        };
+
+        let last_pos = self.chunk().code.len() - 1;
+        self.chunk().code[last_pos] = OpCode::DeleteIndex;
+
+        Ok(())
     }
 
     fn index(&mut self, can_assign: bool) -> Result<(), LoxError> {

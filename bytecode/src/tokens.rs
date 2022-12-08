@@ -39,6 +39,7 @@ pub enum TokenType {
     // keywords.
     And,
     Class,
+    Delete,
     Else,
     Eof,
     False,
@@ -98,6 +99,7 @@ impl fmt::Display for TokenType {
             TokenType::Class => "class",
             TokenType::Else => "else",
             TokenType::Eof => "eof",
+            TokenType::Delete => "delete",
             TokenType::False => "false",
             TokenType::For => "for",
             TokenType::Foreach => "foreach",

@@ -95,6 +95,7 @@ impl Scanner {
             "and"       => TokenType::And,
             "class"     => TokenType::Class,
             "else"      => TokenType::Else,
+            "delete"    => TokenType::Delete,
             "false"     => TokenType::False,
             "for"       => TokenType::For,
             "foreach"   => TokenType::Foreach,

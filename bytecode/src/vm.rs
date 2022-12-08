@@ -529,6 +529,48 @@ impl VirtualMachine {
 
                     self.stack.push(value);
                 },
+                OpCode::DeleteIndex => {
+                    let index = self.pop_stack()?;
+                    let container = self.pop_stack()?;
+
+                    match &mut *container.borrow_mut() {
+                        Value::Object(Object::List(list)) => match &*index.borrow() {
+                            Value::Number(number) => {
+                                if number < &0.0f64 {
+                                    return Err(
+                                        LoxError::RuntimeError(
+                                            "cannot index lists with negative numbers".into()
+                                        )
+                                    );
+                                }
+
+                                let index_usize = *number as usize;
+                                if index_usize >= list.len() {
+                                    return Err(
+                                        LoxError::RuntimeError(
+                                            format!("{} exceeds length of list", index_usize)
+                                        )
+                                    );
+                                }
+
+                                list.remove(index_usize);
+                            },
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "lists can only be indexed with integers".into()
+                                )
+                            ),
+                        },
+                        Value::Object(Object::Map(hmap)) => {
+                            hmap.map.remove(&index);
+                        },
+                        _ => return Err(
+                            LoxError::RuntimeError(
+                                "only lists and maps can be indexed into".into()
+                            )
+                        ),
+                    };
+                },
                 OpCode::GetSlice(has_left, has_right) => {
                     let right: Option<i32> = match has_right {
                         true => match &*self.pop_stack()?.borrow() {
