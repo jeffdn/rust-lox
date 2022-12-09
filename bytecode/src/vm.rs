@@ -290,6 +290,27 @@ impl VirtualMachine {
         }
     }
 
+    fn _extract_index(&self, len: usize, number: f64) -> Result<usize, LoxError> {
+        if number < 0.0f64 {
+            return Err(
+                LoxError::RuntimeError(
+                    "cannot index lists with negative numbers".into()
+                )
+            );
+        }
+
+        let index_usize = number as usize;
+        if index_usize >= len {
+            return Err(
+                LoxError::RuntimeError(
+                    format!("{} exceeds length of list", index_usize)
+                )
+            );
+        }
+
+        Ok(index_usize)
+    }
+
     pub fn run(&mut self) -> Result<(), LoxError> {
         macro_rules! binary_opcode {
             ( $op:tt, $op_char:expr, $output:expr ) => {
@@ -440,23 +461,7 @@ impl VirtualMachine {
                     let value = match &*container.borrow() {
                         Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                if number < &0.0f64 {
-                                    return Err(
-                                        LoxError::RuntimeError(
-                                            "cannot index lists with negative numbers".into()
-                                        )
-                                    );
-                                }
-
-                                let index_usize = *number as usize;
-                                if index_usize >= list.len() {
-                                    return Err(
-                                        LoxError::RuntimeError(
-                                            format!("{} exceeds length of list", index_usize)
-                                        )
-                                    );
-                                }
-
+                                let index_usize = self._extract_index(list.len(), *number)?;
                                 list[index_usize].clone()
                             },
                             _ => return Err(
@@ -492,23 +497,7 @@ impl VirtualMachine {
                     match &mut *container.borrow_mut() {
                         Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                if number < &0.0f64 {
-                                    return Err(
-                                        LoxError::RuntimeError(
-                                            "cannot index lists with negative numbers".into()
-                                        )
-                                    );
-                                }
-
-                                let index_usize = *number as usize;
-                                if index_usize >= list.len() {
-                                    return Err(
-                                        LoxError::RuntimeError(
-                                            format!("{} exceeds length of list", index_usize)
-                                        )
-                                    );
-                                }
-
+                                let index_usize = self._extract_index(list.len(), *number)?;
                                 list[index_usize] = value.clone();
                             },
                             _ => return Err(
@@ -536,23 +525,7 @@ impl VirtualMachine {
                     match &mut *container.borrow_mut() {
                         Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                if number < &0.0f64 {
-                                    return Err(
-                                        LoxError::RuntimeError(
-                                            "cannot index lists with negative numbers".into()
-                                        )
-                                    );
-                                }
-
-                                let index_usize = *number as usize;
-                                if index_usize >= list.len() {
-                                    return Err(
-                                        LoxError::RuntimeError(
-                                            format!("{} exceeds length of list", index_usize)
-                                        )
-                                    );
-                                }
-
+                                let index_usize = self._extract_index(list.len(), *number)?;
                                 list.remove(index_usize);
                             },
                             _ => return Err(
