@@ -54,6 +54,6 @@ delete foo[1];
 print foo;
 
 var baz = "hello, world";
-for (var i = 0; i < len(baz); i = i + 1) {
-  print baz[i:];
+foreach (var c in range(0, len(baz))) {
+  print baz[c];
 }

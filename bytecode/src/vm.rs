@@ -56,31 +56,22 @@ fn _built_in_range(input: &[ValuePtr]) -> Result<Value, LoxError> {
             let start = *start as i32;
             let stop = *stop as i32;
 
-            if stop > start {
-                Ok(
-                    Value::Object(
-                        Object::List(
-                            Box::new(
-                                (start..stop)
-                                    .map(|x| ValuePtr::new(Value::Number(x.into())))
-                                    .collect()
-                            )
+            let range_iter = match stop > start {
+                true => start..stop,
+                false => stop..start,
+            };
+
+            Ok(
+                Value::Object(
+                    Object::List(
+                        Box::new(
+                            range_iter
+                                .map(|x| ValuePtr::new(Value::Number(x.into())))
+                                .collect()
                         )
                     )
                 )
-            } else {
-                Ok(
-                    Value::Object(
-                        Object::List(
-                            Box::new(
-                                (stop..start)
-                                    .map(|x| ValuePtr::new(Value::Number(x.into())))
-                                    .collect()
-                            )
-                        )
-                    )
-                )
-            }
+            )
 
         },
         _ => Err(
@@ -470,6 +461,26 @@ impl VirtualMachine {
                                 )
                             ),
                         },
+                        Value::Object(Object::String(string)) => match &*index.borrow() {
+                            Value::Number(number) => {
+                                let index_usize = self._extract_index(string.len(), *number)?;
+
+                                ValuePtr::new(
+                                    Value::Object(
+                                        Object::String(
+                                            Box::new(
+                                                string.chars().nth(index_usize).unwrap().to_string()
+                                            )
+                                        )
+                                    )
+                                )
+                            },
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "lists can only be indexed with integers".into()
+                                )
+                            ),
+                        },
                         Value::Object(Object::Map(hmap)) => {
                             match hmap.map.get(&index) {
                                 Some(value) => value.clone(),
@@ -653,9 +664,23 @@ impl VirtualMachine {
                                 )
                             );
                         },
+                        Value::Object(Object::String(string)) => match &*left.borrow() {
+                            Value::Object(Object::String(substring)) =>  {
+                                self.stack_push_value(
+                                    Value::Bool(
+                                        (&*string).contains(&**substring)
+                                    )
+                                );
+                            },
+                            _ => return Err(
+                                LoxError::RuntimeError(
+                                    "invalid 'in' check: strings can only contain other strings".into()
+                                )
+                            ),
+                        },
                         _ => return Err(
                             LoxError::RuntimeError(
-                                "'in' operator only functions on lists".into()
+                                "'in' operator only functions on iterables".into()
                             )
                         ),
                     };
@@ -985,20 +1010,18 @@ impl VirtualMachine {
                         Value::Object(
                             Object::Instance(
                                 Box::new(
-                                    Instance::new(
-                                        at_offset.clone()
-                                    )
+                                    Instance::new(at_offset.clone())
                                 )
                             )
                         )
                     );
 
-                    if let Some(initializer_ptr) = class.methods.get(&self.init_string) {
-                        let Value::Object(Object::Closure(initializer)) = &*initializer_ptr.borrow() else {
+                    if let Some(init_ptr) = class.methods.get(&self.init_string) {
+                        let Value::Object(Object::Closure(init)) = &*init_ptr.borrow() else {
                             unreachable!();
                         };
 
-                        self.call(initializer, arg_count)?;
+                        self.call(init, arg_count)?;
                     } else if arg_count != 0 {
                         return Err(
                             LoxError::RuntimeError(
