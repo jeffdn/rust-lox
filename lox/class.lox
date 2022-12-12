@@ -14,8 +14,7 @@ var melvin = Cat("Melvin");
 coco.eat();
 melvin.eat();
 
-print "";
-print "maps";
+print "\nmaps:";
 var foo = {
     "a": 1,
     "b": 2
@@ -29,13 +28,10 @@ foo["c"] = 3;
 print foo;
 print "c" in foo;
 print "c" not in foo;
-delete foo["c"];
+delete foo['c'];
 print foo;
 
-print type(foo);
-
-print "";
-print "lists";
+print "\nlists:";
 var foo = [1, 2, 3];
 print foo;
 print foo[1];
@@ -53,7 +49,8 @@ print foo;
 delete foo[1];
 print foo;
 
+print '\nstrings:';
 var baz = "hello, world";
-foreach (var c in range(0, len(baz))) {
-  print baz[c];
+foreach (var c in range(0, len(baz) / 2)) {
+  print baz[c * 2:(c * 2) + 2];
 }

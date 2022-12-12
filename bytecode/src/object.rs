@@ -252,10 +252,10 @@ impl fmt::Display for Object {
                     .join(", ")
             ),
             Object::Native(_) => "built-in".into(),
-            Object::String(string) => *string.clone(),
+            Object::String(string) => string.clone().replace("\\n", "\n"),
             Object::UpValue(_) => "up-value".into(),
         };
 
-        write!(f, "'{}'", output)
+        write!(f, "{}", output)
     }
 }

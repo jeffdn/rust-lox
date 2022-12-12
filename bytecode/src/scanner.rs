@@ -69,7 +69,8 @@ impl Scanner {
                 true => self.make_token(TokenType::GreaterEqual),
                 false => self.make_token(TokenType::Greater),
             },
-            '"' => self.add_string(),
+            '"' => self.add_string('"'),
+            '\'' => self.add_string('\''),
             _ => {
                 if next.is_ascii_digit() {
                     return self.add_number();
@@ -127,8 +128,8 @@ impl Scanner {
         self.find_identifier(&output)
     }
 
-    fn add_string(&mut self) -> Result<Token, LoxError> {
-        while !self.at_end() && self.peek() != '"' {
+    fn add_string(&mut self, end: char) -> Result<Token, LoxError> {
+        while !self.at_end() && self.peek() != end {
             if self.peek() == '\n' {
                 self.line += 1;
             }
