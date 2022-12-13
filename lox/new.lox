@@ -3,5 +3,7 @@ var list = [1, 2, 3, 4];
 print list[-3];
 list[-1] = 8;
 
+print list;
+
 print list[0:-1];
 print list[-9:8];

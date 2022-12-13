@@ -265,41 +265,20 @@ impl VirtualMachine {
         self.stack.push(ValuePtr::new(value));
     }
 
-    fn _convert_index(&self, len: usize, index: i32) -> Result<usize, LoxError> {
-        let len = len as i32;
-        if index > len {
-            return Err(
-                LoxError::RuntimeError(
-                    format!("{} exceeds length of list", index)
-                )
-            );
-        }
-
-        match index < 0 {
-            true => Ok((len + index) as usize),
-            false => Ok(index as usize),
-        }
+    fn _convert_index(&self, len: usize, number: i32) -> Result<usize, LoxError> {
+        self._extract_index(len, number as f64)
     }
 
     fn _extract_index(&self, len: usize, number: f64) -> Result<usize, LoxError> {
-        if number < 0.0f64 {
-            return Err(
-                LoxError::RuntimeError(
-                    "cannot index lists with negative numbers".into()
-                )
-            );
-        }
+        let index = match number < 0.0f64 {
+            true => (len as f64 + number) as usize,
+            false => number as usize,
+        };
 
-        let index_usize = number as usize;
-        if index_usize >= len {
-            return Err(
-                LoxError::RuntimeError(
-                    format!("{} exceeds length of list", index_usize)
-                )
-            );
+        match index > len {
+            true => Ok(len),
+            false => Ok(index),
         }
-
-        Ok(index_usize)
     }
 
     pub fn run(&mut self) -> Result<(), LoxError> {
