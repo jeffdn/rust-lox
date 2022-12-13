@@ -1,3 +1,4 @@
+pub mod builtin;
 pub mod chunk;
 pub mod compiler;
 pub mod errors;

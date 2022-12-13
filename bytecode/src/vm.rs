@@ -2,10 +2,10 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     rc::Rc,
-    time::SystemTime,
 };
 
 use crate::{
+    builtin,
     chunk::OpCode,
     compiler::Compiler,
     errors::LoxError,
@@ -48,90 +48,6 @@ pub struct VirtualMachine {
     upvalues: Vec<UpValuePtr>,
 
     init_string: String,
-}
-
-fn _built_in_range(input: &[ValuePtr]) -> Result<Value, LoxError> {
-    match (&*input[0].borrow(), &*input[1].borrow()) {
-        (Value::Number(start), Value::Number(stop)) => {
-            let start = *start as i32;
-            let stop = *stop as i32;
-
-            let range_iter = match stop > start {
-                true => start..stop,
-                false => stop..start,
-            };
-
-            Ok(
-                Value::Object(
-                    Object::List(
-                        Box::new(
-                            range_iter
-                                .map(|x| ValuePtr::new(Value::Number(x.into())))
-                                .collect()
-                        )
-                    )
-                )
-            )
-
-        },
-        _ => Err(
-            LoxError::RuntimeError(
-                "range(start, stop) takes two numbers".into()
-            )
-        ),
-    }
-}
-
-fn _built_in_time(_: &[ValuePtr]) -> Result<Value, LoxError> {
-    match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(unix_now) => Ok(Value::Number(unix_now.as_secs_f64())),
-        Err(_) => Err(LoxError::RuntimeError("time() failed, uh oh".into())),
-    }
-}
-
-fn _built_in_str(input: &[ValuePtr]) -> Result<Value, LoxError> {
-    match &*input[0].borrow() {
-        Value::Object(object) => match object {
-            Object::String(string) => Ok(Value::Object(Object::String(Box::new(*string.clone())))),
-            _ => Err(LoxError::RuntimeError("string() only accepts primitives".into())),
-        },
-        _ => Ok(Value::Object(Object::String(Box::new((*input[0].borrow()).to_string())))),
-    }
-}
-
-fn _built_in_len(input: &[ValuePtr]) -> Result<Value, LoxError> {
-    match &*input[0].borrow() {
-        Value::Object(object) => match object {
-            Object::List(list) => Ok(Value::Number(list.len() as f64)),
-            Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
-            Object::String(string) => Ok(Value::Number(string.len() as f64)),
-            _ => Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
-        },
-        _ => Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
-    }
-}
-
-fn _built_in_type(input: &[ValuePtr]) -> Result<Value, LoxError> {
-    let output: &str = match &*input[0].borrow() {
-        Value::Bool(_) => "bool",
-        Value::Nil => "nil",
-        Value::Number(_) => "number",
-        Value::Object(object) => match object {
-            Object::BoundMethod(_) => "method",
-            Object::Class(_) => "class",
-            Object::Closure(_) => "closure",
-            Object::Function(_) => "function",
-            Object::Instance(_) => "object",
-            Object::Iterator(_) => "iterator",
-            Object::List(_) => "list",
-            Object::Map(_) => "map",
-            Object::Native(_) => "function",
-            Object::String(_) => "string",
-            Object::UpValue(uv) => return _built_in_type(&[uv.location.clone()]),
-        },
-    };
-
-    Ok(Value::Object(Object::String(Box::new(output.into()))))
 }
 
 impl Default for VirtualMachine {
@@ -217,11 +133,11 @@ impl VirtualMachine {
 
         self.call(&closure, 0)?;
 
-        self.define_native("len".into(), _built_in_len, 1)?;
-        self.define_native("range".into(), _built_in_range, 2)?;
-        self.define_native("str".into(), _built_in_str, 1)?;
-        self.define_native("time".into(), _built_in_time, 0)?;
-        self.define_native("type".into(), _built_in_type, 1)?;
+        self.define_native("len".into(), builtin::_len, 1)?;
+        self.define_native("range".into(), builtin::_range, 2)?;
+        self.define_native("str".into(), builtin::_str, 1)?;
+        self.define_native("time".into(), builtin::_time, 0)?;
+        self.define_native("type".into(), builtin::_type, 1)?;
 
         self.run()
     }
@@ -339,11 +255,7 @@ impl VirtualMachine {
 
                     let val = match self.globals.get(&key) {
                         Some(val) => val,
-                        None => return Err(
-                            LoxError::RuntimeError(
-                                format!("undefined variable: {}", key)
-                            )
-                        ),
+                        None => return Err(LoxError::RuntimeError(format!("undefined variable: {}", key))),
                     };
 
                     self.stack.push(val.clone());
@@ -365,11 +277,7 @@ impl VirtualMachine {
                     };
 
                     if !self.globals.contains_key(&key) {
-                        return Err(
-                            LoxError::RuntimeError(
-                                format!("undefined variable: {}", key)
-                            )
-                        )
+                        return Err(LoxError::RuntimeError(format!("undefined variable: {}", key)))
                     }
 
                     let val = match self.stack.last() {
@@ -435,9 +343,7 @@ impl VirtualMachine {
                                 list[index_usize].clone()
                             },
                             _ => return Err(
-                                LoxError::RuntimeError(
-                                    "lists can only be indexed with integers".into()
-                                )
+                                LoxError::RuntimeError("lists can only be indexed with integers".into())
                             ),
                         },
                         Value::Object(Object::String(string)) => match &*index.borrow() {
@@ -455,25 +361,19 @@ impl VirtualMachine {
                                 )
                             },
                             _ => return Err(
-                                LoxError::RuntimeError(
-                                    "lists can only be indexed with integers".into()
-                                )
+                                LoxError::RuntimeError("strings can only be indexed with integers".into())
                             ),
                         },
                         Value::Object(Object::Map(hmap)) => {
                             match hmap.map.get(&index) {
                                 Some(value) => value.clone(),
                                 None => return Err(
-                                    LoxError::RuntimeError(
-                                        format!("no entry for key {:?}", index)
-                                    )
+                                    LoxError::RuntimeError(format!("no entry for key {:?}", index))
                                 ),
                             }
                         },
                         _ => return Err(
-                            LoxError::RuntimeError(
-                                "only lists and maps can be indexed into".into()
-                            )
+                            LoxError::RuntimeError("only lists and maps can be indexed into".into())
                         ),
                     };
 
@@ -491,18 +391,14 @@ impl VirtualMachine {
                                 list[index_usize] = value.clone();
                             },
                             _ => return Err(
-                                LoxError::RuntimeError(
-                                    "lists can only be indexed with integers".into()
-                                )
+                                LoxError::RuntimeError("lists can only be indexed with integers".into())
                             ),
                         },
                         Value::Object(Object::Map(hmap)) => {
                             hmap.map.insert(index.clone(), value.clone());
                         },
                         _ => return Err(
-                            LoxError::RuntimeError(
-                                "only lists and maps can be indexed into".into()
-                            )
+                            LoxError::RuntimeError("only lists and maps can be indexed into".into())
                         ),
                     };
 
@@ -519,18 +415,14 @@ impl VirtualMachine {
                                 list.remove(index_usize);
                             },
                             _ => return Err(
-                                LoxError::RuntimeError(
-                                    "lists can only be indexed with integers".into()
-                                )
+                                LoxError::RuntimeError("lists can only be indexed with integers".into())
                             ),
                         },
                         Value::Object(Object::Map(hmap)) => {
                             hmap.map.remove(&index);
                         },
                         _ => return Err(
-                            LoxError::RuntimeError(
-                                "only lists and maps can be indexed into".into()
-                            )
+                            LoxError::RuntimeError("only lists and maps can be indexed into".into())
                         ),
                     };
                 },
@@ -602,9 +494,7 @@ impl VirtualMachine {
                             )
                         },
                         _ => return Err(
-                            LoxError::RuntimeError(
-                                "only lists and strings can be sliced".into(),
-                            )
+                            LoxError::RuntimeError("only lists and strings can be sliced".into())
                         ),
                     };
 
@@ -658,9 +548,7 @@ impl VirtualMachine {
                             ),
                         },
                         _ => return Err(
-                            LoxError::RuntimeError(
-                                "'in' operator only functions on iterables".into()
-                            )
+                            LoxError::RuntimeError("'in' operator only functions on iterables".into())
                         ),
                     };
                 },
@@ -749,9 +637,7 @@ impl VirtualMachine {
                     let item = match *(self.pop_stack()?).borrow() {
                         Value::Number(number) => number,
                         _ => return Err(
-                            LoxError::RuntimeError(
-                                "negation only operates on numbers".into()
-                            )
+                            LoxError::RuntimeError("negation only operates on numbers".into())
                         ),
                     };
                     self.stack_push_value(Value::Number(-item));
@@ -877,9 +763,7 @@ impl VirtualMachine {
                 OpCode::CloseUpValue => {
                     let Some(value) = self.stack.last() else {
                         return Err(
-                            LoxError::RuntimeError(
-                                "can't close an upvalue without a stack!".into()
-                            )
+                            LoxError::RuntimeError("can't close an upvalue without a stack!".into())
                         );
                     };
 
@@ -926,11 +810,7 @@ impl VirtualMachine {
     fn read_string(&self, index: usize) -> Result<String, LoxError> {
         let name_constant = self.function().chunk.constants.get(index).clone();
         let Value::Object(Object::String(name)) = &*name_constant.borrow() else {
-            return Err(
-                LoxError::RuntimeError(
-                    "tried to read a string and failed".into()
-                )
-            );
+            return Err(LoxError::RuntimeError("tried to read a string and failed".into()));
         };
 
         Ok(*name.clone())
@@ -1061,11 +941,7 @@ impl VirtualMachine {
 
                 Ok(())
             },
-            None => Err(
-                LoxError::RuntimeError(
-                    format!("'{}' not a valid property", name)
-                )
-            )
+            None => Err(LoxError::RuntimeError(format!("'{}' not a valid property", name)))
         }
     }
 
@@ -1114,11 +990,7 @@ impl VirtualMachine {
         let method = self.stack.last().unwrap();
         let class_ptr = self.stack[self.stack.len() - 2].clone();
         let Value::Object(Object::Class(class)) = &mut *class_ptr.borrow_mut() else {
-            return Err(
-                LoxError::RuntimeError(
-                    "attempting to define a method, no class on stack".into()
-                )
-            );
+            return Err(LoxError::RuntimeError("no class on stack".into()));
         };
 
         class.methods.insert(name, method.clone());
