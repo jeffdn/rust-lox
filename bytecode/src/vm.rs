@@ -664,7 +664,7 @@ impl VirtualMachine {
                         );
                     };
 
-                    self.frame_mut().pos += offset;
+                    self.frame_mut().pos += offset - 1;
                 },
                 OpCode::Continue(offset, fixed) => {
                     if !fixed {
@@ -694,8 +694,10 @@ impl VirtualMachine {
                         unreachable!();
                     };
 
-                    let constant = self.function().chunk.constants.get(index).clone();
-                    self.stack.push(constant);
+                    if iterator.next == 0 {
+                        let constant = self.function().chunk.constants.get(index).clone();
+                        self.stack.push(constant);
+                    }
 
                     if iterator.next == iterator.items.len() {
                         self.frame_mut().pos += jump;
