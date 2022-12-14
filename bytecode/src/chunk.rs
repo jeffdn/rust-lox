@@ -47,6 +47,8 @@ pub enum OpCode {
     Jump(usize),
     JumpIfFalse(usize),
     Loop(usize),
+    Break(usize, bool),
+    Continue(usize, bool),
     DefineIterator,
     IteratorNext(usize, usize),
     BuildList(usize),
@@ -95,6 +97,8 @@ impl fmt::Display for OpCode {
             OpCode::Jump(_) => "op_jump",
             OpCode::JumpIfFalse(_) => "op_jump_if_false",
             OpCode::Loop(_) => "op_loop",
+            OpCode::Break(_, _) => "op_break",
+            OpCode::Continue(_, _) => "op_continue",
             OpCode::DefineIterator => "op_define_iterator",
             OpCode::IteratorNext(_, _) => "op_iterator_next",
             OpCode::BuildList(_) => "op_build_list",
@@ -205,6 +209,12 @@ impl Chunk {
             ),
             OpCode::Loop(offset) => format!(
                 "{:<20} {}", "op_loop", offset,
+            ),
+            OpCode::Break(offset, fixed) => format!(
+                "{:<20} {} {}", "op_break", offset, fixed,
+            ),
+            OpCode::Continue(offset, fixed) => format!(
+                "{:<20} {} {}", "op_continue", offset, fixed,
             ),
             OpCode::IteratorNext(index, jump) => format!(
                 "{:<20} {} {}", "op_iterator_next", index, jump,

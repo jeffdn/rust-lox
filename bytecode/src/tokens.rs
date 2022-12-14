@@ -38,7 +38,9 @@ pub enum TokenType {
 
     // keywords.
     And,
+    Break,
     Class,
+    Continue,
     Delete,
     Else,
     Eof,
@@ -96,7 +98,9 @@ impl fmt::Display for TokenType {
             TokenType::String => "string",
             TokenType::Number => "number",
             TokenType::And => "and",
+            TokenType::Break => "break",
             TokenType::Class => "class",
+            TokenType::Continue => "continue",
             TokenType::Else => "else",
             TokenType::Eof => "eof",
             TokenType::Delete => "delete",

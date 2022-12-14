@@ -657,6 +657,25 @@ impl VirtualMachine {
                     self.frame_mut().pos -= offset;
                     continue;
                 },
+                OpCode::Break(offset, fixed) => {
+                    if !fixed {
+                        return Err(
+                            LoxError::RuntimeError("cannot break from outside a loop".into())
+                        );
+                    };
+
+                    self.frame_mut().pos += offset;
+                },
+                OpCode::Continue(offset, fixed) => {
+                    if !fixed {
+                        return Err(
+                            LoxError::RuntimeError("cannot continue from outside a loop".into())
+                        );
+                    };
+
+                    self.frame_mut().pos -= offset;
+                    continue;
+                },
                 OpCode::DefineIterator => {
                     let to_iterate = self.pop_stack()?;
                     let value_iter = ValueIter::new(to_iterate)?;

@@ -54,3 +54,13 @@ var baz = "hello, world";
 foreach (var c in range(0, len(baz) / 2)) {
   print baz[c * 2:(c * 2) + 2];
 }
+
+print '\nloops:';
+foreach (var i in range(0, 5)) {
+    if (i == 3) {
+        print 'breaking';
+        continue;
+    }
+    print i;
+}
+print 'done!';

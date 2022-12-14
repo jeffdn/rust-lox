@@ -94,7 +94,9 @@ impl Scanner {
     fn find_identifier(&self, input_lexeme: &str) -> Result<Token, LoxError> {
         let token_type = match input_lexeme {
             "and"       => TokenType::And,
+            "break"     => TokenType::Break,
             "class"     => TokenType::Class,
+            "continue"  => TokenType::Continue,
             "else"      => TokenType::Else,
             "delete"    => TokenType::Delete,
             "false"     => TokenType::False,

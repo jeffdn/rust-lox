@@ -258,9 +258,20 @@ impl Compiler {
     }
 
     fn emit_loop(&mut self, loop_start: usize) -> Result<(), LoxError> {
+        let last_code = self.chunk().code.len();
         let offset = self.chunk().code.len() - loop_start;
 
-        self.emit_byte(OpCode::Loop(offset))
+        self.emit_byte(OpCode::Loop(offset))?;
+
+        for code in self.chunk().code[loop_start..last_code].iter_mut() {
+            match code {
+                OpCode::Break(initial, false) => *code = OpCode::Break(last_code - *initial, true),
+                OpCode::Continue(initial, false) => *code = OpCode::Continue(*initial - loop_start, true),
+                _ => {},
+            };
+        }
+
+        Ok(())
     }
 
     fn emit_jump(&mut self, byte: OpCode) -> Result<usize, LoxError>{
@@ -290,7 +301,6 @@ impl Compiler {
         };
 
         Ok(())
-
     }
 
     fn expression(&mut self) -> Result<(), LoxError> {
@@ -571,7 +581,9 @@ impl Compiler {
             }
 
             match self.current.token_type {
+                TokenType::Break |
                 TokenType::Class |
+                TokenType::Continue |
                 TokenType::Function |
                 TokenType::Var |
                 TokenType::For |
@@ -628,6 +640,16 @@ impl Compiler {
         } else {
             self.expression_statement()
         }
+    }
+
+    fn break_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let current_len = self.chunk().code.len();
+        self.emit_byte(OpCode::Break(current_len, false))
+    }
+
+    fn continue_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        let current_len = self.chunk().code.len();
+        self.emit_byte(OpCode::Continue(current_len, false))
     }
 
     fn binary(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -943,6 +965,8 @@ impl Compiler {
             &TokenType::False => Some(Compiler::literal),
             &TokenType::Identifier => Some(Compiler::variable),
             &TokenType::This => Some(Compiler::this_),
+            &TokenType::Break => Some(Compiler::break_),
+            &TokenType::Continue => Some(Compiler::continue_),
             _ => None,
         }
     }
