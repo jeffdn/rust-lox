@@ -265,6 +265,7 @@ impl Compiler {
 
         // Now, look through all instructions emitted between the start of the loop and
         // the loop instructions. Any that take the shape of either:
+        //
         //     OpCode::Break(position, false)
         //     OpCode::Continue(position, false)
         //
@@ -495,6 +496,7 @@ impl Compiler {
         self.begin_scope()?;
 
         // This statement must take the shape of:
+        //
         //     foreach (var iteration_var in iterable_object) { ... }
         self.consume(TokenType::LeftParen, "expect '(' after 'foreach'")?;
         self.consume(TokenType::Var, "expect 'var' after 'foreach ('")?;
@@ -531,7 +533,7 @@ impl Compiler {
         self.emit_loop(loop_start)?;
 
         self.patch_jump(loop_start + 1)?;
-        self.emit_byte(OpCode::Pop)?;
+        // self.emit_byte(OpCode::Pop)?;
 
         self.end_scope()
     }

@@ -235,7 +235,14 @@ impl fmt::Display for Object {
 
                 format!("<{} instance>", class.name)
             },
-            Object::Iterator(iter) => format!("<iterator: {:?}>", iter.items),
+            Object::Iterator(iter) => format!(
+                "<iterator: [{}]>",
+                iter.items
+                    .iter()
+                    .map(|x| x.borrow().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Object::List(list) => format!(
                 "[{}]",
                 list.iter()
