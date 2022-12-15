@@ -664,7 +664,7 @@ impl VirtualMachine {
                         );
                     };
 
-                    self.frame_mut().pos += offset + 1;
+                    self.frame_mut().pos += offset;
                 },
                 OpCode::Continue(offset, fixed) => {
                     if !fixed {

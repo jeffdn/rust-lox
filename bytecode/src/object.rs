@@ -236,7 +236,8 @@ impl fmt::Display for Object {
                 format!("<{} instance>", class.name)
             },
             Object::Iterator(iter) => format!(
-                "<iterator: [{}]>",
+                "<iterator: next={}, items=[{}]>",
+                iter.next,
                 iter.items
                     .iter()
                     .map(|x| x.borrow().to_string())
