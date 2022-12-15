@@ -664,7 +664,7 @@ impl VirtualMachine {
                         );
                     };
 
-                    self.frame_mut().pos += offset - 1;
+                    self.frame_mut().pos += offset + 1;
                 },
                 OpCode::Continue(offset, fixed) => {
                     if !fixed {
@@ -689,7 +689,8 @@ impl VirtualMachine {
                     );
                 },
                 OpCode::IteratorNext(index, jump) => {
-                    let iterator_ptr = self.pop_stack()?;
+                    let index = index + self.frame().stack_offset;
+                    let iterator_ptr = self.stack[index - 1].clone();
                     let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut() else {
                         unreachable!();
                     };
@@ -706,8 +707,6 @@ impl VirtualMachine {
                         self.stack[index] = iterator.items[iterator.next].clone();
                         iterator.next += 1;
                     }
-
-                    self.stack.push(iterator_ptr.clone());
                 },
                 OpCode::BuildList(item_count) => {
                     let range_start = self.stack.len() - item_count;

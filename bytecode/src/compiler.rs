@@ -263,6 +263,15 @@ impl Compiler {
 
         self.emit_byte(OpCode::Loop(offset))?;
 
+        // Now, look through all instructions emitted between the start of the loop and
+        // the loop instructions. Any that take the shape of either:
+        //     OpCode::Break(position, false)
+        //     OpCode::Continue(position, false)
+        //
+        //  Will be replaced with, respectively:
+        //
+        //     OpCode::Break(end_of_loop, true)
+        //     OpCode::Continue(start_of_loop, true)
         for code in self.chunk().code[loop_start..last_code].iter_mut() {
             match code {
                 OpCode::Break(initial, false) => *code = OpCode::Break(last_code - *initial, true),
@@ -445,6 +454,8 @@ impl Compiler {
         let mut loop_start = self.chunk().code.len();
         let mut exit_jump: Option<usize> = None;
 
+        // This is the loop condition -- if present, the loop instruction will return
+        // to this instruction for evaluation on every iteration.
         if !self.token_type_matches(&TokenType::Semicolon)? {
             self.expression()?;
             self.consume(TokenType::Semicolon, "expect ';' after loop condition")?;
@@ -453,6 +464,8 @@ impl Compiler {
             self.emit_byte(OpCode::Pop)?;
         }
 
+        // This is the incrementer -- if present, this will be evaluated after the
+        // body of the loop.
         if !self.token_type_matches(&TokenType::RightParen)? {
             let body_jump = self.emit_jump(OpCode::Jump(0))?;
             let increment_start = self.chunk().code.len();
@@ -481,11 +494,28 @@ impl Compiler {
     fn foreach_statement(&mut self) -> Result<(), LoxError> {
         self.begin_scope()?;
 
+        // This statement must take the shape of:
+        //     foreach (var iteration_var in iterable_object) { ... }
         self.consume(TokenType::LeftParen, "expect '(' after 'foreach'")?;
         self.consume(TokenType::Var, "expect 'var' after 'foreach ('")?;
+
+        self.compiler_mut().local_count += 1;
+        self.compiler_mut().locals.push(
+            Local {
+                name: Token {
+                    token_type: TokenType::Skip,
+                    length: 0,
+                    start: 0,
+                    line: 0,
+                },
+                depth: None,
+                is_captured: false,
+            }
+        );
+
         let global: usize = self.parse_variable("expect variable name")?;
         self.define_variable(global)?;
-        let offset = self.compiler().locals.last().unwrap().depth.unwrap();
+        let offset = self.compiler().locals.len() - 1;
 
         self.consume(TokenType::In, "expect 'in' after 'foreach (var iter'")?;
         self.expression()?;
