@@ -537,7 +537,7 @@ impl VirtualMachine {
                             Value::Object(Object::String(substring)) =>  {
                                 self.stack_push_value(
                                     Value::Bool(
-                                        (&*string).contains(&**substring)
+                                        string.contains(&**substring)
                                     )
                                 );
                             },

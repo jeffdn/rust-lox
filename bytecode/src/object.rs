@@ -48,8 +48,8 @@ impl ValueIter {
                 Object::Map(hmap) => {
                     ValueIter {
                         items: hmap.map
-                            .iter()
-                            .map(|(k, _)| k.clone())
+                            .keys()
+                            .cloned()
                             .collect(),
                         next: 0,
                     }
