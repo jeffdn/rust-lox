@@ -664,7 +664,7 @@ impl VirtualMachine {
                         );
                     };
 
-                    self.frame_mut().pos += offset;
+                    self.frame_mut().pos += offset + 1;
                 },
                 OpCode::Continue(offset, fixed) => {
                     if !fixed {
@@ -701,7 +701,7 @@ impl VirtualMachine {
                     }
 
                     if iterator.next == iterator.items.len() {
-                        self.frame_mut().pos += jump;
+                        self.frame_mut().pos += jump + 1;
                     } else {
                         self.stack[stack_index] = iterator.items[iterator.next].clone();
                         iterator.next += 1;

@@ -533,7 +533,7 @@ impl Compiler {
         self.emit_loop(loop_start)?;
 
         self.patch_jump(loop_start + 1)?;
-        // self.emit_byte(OpCode::Pop)?;
+        self.emit_byte(OpCode::Pop)?;
 
         self.end_scope()
     }
