@@ -47,7 +47,7 @@ pub struct VirtualMachine {
     globals: HashMap<String, ValuePtr>,
     upvalues: Vec<UpValuePtr>,
 
-    init_string: String,
+    init_string: &'static str,
 }
 
 impl Default for VirtualMachine {
@@ -63,7 +63,7 @@ impl VirtualMachine {
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::with_capacity(STACK_MAX),
             upvalues: Vec::with_capacity(STACK_MAX),
-            init_string: "init".into(),
+            init_string: "init",
         }
     }
 
@@ -890,7 +890,7 @@ impl VirtualMachine {
                         )
                     );
 
-                    if let Some(init_ptr) = class.methods.get(&self.init_string) {
+                    if let Some(init_ptr) = class.methods.get(self.init_string) {
                         let Value::Object(Object::Closure(init)) = &*init_ptr.borrow() else {
                             unreachable!();
                         };
