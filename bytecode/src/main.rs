@@ -39,7 +39,7 @@ fn run_lox_repl() -> Result<(), LoxError> {
 
         let input_expr = slurp_expr();
 
-        match vm.interpret(input_expr) {
+        match vm.interpret(&input_expr) {
             Ok(_) => {},
             Err(e) => println!("{}", e),
         };
@@ -55,7 +55,7 @@ fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
         )?;
 
     let mut vm = VirtualMachine::new();
-    vm.interpret(source)
+    vm.interpret(&source)
 }
 
 fn main() -> Result<(), LoxError> {

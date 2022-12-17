@@ -1,59 +1,59 @@
-// class Cat {
-//   init(name) {
-//     this.name = name;
-//   }
-//
-//   eat() {
-//     print this.name + " says: crunch crunch crunch";
-//   }
-// }
-//
-// var coco = Cat("Coco");
-// var melvin = Cat("Melvin");
-//
-// coco.eat();
-// melvin.eat();
-//
-// print "\nmaps:";
-// var foo = {
-//     "a": 1,
-//     "b": 2
-// };
-// print foo;
-// print foo["a"];
-//
-// print "c" in foo;
-// print "c" not in foo;
-// foo["c"] = 3;
-// print foo;
-// print "c" in foo;
-// print "c" not in foo;
-// delete foo['c'];
-// print foo;
-//
-// print "\nlists:";
-// var foo = [1, 2, 3];
-// print foo;
-// print foo[1];
-//
-// print 4 in foo;
-// print 4 not in foo;
-// foo[1] = 4;
-// print 4 in foo;
-// print 4 not in foo;
-//
-// var bar = [4, 5, 6];
-// foo = foo + bar;
-// print foo;
-//
-// delete foo[1];
-// print foo;
-//
-// print '\nstrings:';
-// var baz = "hello, world";
-// foreach (var c in range(0, len(baz) / 2)) {
-//   print baz[c * 2:(c * 2) + 2];
-// }
+class Cat {
+  init(name) {
+    this.name = name;
+  }
+
+  eat() {
+    print this.name + " says: crunch crunch crunch";
+  }
+}
+
+var coco = Cat("Coco");
+var melvin = Cat("Melvin");
+
+coco.eat();
+melvin.eat();
+
+print "\nmaps:";
+var foo = {
+    "a": 1,
+    "b": 2
+};
+print foo;
+print foo["a"];
+
+print "c" in foo;
+print "c" not in foo;
+foo["c"] = 3;
+print foo;
+print "c" in foo;
+print "c" not in foo;
+delete foo['c'];
+print foo;
+
+print "\nlists:";
+var foo = [1, 2, 3];
+print foo;
+print foo[1];
+
+print 4 in foo;
+print 4 not in foo;
+foo[1] = 4;
+print 4 in foo;
+print 4 not in foo;
+
+var bar = [4, 5, 6];
+foo = foo + bar;
+print foo;
+
+delete foo[1];
+print foo;
+
+print '\nstrings:';
+var baz = "hello, world";
+foreach (var c in range(0, len(baz) / 2)) {
+  print baz[c * 2:(c * 2) + 2];
+}
 
 print '\nloops:';
 //foreach (var i in range(0, 5)) {

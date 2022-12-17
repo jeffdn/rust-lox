@@ -67,11 +67,11 @@ impl VirtualMachine {
         }
     }
 
-    pub fn define_native(&mut self, name: String, function: NativeFn, arity: usize) -> Result<(), LoxError> {
+    pub fn define_native(&mut self, name: &str, function: NativeFn, arity: usize) -> Result<(), LoxError> {
         self.stack_push_value(
             Value::Object(
                 Object::String(
-                    Box::new(name.clone())
+                    Box::new(String::from(name))
                 )
             )
         );
@@ -82,7 +82,7 @@ impl VirtualMachine {
                         NativeFunction {
                             function,
                             obj: None,
-                            name: name.clone(),
+                            name: String::from(name),
                             arity,
                         }
                     )
@@ -91,7 +91,7 @@ impl VirtualMachine {
         );
         self.stack.push(function.clone());
         self.globals.insert(
-            name,
+            String::from(name),
             function,
         );
 
@@ -101,7 +101,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    pub fn interpret(&mut self, input: String) -> Result<(), LoxError> {
+    pub fn interpret(&mut self, input: &str) -> Result<(), LoxError> {
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile()?;
 
@@ -133,11 +133,11 @@ impl VirtualMachine {
 
         self.call(&closure, 0)?;
 
-        self.define_native("len".into(), builtin::_len, 1)?;
-        self.define_native("range".into(), builtin::_range, 2)?;
-        self.define_native("str".into(), builtin::_str, 1)?;
-        self.define_native("time".into(), builtin::_time, 0)?;
-        self.define_native("type".into(), builtin::_type, 1)?;
+        self.define_native("len", builtin::_len, 1)?;
+        self.define_native("range", builtin::_range, 2)?;
+        self.define_native("str", builtin::_str, 1)?;
+        self.define_native("time", builtin::_time, 0)?;
+        self.define_native("type", builtin::_type, 1)?;
 
         self.run()
     }
@@ -504,11 +504,7 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
 
-                    self.stack_push_value(
-                        Value::Bool(
-                            self.values_equal(&left.borrow(), &right.borrow())?
-                        )
-                    );
+                    self.stack_push_value(Value::Bool(&*left.borrow() == &*right.borrow()));
                 },
                 OpCode::Greater => binary_opcode! { >, '>', Value::Bool },
                 OpCode::Less => binary_opcode! { <, '<', Value::Bool },
@@ -816,7 +812,7 @@ impl VirtualMachine {
                     );
                 },
                 OpCode::Method(index) => {
-                    self.define_method(self.read_string(index)?)?;
+                    self.define_method(&self.read_string(index)?)?;
                 },
             };
 
@@ -837,7 +833,7 @@ impl VirtualMachine {
 
     fn check_arity(
         &self,
-        name: &String,
+        name: &str,
         callee_arity: usize,
         arg_count: usize,
     ) -> Result<(), LoxError> {
@@ -936,7 +932,7 @@ impl VirtualMachine {
         }
     }
 
-    fn bind_method(&mut self, class_ptr: ValuePtr, name: &String) -> Result<(), LoxError> {
+    fn bind_method(&mut self, class_ptr: ValuePtr, name: &str) -> Result<(), LoxError> {
         let Value::Object(Object::Class(class)) = &*class_ptr.borrow() else {
             unreachable!();
         };
@@ -1005,14 +1001,14 @@ impl VirtualMachine {
         // }
     }
 
-    fn define_method(&mut self, name: String) -> Result<(), LoxError> {
+    fn define_method(&mut self, name: &str) -> Result<(), LoxError> {
         let method = self.stack.last().unwrap();
         let class_ptr = self.stack[self.stack.len() - 2].clone();
         let Value::Object(Object::Class(class)) = &mut *class_ptr.borrow_mut() else {
             return Err(LoxError::RuntimeError("no class on stack".into()));
         };
 
-        class.methods.insert(name, method.clone());
+        class.methods.insert(String::from(name), method.clone());
         self.stack.pop();
 
         Ok(())
@@ -1037,22 +1033,6 @@ impl VirtualMachine {
                 Object::String(string) => Ok(!string.is_empty()),
                 Object::UpValue(value) => self.truthy(&value.location),
             },
-        }
-    }
-
-    fn values_equal(&self, left: &Value, right: &Value) -> Result<bool, LoxError> {
-        match (left, right) {
-            (Value::Bool(left), Value::Bool(right)) => Ok(left == right),
-            (Value::Nil, Value::Nil) => Ok(true),
-            (Value::Number(left), Value::Number(right)) => Ok(left == right),
-            (Value::Object(left), Value::Object(right)) => match (left, right) {
-                (Object::List(left), Object::List(right)) => Ok(left == right),
-                (Object::Map(left), Object::Map(right)) => Ok(left == right),
-                (Object::Function(left), Object::Function(right)) => Ok(left.name == right.name),
-                (Object::String(left), Object::String(right)) => Ok(left == right),
-                _ => Ok(false),
-            },
-            _ => Ok(false),
         }
     }
 }
