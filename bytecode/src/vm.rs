@@ -439,26 +439,14 @@ impl VirtualMachine {
 
                     match &*right {
                         Value::Object(Object::List(list)) => {
-                            self.stack_push_value(
-                                Value::Bool(
-                                    list.contains(&left)
-                                )
-                            );
+                            self.stack_push_value(Value::Bool(list.contains(&left)));
                         },
                         Value::Object(Object::Map(hmap)) => {
-                            self.stack_push_value(
-                                Value::Bool(
-                                    hmap.map.contains_key(&left)
-                                )
-                            );
+                            self.stack_push_value(Value::Bool(hmap.map.contains_key(&left)));
                         },
                         Value::Object(Object::String(string)) => match &*left.borrow() {
                             Value::Object(Object::String(substring)) =>  {
-                                self.stack_push_value(
-                                    Value::Bool(
-                                        string.contains(&**substring)
-                                    )
-                                );
+                                self.stack_push_value(Value::Bool(string.contains(&**substring)));
                             },
                             _ => err!("invalid 'in' check: strings can only contain other strings"),
                         },
@@ -519,12 +507,8 @@ impl VirtualMachine {
                     };
                     self.stack_push_value(Value::Number(-item));
                 },
-                OpCode::Print => {
-                    println!("{}", *(self.pop_stack()?).borrow());
-                },
-                OpCode::Jump(offset) => {
-                    self.frame_mut().pos += offset;
-                },
+                OpCode::Print => println!("{}", *(self.pop_stack()?).borrow()),
+                OpCode::Jump(offset) => self.frame_mut().pos += offset,
                 OpCode::JumpIfFalse(offset) => {
                     if !self.truthy(self.stack.last().unwrap())? {
                         self.frame_mut().pos += offset;
@@ -576,23 +560,18 @@ impl VirtualMachine {
                 },
                 OpCode::BuildList(item_count) => {
                     let range_start = self.stack.len() - item_count;
-                    let list: Vec<ValuePtr> = self.stack[range_start..].to_vec();
+                    let list: Vec<ValuePtr> = self.stack.split_off(range_start);
 
-                    self.stack.truncate(range_start);
                     self.stack_push_value(obj!(List, list));
                 },
                 OpCode::BuildMap(item_count) => {
                     let range_start = self.stack.len() - item_count;
-                    let mut map: HashMap<ValuePtr, ValuePtr> = HashMap::new();
+                    let map: HashMap<ValuePtr, ValuePtr> = HashMap::from_iter(
+                        self.stack.split_off(range_start)
+                            .chunks(2)
+                            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
+                    );
 
-                    while map.len() * 2 < item_count {
-                        let val = self.pop_stack()?;
-                        let key = self.pop_stack()?;
-
-                        map.insert(key.clone(), val.clone());
-                    }
-
-                    self.stack.truncate(range_start);
                     self.stack_push_value(obj!(Map, ValueMap { map }));
                 },
                 OpCode::Call(arg_count) => {
@@ -746,9 +725,9 @@ impl VirtualMachine {
                     self.check_arity(&native.name, native.arity, arg_count)?;
 
                     let arg_range_start = self.stack.len() - arg_count;
-                    let result = (native.function)(&self.stack[arg_range_start..])?;
+                    let result = (native.function)(&self.stack.split_off(arg_range_start))?;
 
-                    self.stack.truncate(arg_range_start - 1);
+                    self.pop_stack()?;
                     self.stack_push_value(result);
                     self.frame_mut().pos += 1;
 
