@@ -56,6 +56,20 @@ impl Default for VirtualMachine {
     }
 }
 
+macro_rules! obj {
+    ( $ot:tt, $val:expr ) => {
+        Value::Object(Object::$ot(Box::new($val)))
+    }
+}
+
+macro_rules! err {
+    ( $msg:expr ) => {
+        {
+            return Err(LoxError::RuntimeError($msg.into()))
+        }
+    }
+}
+
 impl VirtualMachine {
     pub fn new() -> VirtualMachine {
         VirtualMachine {
@@ -68,35 +82,18 @@ impl VirtualMachine {
     }
 
     pub fn define_native(&mut self, name: &str, function: NativeFn, arity: usize) -> Result<(), LoxError> {
-        self.stack_push_value(
-            Value::Object(
-                Object::String(
-                    Box::new(String::from(name))
-                )
-            )
-        );
         let function = ValuePtr::new(
-            Value::Object(
-                Object::Native(
-                    Box::new(
-                        NativeFunction {
-                            function,
-                            obj: None,
-                            name: String::from(name),
-                            arity,
-                        }
-                    )
-                )
+            obj!(
+                Native,
+                NativeFunction {
+                    function,
+                    obj: None,
+                    name: String::from(name),
+                    arity,
+                }
             )
         );
-        self.stack.push(function.clone());
-        self.globals.insert(
-            String::from(name),
-            function,
-        );
-
-        self.pop_stack()?;
-        self.pop_stack()?;
+        self.globals.insert(String::from(name), function);
 
         Ok(())
     }
@@ -105,32 +102,13 @@ impl VirtualMachine {
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile()?;
 
-        self.stack_push_value(
-            Value::Object(
-                Object::Function(
-                    Box::new(
-                        function.clone()
-                    )
-                )
-            )
-        );
-
         let closure = Closure {
             upvalues: Vec::with_capacity(function.upvalue_count),
             function,
             obj: None,
         };
 
-        self.pop_stack()?;
-
-        self.stack_push_value(
-            Value::Object(
-                Object::Closure(
-                    Box::new(closure.clone())
-                )
-            )
-        );
-
+        self.stack_push_value(obj!(Closure, closure.clone()));
         self.call(&closure, 0)?;
 
         self.define_native("len", builtin::_len, 1)?;
@@ -205,11 +183,7 @@ impl VirtualMachine {
                     let left = self.pop_stack()?;
 
                     let (Value::Number(b), Value::Number(a)) = (&*right.borrow(), &*left.borrow()) else {
-                        return Err(
-                            LoxError::RuntimeError(
-                                format!("comparison '{}' only operates on numbers", $op_char)
-                            )
-                        );
+                        err!(&format!("comparison '{}' only operates on numbers", $op_char));
                     };
 
                     self.stack_push_value($output(a $op b));
@@ -239,10 +213,7 @@ impl VirtualMachine {
                 OpCode::SetLocal(index) => {
                     let val = match self.stack.last() {
                         Some(val) => val.clone(),
-                        None =>
-                            return Err(
-                            LoxError::RuntimeError("empty stack".to_string())
-                        ),
+                        None => err!("empty stack"),
                     };
                     let index = index + self.frame().stack_offset;
                     self.stack[index] = val;
@@ -250,12 +221,12 @@ impl VirtualMachine {
                 OpCode::GetGlobal(index) => {
                     let key = match &*self.function().chunk.constants.get(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
-                        _ => return Err(LoxError::RuntimeError("missing constant".into())),
+                        _ => err!("missing constant"),
                     };
 
                     let val = match self.globals.get(&key) {
                         Some(val) => val,
-                        None => return Err(LoxError::RuntimeError(format!("undefined variable: {}", key))),
+                        None => err!(&format!("undefined variable: {}", key)),
                     };
 
                     self.stack.push(val.clone());
@@ -263,7 +234,7 @@ impl VirtualMachine {
                 OpCode::DefineGlobal(index) => {
                     let key = match &*self.function().chunk.constants.get(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
-                        _ => return Err(LoxError::RuntimeError("missing constant".into())),
+                        _ => err!("missing constant"),
                     };
 
                     let val = self.pop_stack()?;
@@ -273,19 +244,16 @@ impl VirtualMachine {
                 OpCode::SetGlobal(index) => {
                     let key = match &*self.function().chunk.constants.get(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
-                        _ => return Err(LoxError::RuntimeError("missing constant".into())),
+                        _ => err!("missing constant"),
                     };
 
                     if !self.globals.contains_key(&key) {
-                        return Err(LoxError::RuntimeError(format!("undefined variable: {}", key)))
+                        err!(&format!("undefined variable: {}", key))
                     }
 
                     let val = match self.stack.last() {
                         Some(val) => val.clone(),
-                        None =>
-                            return Err(
-                            LoxError::RuntimeError("empty stack".to_string())
-                        ),
+                        None => err!("empty stack"),
                     };
 
                     self.globals.insert(key, val);
@@ -301,7 +269,7 @@ impl VirtualMachine {
                 OpCode::GetProperty(index) => {
                     let instance_ptr = self.stack.last().unwrap().clone();
                     let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
-                        return Err(LoxError::RuntimeError("not an instance".into()));
+                        err!("not an instance");
                     };
                     let name_constant = self.function().chunk.constants.get(index).clone();
                     let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
@@ -319,7 +287,7 @@ impl VirtualMachine {
                 OpCode::SetProperty(index) => {
                     let instance_ptr = self.stack[self.stack.len() - 2].clone();
                     let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut() else {
-                        return Err(LoxError::RuntimeError("not an instance".into()));
+                        err!("not an instance");
                     };
                     let name_constant = self.function().chunk.constants.get(index).clone();
                     let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
@@ -342,39 +310,25 @@ impl VirtualMachine {
                                 let index_usize = self._extract_index(list.len(), *number)?;
                                 list[index_usize].clone()
                             },
-                            _ => return Err(
-                                LoxError::RuntimeError("lists can only be indexed with integers".into())
-                            ),
+                            _ => err!("lists can only be indexed with integers"),
                         },
                         Value::Object(Object::String(string)) => match &*index.borrow() {
                             Value::Number(number) => {
                                 let index_usize = self._extract_index(string.len(), *number)?;
 
                                 ValuePtr::new(
-                                    Value::Object(
-                                        Object::String(
-                                            Box::new(
-                                                string.chars().nth(index_usize).unwrap().to_string()
-                                            )
-                                        )
-                                    )
+                                    obj!(String, string.chars().nth(index_usize).unwrap().to_string())
                                 )
                             },
-                            _ => return Err(
-                                LoxError::RuntimeError("strings can only be indexed with integers".into())
-                            ),
+                            _ => err!("strings can only be indexed with integers"),
                         },
                         Value::Object(Object::Map(hmap)) => {
                             match hmap.map.get(&index) {
                                 Some(value) => value.clone(),
-                                None => return Err(
-                                    LoxError::RuntimeError(format!("no entry for key {:?}", index))
-                                ),
+                                None => err!(&format!("no entry for key {:?}", index)),
                             }
                         },
-                        _ => return Err(
-                            LoxError::RuntimeError("only lists and maps can be indexed into".into())
-                        ),
+                        _ => err!("only lists and maps can be indexed into"),
                     };
 
                     self.stack.push(value);
@@ -390,16 +344,12 @@ impl VirtualMachine {
                                 let index_usize = self._extract_index(list.len(), *number)?;
                                 list[index_usize] = value.clone();
                             },
-                            _ => return Err(
-                                LoxError::RuntimeError("lists can only be indexed with integers".into())
-                            ),
+                            _ => err!("lists can only be indexed with integers")
                         },
                         Value::Object(Object::Map(hmap)) => {
                             hmap.map.insert(index.clone(), value.clone());
                         },
-                        _ => return Err(
-                            LoxError::RuntimeError("only lists and maps can be indexed into".into())
-                        ),
+                        _ => err!("only lists and maps can be indexed into")
                     };
 
                     self.stack.push(value);
@@ -414,38 +364,26 @@ impl VirtualMachine {
                                 let index_usize = self._extract_index(list.len(), *number)?;
                                 list.remove(index_usize);
                             },
-                            _ => return Err(
-                                LoxError::RuntimeError("lists can only be indexed with integers".into())
-                            ),
+                            _ => err!("lists can only be indexed with integers")
                         },
                         Value::Object(Object::Map(hmap)) => {
                             hmap.map.remove(&index);
                         },
-                        _ => return Err(
-                            LoxError::RuntimeError("only lists and maps can be indexed into".into())
-                        ),
+                        _ => err!("only lists and maps can be indexed into")
                     };
                 },
                 OpCode::GetSlice(has_left, has_right) => {
                     let right: Option<i32> = match has_right {
                         true => match &*self.pop_stack()?.borrow() {
                             Value::Number(number) => Some(*number as i32),
-                            _ => return Err(
-                                LoxError::RuntimeError(
-                                    "only numbers can be used to slice containers".into(),
-                                )
-                            ),
+                            _ => err!("only numbers can be used to slice containers")
                         },
                         false => None,
                     };
                     let left: Option<i32> = match has_left {
                         true => match &*self.pop_stack()?.borrow() {
                             Value::Number(number) => Some(*number as i32),
-                            _ => return Err(
-                                LoxError::RuntimeError(
-                                    "only numbers can be used to slice containers".into(),
-                                )
-                            ),
+                            _ => err!("only numbers can be used to slice containers"),
                         },
                         false => None,
                     };
@@ -466,11 +404,7 @@ impl VirtualMachine {
                                 false => list[left..right].to_vec(),
                             };
 
-                            Value::Object(
-                                Object::List(
-                                    Box::new(tmp_value)
-                                )
-                            )
+                            obj!(List, tmp_value)
                         },
                         Value::Object(Object::String(string)) => {
                             let left = match left {
@@ -487,25 +421,14 @@ impl VirtualMachine {
                                 false => string[left..right].to_string(),
                             };
 
-                            Value::Object(
-                                Object::String(
-                                    Box::new(tmp_value)
-                                )
-                            )
+                            obj!(String, tmp_value)
                         },
-                        _ => return Err(
-                            LoxError::RuntimeError("only lists and strings can be sliced".into())
-                        ),
+                        _ => err!("only lists and strings can be sliced"),
                     };
 
                     self.stack_push_value(value);
                 },
-                OpCode::Equal => {
-                    let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    self.stack_push_value(Value::Bool(&*left.borrow() == &*right.borrow()));
-                },
+                OpCode::Equal => binary_opcode! { ==, "==", Value::Bool },
                 OpCode::Greater => binary_opcode! { >, '>', Value::Bool },
                 OpCode::Less => binary_opcode! { <, '<', Value::Bool },
                 OpCode::In => {
@@ -537,15 +460,9 @@ impl VirtualMachine {
                                     )
                                 );
                             },
-                            _ => return Err(
-                                LoxError::RuntimeError(
-                                    "invalid 'in' check: strings can only contain other strings".into()
-                                )
-                            ),
+                            _ => err!("invalid 'in' check: strings can only contain other strings"),
                         },
-                        _ => return Err(
-                            LoxError::RuntimeError("'in' operator only functions on iterables".into())
-                        ),
+                        _ => err!("'in' operator only functions on iterables"),
                     };
                 },
                 OpCode::Add => {
@@ -570,55 +487,21 @@ impl VirtualMachine {
                                 new_list.push(item.clone());
                             }
 
-                            self.stack_push_value(
-                                Value::Object(
-                                    Object::List(
-                                        Box::new(new_list)
-                                    )
-                                )
-                            );
+                            self.stack_push_value(obj!(List, new_list))
                         },
                         (Value::Number(b), Value::Number(a)) => {
                             self.stack_push_value(Value::Number(a + b));
                         },
                         (Value::Number(b), Value::Object(Object::String(a))) => {
-                            self.stack_push_value(
-                                Value::Object(
-                                    Object::String(
-                                        Box::new(
-                                            format!("{}{}", a, b)
-                                        )
-                                    )
-                                )
-                            );
+                            self.stack_push_value(obj!(String, format!("{}{}", a, b)));
                         },
                         (Value::Object(Object::String(b)), Value::Number(a)) => {
-                            self.stack_push_value(
-                                Value::Object(
-                                    Object::String(
-                                        Box::new(
-                                            format!("{}{}", a, b)
-                                        )
-                                    )
-                                )
-                            );
+                            self.stack_push_value(obj!(String, format!("{}{}", a, b)));
                         },
                         (Value::Object(Object::String(b)), Value::Object(Object::String(a))) => {
-                            self.stack_push_value(
-                                Value::Object(
-                                    Object::String(
-                                        Box::new(
-                                            format!("{}{}", a, b)
-                                        )
-                                    )
-                                )
-                            );
+                            self.stack_push_value(obj!(String, format!("{}{}", a, b)));
                         },
-                        _ => return Err(
-                            LoxError::RuntimeError(
-                                "operation '+' only operates on numbers and strings".into()
-                            )
-                        ),
+                        _ => err!("operation '+' only operates on numbers and strings"),
                     };
                 },
                 OpCode::Subtract => binary_opcode! { -, '-', Value::Number },
@@ -632,9 +515,7 @@ impl VirtualMachine {
                 OpCode::Negate => {
                     let item = match *(self.pop_stack()?).borrow() {
                         Value::Number(number) => number,
-                        _ => return Err(
-                            LoxError::RuntimeError("negation only operates on numbers".into())
-                        ),
+                        _ => err!("negation only operates on numbers"),
                     };
                     self.stack_push_value(Value::Number(-item));
                 },
@@ -655,18 +536,14 @@ impl VirtualMachine {
                 },
                 OpCode::Break(offset, fixed) => {
                     if !fixed {
-                        return Err(
-                            LoxError::RuntimeError("cannot break from outside a loop".into())
-                        );
+                        err!("cannot break from outside a loop");
                     };
 
                     self.frame_mut().pos += offset + 1;
                 },
                 OpCode::Continue(offset, fixed) => {
                     if !fixed {
-                        return Err(
-                            LoxError::RuntimeError("cannot continue from outside a loop".into())
-                        );
+                        err!("cannot continue from outside a loop");
                     };
 
                     self.frame_mut().pos -= offset;
@@ -676,13 +553,7 @@ impl VirtualMachine {
                     let to_iterate = self.pop_stack()?;
                     let value_iter = ValueIter::new(to_iterate)?;
 
-                    self.stack_push_value(
-                        Value::Object(
-                            Object::Iterator(
-                                Box::new(value_iter)
-                            )
-                        )
-                    );
+                    self.stack_push_value(obj!(Iterator, value_iter));
                 },
                 OpCode::IteratorNext(index, jump) => {
                     let stack_index = index + self.frame().stack_offset;
@@ -708,13 +579,7 @@ impl VirtualMachine {
                     let list: Vec<ValuePtr> = self.stack[range_start..].to_vec();
 
                     self.stack.truncate(range_start);
-                    self.stack_push_value(
-                        Value::Object(
-                            Object::List(
-                                Box::new(list)
-                            )
-                        )
-                    );
+                    self.stack_push_value(obj!(List, list));
                 },
                 OpCode::BuildMap(item_count) => {
                     let range_start = self.stack.len() - item_count;
@@ -728,17 +593,7 @@ impl VirtualMachine {
                     }
 
                     self.stack.truncate(range_start);
-                    self.stack_push_value(
-                        Value::Object(
-                            Object::Map(
-                                Box::new(
-                                    ValueMap {
-                                        map,
-                                    }
-                                )
-                            )
-                        )
-                    );
+                    self.stack_push_value(obj!(Map, ValueMap { map }));
                 },
                 OpCode::Call(arg_count) => {
                     self.call_value(arg_count)?;
@@ -762,24 +617,19 @@ impl VirtualMachine {
                     }
 
                     self.stack_push_value(
-                        Value::Object(
-                            Object::Closure(
-                                Box::new(
-                                    Closure {
-                                        obj: None,
-                                        upvalues: captured,
-                                        function,
-                                    }
-                                )
-                            )
+                        obj!(
+                            Closure,
+                            Closure {
+                                obj: None,
+                                upvalues: captured,
+                                function,
+                            }
                         )
                     );
                 },
                 OpCode::CloseUpValue => {
                     let Some(value) = self.stack.last() else {
-                        return Err(
-                            LoxError::RuntimeError("can't close an upvalue without a stack!".into())
-                        );
+                        err!("can't close an upvalue without a stack!");
                     };
 
                     self.close_upvalues(value.clone());
@@ -801,15 +651,7 @@ impl VirtualMachine {
                 OpCode::Class(index) => {
                     let class_name = self.read_string(index)?;
 
-                    self.stack_push_value(
-                        Value::Object(
-                            Object::Class(
-                                Box::new(
-                                    Class::new(class_name)
-                                )
-                            )
-                        )
-                    );
+                    self.stack_push_value(obj!(Class, Class::new(class_name)));
                 },
                 OpCode::Method(index) => {
                     self.define_method(&self.read_string(index)?)?;
@@ -825,7 +667,7 @@ impl VirtualMachine {
     fn read_string(&self, index: usize) -> Result<String, LoxError> {
         let name_constant = self.function().chunk.constants.get(index).clone();
         let Value::Object(Object::String(name)) = &*name_constant.borrow() else {
-            return Err(LoxError::RuntimeError("tried to read a string and failed".into()));
+            err!("tried to read a string and failed");
         };
 
         Ok(*name.clone())
@@ -838,11 +680,7 @@ impl VirtualMachine {
         arg_count: usize,
     ) -> Result<(), LoxError> {
         if callee_arity != arg_count {
-            return Err(
-                LoxError::RuntimeError(
-                    format!("{}: expected {} arguments but {} were given", name, callee_arity, arg_count)
-                )
-            );
+            err!(&format!("{}: expected {} arguments but {} were given", name, callee_arity, arg_count));
         }
 
         Ok(())
@@ -881,13 +719,7 @@ impl VirtualMachine {
                 Object::Class(class) => {
                     let position = self.stack.len() - arg_count - 1;
                     self.stack[position] = ValuePtr::new(
-                        Value::Object(
-                            Object::Instance(
-                                Box::new(
-                                    Instance::new(at_offset.clone())
-                                )
-                            )
-                        )
+                        obj!(Instance, Instance::new(at_offset.clone()))
                     );
 
                     if let Some(init_ptr) = class.methods.get(self.init_string) {
@@ -897,11 +729,7 @@ impl VirtualMachine {
 
                         self.call(init, arg_count)?;
                     } else if arg_count != 0 {
-                        return Err(
-                            LoxError::RuntimeError(
-                                format!("expected no arguments on initialization but got {}", arg_count)
-                            )
-                        );
+                        err!(&format!("expected no arguments on initialization but got {}", arg_count));
                     } else {
                         self.frame_mut().pos += 1;
                     }
@@ -939,16 +767,13 @@ impl VirtualMachine {
 
         match class.methods.get(name) {
             Some(method) => {
-                let bound_method = Value::Object(
-                    Object::BoundMethod(
-                        Box::new(
-                            BoundMethod {
-                                receiver: self.stack.last().unwrap().clone(),
-                                closure: method.clone(),
-                                obj: None,
-                            }
-                        )
-                    )
+                let bound_method = obj!(
+                    BoundMethod,
+                    BoundMethod {
+                        receiver: self.stack.last().unwrap().clone(),
+                        closure: method.clone(),
+                        obj: None,
+                    }
                 );
 
                 self.pop_stack()?;
