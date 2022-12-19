@@ -1289,4 +1289,49 @@ mod tests {
             ],
         );
     }
+
+    #[test]
+    fn test_build_list() {
+        let input = r#"
+            print [1, 2, 1 + 2];
+        "#;
+        let mut compiler = Compiler::new(&input);
+        let function = compiler.compile().unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Constant(0),
+                OpCode::Constant(1),
+                OpCode::Constant(2),
+                OpCode::Constant(3),
+                OpCode::Add,
+                OpCode::BuildList(3),
+                OpCode::Print,
+                OpCode::Nil,
+                OpCode::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_build_map() {
+        let input = r#"
+            print {'a': 1};
+        "#;
+        let mut compiler = Compiler::new(&input);
+        let function = compiler.compile().unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Constant(0),
+                OpCode::Constant(1),
+                OpCode::BuildMap(2),
+                OpCode::Print,
+                OpCode::Nil,
+                OpCode::Return,
+            ]
+        );
+    }
 }

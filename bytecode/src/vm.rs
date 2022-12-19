@@ -99,7 +99,7 @@ impl VirtualMachine {
     }
 
     pub fn interpret(&mut self, input: &str) -> Result<(), LoxError> {
-        let mut compiler = Compiler::new(&input);
+        let mut compiler = Compiler::new(input);
         let function = compiler.compile()?;
 
         let closure = Closure {
@@ -161,6 +161,21 @@ impl VirtualMachine {
 
     fn _convert_index(&self, len: usize, number: i32) -> Result<usize, LoxError> {
         self._extract_index(len, number as f64)
+    }
+
+    fn _get_slice_range(
+        &self, len: usize, left: Option<i32>, right: Option<i32>
+    ) -> Result<(usize, usize), LoxError> {
+        let left = match left {
+            Some(left) => self._convert_index(len, left)?,
+            None => 0,
+        };
+        let right = match right {
+            Some(right) => self._convert_index(len, right)?,
+            None => len,
+        };
+
+        Ok((left, right))
     }
 
     fn _extract_index(&self, len: usize, number: f64) -> Result<usize, LoxError> {
@@ -390,15 +405,7 @@ impl VirtualMachine {
 
                     let value = match &*self.pop_stack()?.borrow() {
                         Value::Object(Object::List(list)) => {
-                            let left = match left {
-                                Some(left) => self._convert_index(list.len(), left)?,
-                                None => 0,
-                            };
-                            let right = match right {
-                                Some(right) => self._convert_index(list.len(), right)?,
-                                None => list.len(),
-                            };
-
+                            let (left, right) = self._get_slice_range(list.len(), left, right)?;
                             let tmp_value = match left > right {
                                 true => vec![],
                                 false => list[left..right].to_vec(),
@@ -407,15 +414,7 @@ impl VirtualMachine {
                             obj!(List, tmp_value)
                         },
                         Value::Object(Object::String(string)) => {
-                            let left = match left {
-                                Some(left) => self._convert_index(string.len(), left)?,
-                                None => 0,
-                            };
-                            let right = match right {
-                                Some(right) => self._convert_index(string.len(), right)?,
-                                None => string.len(),
-                            };
-
+                            let (left, right) = self._get_slice_range(string.len(), left, right)?;
                             let tmp_value = match left > right {
                                 true => "".to_string(),
                                 false => string[left..right].to_string(),
