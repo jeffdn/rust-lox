@@ -74,4 +74,4 @@ fn fib(n) {
 
 var start = time();
 print fib(30);
-print "completed in: " + str(time() - start) + " seconds";
+print "completed in: " + (time() - start) + " seconds";

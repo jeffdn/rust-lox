@@ -57,17 +57,11 @@ impl Default for VirtualMachine {
 }
 
 macro_rules! obj {
-    ( $ot:tt, $val:expr ) => {
-        Value::Object(Object::$ot(Box::new($val)))
-    }
+    ( $ot:tt, $val:expr ) => { Value::Object(Object::$ot(Box::new($val))) }
 }
 
 macro_rules! err {
-    ( $msg:expr ) => {
-        {
-            return Err(LoxError::RuntimeError($msg.into()))
-        }
-    }
+    ( $msg:expr ) => { return Err(LoxError::RuntimeError($msg.into())) }
 }
 
 impl VirtualMachine {
@@ -215,9 +209,7 @@ impl VirtualMachine {
         }
 
         macro_rules! global {
-            ( $pos:expr ) => {
-                self.function().borrow().chunk.constants.get($pos)
-            }
+            ( $pos:expr ) => { self.function().borrow().chunk.constants.get($pos) }
         }
 
         while self.frame().pos < self.function().borrow().chunk.code.len() {
@@ -610,7 +602,7 @@ impl VirtualMachine {
                     };
 
                     let mut captured: Vec<UpValuePtr> = Vec::with_capacity(upvalues.len());
-                    for uv in upvalues.clone().iter() {
+                    for uv in upvalues.iter() {
                         let new_upvalue = match uv.is_local {
                             true => self.capture_upvalue(uv.index)?,
                             false => {

@@ -16,6 +16,8 @@ fn main() {
 main();
 global_set();
 global_get();
+global_set();
+global_get();
 
 var global_one;
 var global_two;
