@@ -28,6 +28,7 @@ pub enum OpCode {
     SetUpValue(usize),
     GetProperty(usize),
     SetProperty(usize),
+    GetSuper(usize),
     GetIndex,
     SetIndex,
     DeleteIndex,
@@ -58,6 +59,7 @@ pub enum OpCode {
     CloseUpValue,
     Return,
     Class(usize),
+    Inherit,
     Method(usize),
 }
 
@@ -78,6 +80,7 @@ impl fmt::Display for OpCode {
             OpCode::SetUpValue(_) => "op_set_upvalue",
             OpCode::GetProperty(_) => "op_get_property",
             OpCode::SetProperty(_) => "op_set_property",
+            OpCode::GetSuper(_) => "op_get_super",
             OpCode::GetIndex => "op_get_index",
             OpCode::SetIndex => "op_set_index",
             OpCode::DeleteIndex => "op_delete_index",
@@ -108,6 +111,7 @@ impl fmt::Display for OpCode {
             OpCode::CloseUpValue => "op_close_upvalue",
             OpCode::Return => "op_return",
             OpCode::Class(_) => "op_class",
+            OpCode::Inherit => "op_inherit",
             OpCode::Method(_) => "op_method",
         };
 
@@ -197,6 +201,9 @@ impl Chunk {
             ),
             OpCode::SetProperty(index) => format!(
                 "{:<20} {}", "op_set_property", *index,
+            ),
+            OpCode::GetSuper(index) => format!(
+                "{:<20} {}", "op_get_super", *index,
             ),
             OpCode::GetSlice(left, right) => format!(
                 "{:<20} {} {}", "op_get_slice", left, right,

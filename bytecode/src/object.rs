@@ -110,6 +110,7 @@ impl PartialEq for ValueMap {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Class {
+    pub parent: Option<ValuePtr>,
     pub name: String,
     pub methods: HashMap<String, ValuePtr>,
     pub obj: Option<Object>,
@@ -119,6 +120,7 @@ impl Class {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            parent: None,
             methods: HashMap::new(),
             obj: None,
         }

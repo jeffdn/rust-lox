@@ -72,7 +72,10 @@ struct Local {
     is_captured: bool,
 }
 
-struct ClassCompiler;
+#[derive(Default)]
+struct ClassCompiler {
+    pub has_superclass: bool,
+}
 
 pub struct Compiler {
     compilers: Vec<CompilerNode>,
@@ -391,7 +394,24 @@ impl Compiler {
         self.emit_byte(OpCode::Class(name_constant))?;
         self.define_variable(name_constant)?;
 
-        self.classes.push(ClassCompiler);
+        self.classes.push(ClassCompiler::default());
+
+        if self.token_type_matches(&TokenType::Less)? {
+            self.consume(TokenType::Identifier, "expect superclass name")?;
+            self.variable(false)?;
+
+            if self.previous == class_name {
+                self.error("a class cannot inherit from itself")?;
+            }
+
+            self.begin_scope()?;
+            self.add_local(Some(self.synthetic_token(TokenType::Super)))?;
+            self.define_variable(0)?;
+
+            self.named_variable(&class_name, false)?;
+            self.emit_byte(OpCode::Inherit)?;
+            self.classes.last_mut().unwrap().has_superclass = true;
+        }
 
         self.named_variable(&class_name, false)?;
         self.consume(TokenType::LeftBrace, "expect '{' before class body")?;
@@ -403,6 +423,10 @@ impl Compiler {
 
         self.consume(TokenType::RightBrace, "expect '}' after class body")?;
         self.emit_byte(OpCode::Pop)?;
+
+        if self.classes.last().unwrap().has_superclass {
+            self.end_scope()?;
+        }
 
         self.classes.pop();
 
@@ -501,19 +525,7 @@ impl Compiler {
         self.consume(TokenType::LeftParen, "expect '(' after 'foreach'")?;
         self.consume(TokenType::Var, "expect 'var' after 'foreach ('")?;
 
-        self.compiler_mut().local_count += 1;
-        self.compiler_mut().locals.push(
-            Local {
-                name: Token {
-                    token_type: TokenType::Skip,
-                    length: 0,
-                    start: 0,
-                    line: 0,
-                },
-                depth: None,
-                is_captured: false,
-            }
-        );
+        self.add_local(Some(self.synthetic_token(TokenType::Skip)))?;
 
         let global: usize = self.parse_variable("expect variable name")?;
         self.define_variable(global)?;
@@ -957,8 +969,41 @@ impl Compiler {
         Err(LoxError::ResolutionError)
     }
 
+    fn synthetic_token(&self, token_type: TokenType) -> Token {
+        let length = match token_type {
+            TokenType::Super => 5,
+            TokenType::This => 4,
+            _ => 0,
+        };
+
+        Token {
+            token_type,
+            length,
+            start: 0,
+            line: 0,
+        }
+    }
+
     fn variable(&mut self, can_assign: bool) -> Result<(), LoxError> {
         self.named_variable(&self.previous.clone(), can_assign)
+    }
+
+    fn super_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+        match self.classes.last() {
+            Some(class) => if !class.has_superclass {
+                self.error("can't use 'super' outside of a class")?;
+            },
+            None => self.error("can't user 'super' inside a class without a superclass")?,
+        };
+
+        self.consume(TokenType::Dot, "expect '.' after 'super'")?;
+        self.consume(TokenType::Identifier, "expect superclass method name'")?;
+        let name = self.identifier_constant(&self.previous.clone())?;
+
+        self.named_variable(&self.synthetic_token(TokenType::This), false)?;
+        self.named_variable(&self.synthetic_token(TokenType::Super), false)?;
+
+        self.emit_byte(OpCode::GetSuper(name))
     }
 
     fn this_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -999,6 +1044,7 @@ impl Compiler {
             &TokenType::This => Some(Compiler::this_),
             &TokenType::Break => Some(Compiler::break_),
             &TokenType::Continue => Some(Compiler::continue_),
+            &TokenType::Super => Some(Compiler::super_),
             _ => None,
         }
     }
@@ -1075,6 +1121,24 @@ impl Compiler {
         )
     }
 
+    fn add_local(&mut self, name: Option<Token>) -> Result<(), LoxError> {
+        let local_name = match name {
+            Some(name) => name,
+            None => self.previous.clone(),
+        };
+
+        self.compiler_mut().local_count += 1;
+        self.compiler_mut().locals.push(
+            Local {
+                name: local_name,
+                depth: None,
+                is_captured: false,
+            }
+        );
+
+        Ok(())
+    }
+
     fn declare_variable(&mut self) -> Result<(), LoxError> {
         if self.compiler().scope_depth == 0 {
             return Ok(());
@@ -1086,15 +1150,7 @@ impl Compiler {
             self.error("already a variable with this name in this scope")?;
         }
 
-        self.compiler_mut().local_count += 1;
-        let local_name = self.previous.clone();
-        self.compiler_mut().locals.push(
-            Local {
-                name: local_name,
-                depth: None,
-                is_captured: false,
-            }
-        );
+        self.add_local(None)?;
 
         Ok(())
     }

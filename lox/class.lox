@@ -4,20 +4,27 @@ class Cat {
   }
 
   eat() {
-    print this.name + " says: crunch crunch crunch";
+    print this.name + " says: munch munch munch";
   }
 }
 
-var coco = Cat("Coco");
-var melvin = Cat("Melvin");
+class Meower < Cat {
+  eat(style) {
+    super.eat();
+    print this.name + " says: " + style;
+  }
+}
 
-coco.eat();
-melvin.eat();
+var coco = Meower("Coco");
+var melvin = Meower("Melvin");
+
+coco.eat("lick");
+melvin.eat("gulp");
 
 print "\nmaps:";
 var foo = {
-    "a": 1,
-    "b": 2
+  "a": 1,
+  "b": 2
 };
 print foo;
 print foo["a"];
@@ -58,19 +65,19 @@ foreach (var c in range(0, len(baz) / 2)) {
 print '\nloops:';
 //foreach (var i in range(0, 5)) {
 for (var i = 0; i < 5; i = i + 1) {
-    if (i == 3) {
-        print 'we continue when i == 3!';
-        continue;
-    }
+  if (i == 3) {
+    print 'we continue when i == 3!';
+    continue;
+  }
 
-    //foreach (var j in range(0, 5)) {
-    for (var j = 0; j < 5; j = j + 1) {
-        print "i = " + i + ", j = " + j;
+  //foreach (var j in range(0, 5)) {
+  for (var j = 0; j < 5; j = j + 1) {
+    print "i = " + i + ", j = " + j;
 
-        if (i == j) {
-            print 'we break when j == i!';
-            break;
-        }
+    if (i == j) {
+      print 'we break when j == i!';
+      break;
     }
+  }
 }
 print 'done!';

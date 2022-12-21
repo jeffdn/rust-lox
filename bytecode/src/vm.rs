@@ -332,6 +332,26 @@ impl VirtualMachine {
                     instance.fields.insert(*prop_name.clone(), value.clone());
                     self.stack.push(value);
                 },
+                OpCode::GetSuper(index) => {
+                    let instance_ptr = self.pop_stack()?;
+                    let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
+                        err!("not an instance");
+                    };
+                    let name_constant = global!(index).clone();
+                    let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
+                        unreachable!();
+                    };
+
+                    let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
+                        unreachable!();
+                    };
+
+                    let Some(super_class_ptr) = &class.parent else {
+                        err!("can't use super. on a base class!");
+                    };
+
+                    self.bind_method(super_class_ptr.clone(), &prop_name)?;
+                },
                 OpCode::GetIndex => {
                     let index = self.pop_stack()?;
                     let container = self.pop_stack()?;
@@ -655,6 +675,30 @@ impl VirtualMachine {
 
                     self.stack_push_value(obj!(Class, Class::new(class_name)));
                 },
+                OpCode::Inherit => {
+                    let pos = self.stack.len() - 1;
+                    let super_class_ptr = self.stack.get(pos - 1).unwrap().clone();
+
+                    let methods = match &*super_class_ptr.borrow() {
+                        Value::Object(Object::Class(super_class)) => super_class.methods.clone(),
+                        _ => err!("super class must be a class"),
+                    };
+
+                    let sub_class_ptr = self.stack.get_mut(pos).unwrap();
+
+                    match &mut *sub_class_ptr.borrow_mut() {
+                        Value::Object(Object::Class(sub_class)) => {
+                            sub_class.parent = Some(super_class_ptr.clone());
+                            for (key, val) in methods.into_iter() {
+                                sub_class.methods.insert(key, val);
+                            }
+                        },
+                        _ => unreachable!(),
+
+                    };
+
+                    self.pop_stack()?;
+                },
                 OpCode::Method(index) => {
                     self.define_method(&self.read_string(index)?)?;
                 },
@@ -715,8 +759,6 @@ impl VirtualMachine {
                     self.stack[arg_range_start - 1] = bound_method.receiver.clone();
 
                     self.call(bound_method.closure.clone(), arg_count)?;
-
-                    Ok(true)
                 },
                 Object::Class(class) => {
                     let position = self.stack.len() - arg_count - 1;
@@ -735,8 +777,6 @@ impl VirtualMachine {
                     } else {
                         self.frame_mut().pos += 1;
                     }
-
-                    Ok(true)
                 },
                 Object::Closure(closure) => {
                     self.check_arity(
@@ -746,7 +786,6 @@ impl VirtualMachine {
                     )?;
 
                     self.call(at_offset.clone(), arg_count)?;
-                    Ok(true)
                 },
                 Object::Native(native) => {
                     self.check_arity(&native.name, native.arity, arg_count)?;
@@ -757,13 +796,13 @@ impl VirtualMachine {
                     self.pop_stack()?;
                     self.stack_push_value(result);
                     self.frame_mut().pos += 1;
-
-                    Ok(true)
                 },
-                _ => Err(LoxError::RuntimeError("can only call functions and classes".into()))
+                _ => err!("can only call functions and classes")
             },
-            _ => Err(LoxError::RuntimeError("can only call functions and classes".into()))
-        }
+            _ => err!("can only call functions and classes")
+        };
+
+        Ok(true)
     }
 
     fn bind_method(&mut self, class_ptr: ValuePtr, name: &str) -> Result<(), LoxError> {
