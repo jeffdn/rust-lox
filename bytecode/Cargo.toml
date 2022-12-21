@@ -11,3 +11,6 @@ edition = "2021"
 [features]
 default = ["debug"]
 debug = []
+
+[profile.release]
+debug = true

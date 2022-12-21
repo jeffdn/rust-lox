@@ -172,7 +172,7 @@ pub type NativeFn = fn(&[ValuePtr]) -> Result<Value, LoxError>;
 pub struct Closure {
     pub obj: Option<Object>,
     pub upvalues: Vec<UpValuePtr>,
-    pub function: Function,
+    pub function: Rc<RefCell<Function>>,
 }
 
 #[derive(Clone)]
@@ -221,12 +221,12 @@ impl fmt::Display for Object {
 
                 format!(
                     "<method {} on {} instance>",
-                    closure.function.name,
+                    closure.function.borrow().name,
                     class.name,
                 )
             },
             Object::Class(class) => class.name.clone(),
-            Object::Closure(closure) => closure.function.name.clone(),
+            Object::Closure(closure) => closure.function.borrow().name.clone(),
             Object::Function(function) => function.name.clone(),
             Object::Instance(instance) => {
                 let Value::Object(Object::Class(class)) = &*instance.class.0.borrow() else {
