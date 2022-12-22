@@ -318,7 +318,7 @@ impl VirtualMachine {
                             self.pop_stack()?;
                             self.stack.push(prop.clone());
                         },
-                        None => self.bind_method(instance.class.clone(), prop_name)?,
+                        None => self.bind_method(&instance.class, prop_name)?,
                     };
                 },
                 OpCode::SetProperty(index) => {
@@ -351,11 +351,11 @@ impl VirtualMachine {
                         unreachable!();
                     };
 
-                    let Some(super_class_ptr) = &class.parent else {
+                    let Some(super_class) = &class.parent else {
                         err!("can't use super. on a base class!");
                     };
 
-                    self.bind_method(super_class_ptr.clone(), &prop_name)?;
+                    self.bind_method(super_class, &prop_name)?;
                 },
                 OpCode::GetIndex => {
                     let index = self.pop_stack()?;
@@ -404,7 +404,7 @@ impl VirtualMachine {
                             _ => err!("lists can only be indexed with integers")
                         },
                         Value::Object(Object::Map(hmap)) => {
-                            hmap.map.insert(index.clone(), value.clone());
+                            hmap.map.insert(index, value.clone());
                         },
                         _ => err!("only lists and maps can be indexed into")
                     };
@@ -511,11 +511,7 @@ impl VirtualMachine {
                             Value::Object(Object::List(b)),
                             Value::Object(Object::List(a)),
                         ) => {
-                            let mut new_list: Vec<ValuePtr> = Vec::new();
-
-                            for item in a.iter() {
-                                new_list.push(item.clone());
-                            }
+                            let mut new_list: Vec<ValuePtr> = *a.clone();
 
                             for item in b.iter() {
                                 new_list.push(item.clone());
@@ -612,10 +608,11 @@ impl VirtualMachine {
                 },
                 OpCode::BuildMap(item_count) => {
                     let range_start = self.stack.len() - item_count;
+                    let mut items = self.stack.split_off(range_start).into_iter();
+
                     let map: HashMap<ValuePtr, ValuePtr> = HashMap::from_iter(
-                        self.stack.split_off(range_start)
-                            .chunks(2)
-                            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
+                        (0..(item_count / 2))
+                            .map(|_| (items.next().unwrap(), items.next().unwrap()))
                     );
 
                     self.stack_push_value(obj!(Map, ValueMap { map }));
@@ -660,12 +657,12 @@ impl VirtualMachine {
                     );
                 },
                 OpCode::CloseUpValue => {
-                    let Some(value) = self.stack.last() else {
+                    if self.stack.is_empty() {
                         err!("can't close an upvalue without a stack!");
                     };
 
-                    self.close_upvalues(value.clone());
-                    self.pop_stack()?;
+                    let value = self.pop_stack()?;
+                    self.close_upvalues(value);
                 },
                 OpCode::Assert(has_message) => {
                     let mut message_ptr: Option<ValuePtr> = None;
@@ -737,12 +734,15 @@ impl VirtualMachine {
     }
 
     fn read_string(&self, index: usize) -> Result<String, LoxError> {
-        let name_constant = self.function().borrow().chunk.constants.get(index).clone();
-        let Value::Object(Object::String(name)) = &*name_constant.borrow() else {
-            err!("tried to read a string and failed");
-        };
-
-        Ok(*name.clone())
+        match &*self.frame().closure.borrow() {
+            Value::Object(Object::Closure(closure)) => {
+                match &*closure.function.borrow().chunk.constants.get(index).borrow() {
+                    Value::Object(Object::String(name)) => Ok(*name.clone()),
+                    _ => err!("tried to read a string and failed"),
+                }
+            },
+            _ => unreachable!(),
+        }
     }
 
     fn check_arity(
@@ -824,23 +824,24 @@ impl VirtualMachine {
         Ok(true)
     }
 
-    fn bind_method(&mut self, class_ptr: ValuePtr, name: &str) -> Result<(), LoxError> {
+    fn bind_method(&mut self, class_ptr: &ValuePtr, name: &str) -> Result<(), LoxError> {
         let Value::Object(Object::Class(class)) = &*class_ptr.borrow() else {
             unreachable!();
         };
 
         match class.methods.get(name) {
             Some(method) => {
+                let receiver = self.pop_stack()?;
+
                 let bound_method = obj!(
                     BoundMethod,
                     BoundMethod {
-                        receiver: self.stack.last().unwrap().clone(),
+                        receiver,
                         closure: method.clone(),
                         obj: None,
                     }
                 );
 
-                self.pop_stack()?;
                 self.stack_push_value(bound_method);
 
                 Ok(())
@@ -891,14 +892,13 @@ impl VirtualMachine {
     }
 
     fn define_method(&mut self, name: &str) -> Result<(), LoxError> {
-        let method = self.stack.last().unwrap();
-        let class_ptr = self.stack[self.stack.len() - 2].clone();
+        let method = self.pop_stack()?;
+        let class_ptr = self.stack[self.stack.len() - 1].clone();
         let Value::Object(Object::Class(class)) = &mut *class_ptr.borrow_mut() else {
             return Err(LoxError::RuntimeError("no class on stack".into()));
         };
 
-        class.methods.insert(String::from(name), method.clone());
-        self.stack.pop();
+        class.methods.insert(String::from(name), method);
 
         Ok(())
     }

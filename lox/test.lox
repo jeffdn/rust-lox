@@ -1,67 +1,24 @@
-// if (true and false) {
-//     print "hi";
-// } else {
-//     print "bye";
-// }
-//
-// if (true and true) {
-//     print "hi";
-// } else {
-//     print "bye";
-// }
-//
-// if (false or true) {
-//     print "hi";
-// } else {
-//     print "bye";
-// }
-//
-// var a = 1;
-// {
-//     var b = 2;
-//     {
-//         var c = 3;
-//         {
-//             var d = 4;
-//
-//             print a + b + c + d;
-//         }
-//         print a + b + c;
-//     }
-//     print a + b;
-// }
-// print a;
-
-// fn food(day, breakfast, beverage) {
-//     print day;
-//     print breakfast + " and " + beverage;
-// }
-//
-// for (var a = 0; a < 3; a = a + 1) {
-//     food(a, "beignets", "cafe au lait");
-// }
-
 var cache = {};
-
-// fn fib(n) {
-//     if (n < 2) {
-//         return n;
-//     }
-//
-//     if (n not in cache) {
-//         cache[n] = fib(n - 2) + fib(n - 1);
-//     }
-//
-//     return cache[n];
-// }
 
 fn fib(n) {
     if (n < 2) {
         return n;
     }
 
-    return fib(n - 2) + fib(n - 1);
+    if (n not in cache) {
+        cache[n] = fib(n - 2) + fib(n - 1);
+    }
+
+    return cache[n];
 }
+
+// fn fib(n) {
+//     if (n < 2) {
+//         return n;
+//     }
+//
+//     return fib(n - 2) + fib(n - 1);
+// }
 
 // var x = "global";
 // var y = "planetary";
@@ -80,6 +37,9 @@ fn fib(n) {
 // inner();
 // print x + " " + y;
 
-var start = time();
-print fib(30);
-print "completed in: " + (time() - start) + " seconds";
+while (true) {
+    var start = time();
+    print fib(30);
+    print "completed in: " + (time() - start) + " seconds";
+    cache = {};
+}
