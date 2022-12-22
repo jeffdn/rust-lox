@@ -469,7 +469,12 @@ impl VirtualMachine {
 
                     self.stack_push_value(value);
                 },
-                OpCode::Equal => binary! { ==, "==", Value::Bool },
+                OpCode::Equal => {
+                    let right = self.pop_stack()?;
+                    let left = self.pop_stack()?;
+
+                    self.stack_push_value(Value::Bool(&*right.borrow() == &*left.borrow()));
+                }
                 OpCode::Greater => binary! { >, '>', Value::Bool },
                 OpCode::Less => binary! { <, '<', Value::Bool },
                 OpCode::In => {
@@ -661,6 +666,28 @@ impl VirtualMachine {
 
                     self.close_upvalues(value.clone());
                     self.pop_stack()?;
+                },
+                OpCode::Assert(has_message) => {
+                    let mut message_ptr: Option<ValuePtr> = None;
+
+                    if has_message {
+                        message_ptr = Some(self.pop_stack()?);
+                    }
+
+                    let assertion_ptr = self.pop_stack()?;
+
+                    if !self.truthy(&assertion_ptr)? {
+                        let message = if has_message {
+                            match &*message_ptr.unwrap().borrow() {
+                                Value::Object(Object::String(message)) => format!("{}", message),
+                                _ => err!("assert message must be a string"),
+                            }
+                        } else {
+                            format!("{} is not true", assertion_ptr.borrow())
+                        };
+
+                        err!(&format!("assertion failed: {}", message))
+                    }
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;

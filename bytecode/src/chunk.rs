@@ -45,6 +45,7 @@ pub enum OpCode {
     Not,
     Negate,
     Print,
+    Assert(bool),
     Jump(usize),
     JumpIfFalse(usize),
     Loop(usize),
@@ -97,6 +98,7 @@ impl fmt::Display for OpCode {
             OpCode::Not => "op_not",
             OpCode::Negate => "op_negate",
             OpCode::Print => "op_print",
+            OpCode::Assert(_) => "op_assert",
             OpCode::Jump(_) => "op_jump",
             OpCode::JumpIfFalse(_) => "op_jump_if_false",
             OpCode::Loop(_) => "op_loop",
@@ -207,6 +209,9 @@ impl Chunk {
             ),
             OpCode::GetSlice(left, right) => format!(
                 "{:<20} {} {}", "op_get_slice", left, right,
+            ),
+            OpCode::Assert(has_message) => format!(
+                "{:<20} {}", "op_assert", has_message,
             ),
             OpCode::Jump(offset) => format!(
                 "{:<20} {}", "op_jump", offset,

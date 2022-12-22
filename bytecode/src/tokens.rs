@@ -38,6 +38,7 @@ pub enum TokenType {
 
     // keywords.
     And,
+    Assert,
     Break,
     Class,
     Continue,
@@ -98,6 +99,7 @@ impl fmt::Display for TokenType {
             TokenType::String => "string",
             TokenType::Number => "number",
             TokenType::And => "and",
+            TokenType::Assert => "assert",
             TokenType::Break => "break",
             TokenType::Class => "class",
             TokenType::Continue => "continue",

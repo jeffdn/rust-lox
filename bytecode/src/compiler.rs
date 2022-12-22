@@ -574,6 +574,20 @@ impl Compiler {
         Ok(())
     }
 
+    fn assert_statement(&mut self) -> Result<(), LoxError> {
+        let mut has_message = false;
+
+        self.expression()?;
+
+        if self.token_type_matches(&TokenType::Comma)? {
+            self.expression()?;
+            has_message = true;
+        }
+
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        self.emit_byte(OpCode::Assert(has_message))
+    }
+
     fn print_statement(&mut self) -> Result<(), LoxError> {
         self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
@@ -625,18 +639,19 @@ impl Compiler {
             }
 
             match self.current.token_type {
+                TokenType::Assert |
                 TokenType::Break |
                 TokenType::Class |
                 TokenType::Continue |
-                TokenType::Function |
-                TokenType::Var |
+                TokenType::Delete |
                 TokenType::For |
                 TokenType::Foreach |
+                TokenType::Function |
                 TokenType::If |
-                TokenType::While |
                 TokenType::Print |
-                TokenType::Delete |
-                TokenType::Return => break,
+                TokenType::Return |
+                TokenType::Var |
+                TokenType::While => break,
                 _ => self.advance()?,
             };
         }
@@ -665,6 +680,8 @@ impl Compiler {
     fn statement(&mut self) -> Result<(), LoxError> {
         if self.token_type_matches(&TokenType::Print)? {
             self.print_statement()
+        } else if self.token_type_matches(&TokenType::Assert)? {
+            self.assert_statement()
         } else if self.token_type_matches(&TokenType::Delete)? {
             self.delete_statement()
         } else if self.token_type_matches(&TokenType::For)? {
