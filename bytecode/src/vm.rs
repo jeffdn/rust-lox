@@ -100,7 +100,7 @@ impl VirtualMachine {
             obj!(
                 Closure,
                 Closure {
-                    upvalues: Vec::with_capacity(function.upvalue_count),
+                    upvalues: Vec::with_capacity(STACK_MAX),
                     function: Rc::new(RefCell::new(function)),
                     obj: None,
                 }
@@ -137,17 +137,11 @@ impl VirtualMachine {
     }
 
     pub fn frame(&self) -> &CallFrame {
-        match self.frames.last() {
-            Some(frame) => frame,
-            None => unreachable!(),
-        }
+        self.frames.last().unwrap()
     }
 
     pub fn frame_mut(&mut self) -> &mut CallFrame {
-        match self.frames.last_mut() {
-            Some(frame) => frame,
-            None => unreachable!(),
-        }
+        self.frames.last_mut().unwrap()
     }
 
     pub fn function(&self) -> Rc<RefCell<Function>> {
@@ -209,7 +203,18 @@ impl VirtualMachine {
         }
 
         macro_rules! global {
-            ( $pos:expr ) => { self.function().borrow().chunk.constants.get($pos) }
+            ( $pos:expr ) => {
+                {
+                    let value_ptr = match &*self.frame().closure.borrow() {
+                        Value::Object(Object::Closure(closure)) => {
+                            closure.function.borrow().chunk.constants.get($pos).clone()
+                        },
+                        _ => unreachable!(),
+                    };
+
+                    value_ptr
+                }
+            };
         }
 
         while self.frame().pos < self.function().borrow().chunk.code.len() {
@@ -220,7 +225,7 @@ impl VirtualMachine {
 
             match self.function().borrow().chunk.code[pos] {
                 OpCode::Constant(index) => {
-                    let constant = global!(index).clone();
+                    let constant = global!(index);
                     self.stack.push(constant);
                 },
                 OpCode::False => self.stack_push_value(Value::Bool(false)),
@@ -240,14 +245,14 @@ impl VirtualMachine {
                     self.stack[index] = val;
                 },
                 OpCode::GetGlobal(index) => {
-                    let key = match &*global!(index).borrow() {
-                        Value::Object(Object::String(string)) => *string.clone(),
+                    let val = match &*global!(index).borrow() {
+                        Value::Object(Object::String(string)) => {
+                            match self.globals.get(&**string) {
+                                Some(val) => val,
+                                None => err!(&format!("undefined variable: {}", &**string)),
+                            }
+                        },
                         _ => err!("missing constant"),
-                    };
-
-                    let val = match self.globals.get(&key) {
-                        Some(val) => val,
-                        None => err!(&format!("undefined variable: {}", key)),
                     };
 
                     self.stack.push(val.clone());
@@ -303,7 +308,7 @@ impl VirtualMachine {
                     let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
                         err!("not an instance");
                     };
-                    let name_constant = global!(index).clone();
+                    let name_constant = global!(index);
                     let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
                         unreachable!();
                     };
@@ -321,7 +326,7 @@ impl VirtualMachine {
                     let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut() else {
                         err!("not an instance");
                     };
-                    let name_constant = global!(index).clone();
+                    let name_constant = global!(index);
                     let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
                         unreachable!();
                     };
@@ -337,7 +342,7 @@ impl VirtualMachine {
                     let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
                         err!("not an instance");
                     };
-                    let name_constant = global!(index).clone();
+                    let name_constant = global!(index);
                     let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
                         unreachable!();
                     };
@@ -583,7 +588,7 @@ impl VirtualMachine {
                     };
 
                     if iterator.next == 0 {
-                        let constant = global!(index).clone();
+                        let constant = global!(index);
                         self.stack.push(constant);
                     }
 
@@ -615,7 +620,7 @@ impl VirtualMachine {
                     continue;
                 },
                 OpCode::Closure(index, ref upvalues) => {
-                    let constant = global!(index).clone();
+                    let constant = global!(index);
                     let function = match &*constant.borrow() {
                         Value::Object(Object::Function(function)) => Rc::new(RefCell::new(*function.clone())),
                         _ => unreachable!(),
@@ -676,28 +681,22 @@ impl VirtualMachine {
                     self.stack_push_value(obj!(Class, Class::new(class_name)));
                 },
                 OpCode::Inherit => {
-                    let pos = self.stack.len() - 1;
-                    let super_class_ptr = self.stack.get(pos - 1).unwrap().clone();
+                    let sub_class_ptr = self.pop_stack()?;
+                    let super_class_ptr = self.stack.last_mut().unwrap();
 
                     let methods = match &*super_class_ptr.borrow() {
                         Value::Object(Object::Class(super_class)) => super_class.methods.clone(),
                         _ => err!("super class must be a class"),
                     };
 
-                    let sub_class_ptr = self.stack.get_mut(pos).unwrap();
-
                     match &mut *sub_class_ptr.borrow_mut() {
                         Value::Object(Object::Class(sub_class)) => {
                             sub_class.parent = Some(super_class_ptr.clone());
-                            for (key, val) in methods.into_iter() {
-                                sub_class.methods.insert(key, val);
-                            }
+                            sub_class.methods = methods;
                         },
                         _ => unreachable!(),
 
                     };
-
-                    self.pop_stack()?;
                 },
                 OpCode::Method(index) => {
                     self.define_method(&self.read_string(index)?)?;
@@ -752,9 +751,6 @@ impl VirtualMachine {
         match &*borrowed_at_offset {
             Value::Object(object) => match object {
                 Object::BoundMethod(bound_method) => {
-                    let Value::Object(Object::Closure(_)) = &*bound_method.closure.borrow() else {
-                        unreachable!();
-                    };
                     let arg_range_start = self.stack.len() - arg_count;
                     self.stack[arg_range_start - 1] = bound_method.receiver.clone();
 
@@ -767,25 +763,12 @@ impl VirtualMachine {
                     );
 
                     if let Some(init_ptr) = class.methods.get(self.init_string) {
-                        let Value::Object(Object::Closure(_)) = &*init_ptr.borrow() else {
-                            unreachable!();
-                        };
-
                         self.call(init_ptr.clone(), arg_count)?;
                     } else if arg_count != 0 {
                         err!(&format!("expected no arguments on initialization but got {}", arg_count));
                     } else {
                         self.frame_mut().pos += 1;
                     }
-                },
-                Object::Closure(closure) => {
-                    self.check_arity(
-                        &closure.function.borrow().name,
-                        closure.function.borrow().arity,
-                        arg_count,
-                    )?;
-
-                    self.call(at_offset.clone(), arg_count)?;
                 },
                 Object::Native(native) => {
                     self.check_arity(&native.name, native.arity, arg_count)?;
@@ -797,9 +780,18 @@ impl VirtualMachine {
                     self.stack_push_value(result);
                     self.frame_mut().pos += 1;
                 },
+                Object::Closure(closure) => {
+                    self.check_arity(
+                        &closure.function.borrow().name,
+                        closure.function.borrow().arity,
+                        arg_count,
+                    )?;
+
+                    self.call(at_offset.clone(), arg_count)?;
+                },
                 _ => err!("can only call functions and classes")
             },
-            _ => err!("can only call functions and classes")
+            _ => unreachable!(),
         };
 
         Ok(true)
