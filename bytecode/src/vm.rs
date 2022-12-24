@@ -621,6 +621,15 @@ impl VirtualMachine {
                     self.call_value(arg_count)?;
                     continue;
                 },
+                OpCode::Invoke(index, arg_count) => {
+                    let name_constant = global!(index);
+                    let Value::Object(Object::String(method_name)) = &*name_constant.borrow() else {
+                        unreachable!();
+                    };
+
+                    self.invoke(method_name, arg_count)?;
+                    continue;
+                },
                 OpCode::Closure(index, ref upvalues) => {
                     let constant = global!(index);
                     let function = match &*constant.borrow() {
@@ -770,12 +779,11 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn call_value(&mut self, arg_count: usize) -> Result<bool, LoxError> {
+    fn call_value(&mut self, arg_count: usize) -> Result<(), LoxError> {
         let offset = self.stack.len() - arg_count - 1;
         let at_offset = self.stack[offset].clone();
-        let borrowed_at_offset = at_offset.borrow();
 
-        match &*borrowed_at_offset {
+        match &*at_offset.borrow() {
             Value::Object(object) => match object {
                 Object::BoundMethod(bound_method) => {
                     let arg_range_start = self.stack.len() - arg_count;
@@ -821,7 +829,62 @@ impl VirtualMachine {
             _ => unreachable!(),
         };
 
-        Ok(true)
+        Ok(())
+    }
+
+    fn invoke(&mut self, method_name: &str, arg_count: usize) -> Result<(), LoxError> {
+        let offset = self.stack.len() - arg_count - 1;
+        let at_offset = self.stack[offset].clone();
+        let mut at_offset_borrowed = at_offset.borrow_mut();
+
+        match &mut *at_offset_borrowed {
+            Value::Object(Object::Instance(instance)) => {
+                match instance.fields.get(method_name) {
+                    Some(prop) => {
+                        self.stack[offset] = prop.clone();
+                        self.call_value(arg_count)
+                    },
+                    None => {
+                        let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
+                            unreachable!();
+                        };
+
+                        match class.methods.get(method_name) {
+                            Some(prop) => self.call(prop.clone(), arg_count),
+                            None => err!(&format!("no method '{}' on class '{}'", method_name, class.name)),
+                        }
+                    },
+                }
+            },
+            Value::Object(Object::Map(hmap)) => {
+                match method_name {
+                    "clear" => hmap.map.clear(),
+                    _ => err!(&format!("map does not have the method '{}'", method_name)),
+                };
+
+                self.frame_mut().pos += 1;
+                Ok(())
+            },
+            Value::Object(Object::List(list)) => {
+                match method_name {
+                    "clear" => list.clear(),
+                    _ => err!(&format!("list does not have the method '{}'", method_name)),
+                };
+
+                self.frame_mut().pos += 1;
+                Ok(())
+            },
+            Value::Object(Object::String(string)) => {
+                match method_name {
+                    "clear" => string.clear(),
+                    _ => err!(&format!("string does not have the method '{}'", method_name)),
+                };
+
+                self.frame_mut().pos += 1;
+                Ok(())
+            },
+            _ => err!("only instances have methods"),
+        }
     }
 
     fn bind_method(&mut self, class_ptr: &ValuePtr, name: &str) -> Result<(), LoxError> {

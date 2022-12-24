@@ -763,6 +763,9 @@ impl Compiler {
         if can_assign && self.token_type_matches(&TokenType::Equal)? {
             self.expression()?;
             self.emit_byte(OpCode::SetProperty(name))?;
+        } else if self.token_type_matches(&TokenType::LeftParen)? {
+            let arg_count = self.argument_list()?;
+            self.emit_byte(OpCode::Invoke(name, arg_count))?;
         } else {
             self.emit_byte(OpCode::GetProperty(name))?;
         }

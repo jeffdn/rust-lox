@@ -56,6 +56,7 @@ pub enum OpCode {
     BuildList(usize),
     BuildMap(usize),
     Call(usize),
+    Invoke(usize, usize),
     Closure(usize, Box<Vec<UpValue>>),
     CloseUpValue,
     Return,
@@ -109,6 +110,7 @@ impl fmt::Display for OpCode {
             OpCode::BuildList(_) => "op_build_list",
             OpCode::BuildMap(_) => "op_build_list",
             OpCode::Call(_) => "op_call",
+            OpCode::Invoke(_, _) => "op_invoke",
             OpCode::Closure(_, _) => "op_closure",
             OpCode::CloseUpValue => "op_close_upvalue",
             OpCode::Return => "op_return",
@@ -239,6 +241,9 @@ impl Chunk {
             ),
             OpCode::Call(offset) => format!(
                 "{:<20} {}", "op_call", offset,
+            ),
+            OpCode::Invoke(index, offset) => format!(
+                "{:<20} {} {}", "op_invoke", index, offset,
             ),
             OpCode::Closure(index, _) => format!(
                 "{:<20} {}", "op_closure", index,

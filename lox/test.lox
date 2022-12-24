@@ -20,26 +20,9 @@ fn fib(n) {
 //     return fib(n - 2) + fib(n - 1);
 // }
 
-// var x = "global";
-// var y = "planetary";
-// fn outer() {
-//     var x = "local";
-//     var y = "national";
-//     fn inner() {
-//         print x + " " + y;
-//     }
-//
-//     return inner;
-// }
-//
-// var inner = outer();
-//
-// inner();
-// print x + " " + y;
-
-while (true) {
+// while (true) {
     var start = time();
     print fib(30);
     print "completed in: " + (time() - start) + " seconds";
-    cache = {};
-}
+    cache.clear();
+// }
