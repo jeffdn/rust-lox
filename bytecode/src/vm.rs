@@ -355,7 +355,7 @@ impl VirtualMachine {
                         err!("can't use super. on a base class!");
                     };
 
-                    self.bind_method(super_class, &prop_name)?;
+                    self.bind_method(super_class, prop_name)?;
                 },
                 OpCode::GetIndex => {
                     let index = self.pop_stack()?;
@@ -473,7 +473,7 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
 
-                    self.stack_push_value(Value::Bool(&*right.borrow() == &*left.borrow()));
+                    self.stack_push_value(Value::Bool(*right.borrow() == *left.borrow()));
                 }
                 OpCode::Greater => binary! { >, '>', Value::Bool },
                 OpCode::Less => binary! { <, '<', Value::Bool },
