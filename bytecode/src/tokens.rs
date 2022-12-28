@@ -30,6 +30,8 @@ pub enum TokenType {
     LessEqual,
     MinusEqual,
     PlusEqual,
+    StarEqual,
+    SlashEqual,
 
     // literals.
     Identifier,
@@ -95,6 +97,8 @@ impl fmt::Display for TokenType {
             TokenType::LessEqual => "lessequal",
             TokenType::MinusEqual => "minusequal",
             TokenType::PlusEqual => "plusequal",
+            TokenType::SlashEqual => "slashequal",
+            TokenType::StarEqual => "starequal",
             TokenType::Identifier => "identifier",
             TokenType::String => "string",
             TokenType::Number => "number",

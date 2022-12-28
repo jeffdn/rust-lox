@@ -6,6 +6,36 @@ assert !false;
 assert !!true;
 
 
+// numbers
+assert 4 % 2 == 0;
+assert 4 % 3 == 1;
+assert 4 * 6 == 24;
+
+
+// closures
+var global_set;
+var global_get;
+
+fn main() {
+  {
+    var a = 0;
+
+    fn set(x) { a = a + x; }
+    fn get() { return a; }
+
+    global_set = set;
+    global_get = get;
+  }
+}
+
+main();
+assert global_get() == 0;
+global_set(4);
+assert global_get() == 4;
+global_set(2);
+assert global_get() == 6;
+
+
 // lists
 var list = [1, 2, 3];
 assert list[-1] == 3;

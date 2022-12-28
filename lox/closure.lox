@@ -16,6 +16,7 @@ fn main() {
 main();
 global_set();
 global_get();
+main();
 global_set();
 global_get();
 

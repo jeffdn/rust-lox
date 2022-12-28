@@ -49,10 +49,22 @@ impl Scanner {
             ',' => self.make_token(TokenType::Comma),
             '.' => self.make_token(TokenType::Dot),
             '%' => self.make_token(TokenType::Percent),
-            '-' => self.make_token(TokenType::Minus),
-            '+' => self.make_token(TokenType::Plus),
-            '/' => self.make_token(TokenType::Slash),
-            '*' => self.make_token(TokenType::Star),
+            '-' => match self.check_next('=') {
+                true => self.make_token(TokenType::MinusEqual),
+                false => self.make_token(TokenType::Minus),
+            },
+            '+' => match self.check_next('=') {
+                true => self.make_token(TokenType::PlusEqual),
+                false => self.make_token(TokenType::Plus),
+            },
+            '/' => match self.check_next('=') {
+                true => self.make_token(TokenType::SlashEqual),
+                false => self.make_token(TokenType::Slash),
+            },
+            '*' => match self.check_next('=') {
+                true => self.make_token(TokenType::StarEqual),
+                false => self.make_token(TokenType::Star),
+            },
             '!' => match self.check_next('=') {
                 true => self.make_token(TokenType::BangEqual),
                 false => self.make_token(TokenType::Bang),
