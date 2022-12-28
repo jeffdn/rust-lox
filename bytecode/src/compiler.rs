@@ -574,6 +574,18 @@ impl Compiler {
         Ok(())
     }
 
+    fn import_statement(&mut self) -> Result<(), LoxError> {
+        let path = self.scanner.get_string_literal(&self.current);
+        self.consume(TokenType::String, "expect '\"/path/to/file.lox\"' after 'import '")?;
+
+        self.consume(TokenType::As, "expect 'as' after 'import \"/path/to/file.lox\"'")?;
+
+        let global: usize = self.parse_variable("expect variable name")?;
+        self.consume(TokenType::Semicolon, "expect ';' after 'import \"...\" as ...;'")?;
+
+        self.emit_byte(OpCode::Import(Box::new(path), global))
+    }
+
     fn assert_statement(&mut self) -> Result<(), LoxError> {
         let mut has_message = false;
 
@@ -648,6 +660,7 @@ impl Compiler {
                 TokenType::Foreach |
                 TokenType::Function |
                 TokenType::If |
+                TokenType::Import |
                 TokenType::Print |
                 TokenType::Return |
                 TokenType::Var |
@@ -698,6 +711,8 @@ impl Compiler {
             self.begin_scope()?;
             self.block()?;
             self.end_scope()
+        } else if self.token_type_matches(&TokenType::Import)? {
+            self.import_statement()
         } else {
             self.expression_statement()
         }

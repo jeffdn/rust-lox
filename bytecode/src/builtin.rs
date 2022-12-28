@@ -85,6 +85,7 @@ pub fn _type(input: &[ValuePtr]) -> Result<Value, LoxError> {
             Object::Iterator(_) => "iterator",
             Object::List(_) => "list",
             Object::Map(_) => "map",
+            Object::Module(_) => "module",
             Object::Native(_) => "function",
             Object::String(_) => "string",
             Object::UpValue(uv) => return _type(&[uv.location.clone()]),

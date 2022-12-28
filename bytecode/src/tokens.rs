@@ -40,6 +40,7 @@ pub enum TokenType {
 
     // keywords.
     And,
+    As,
     Assert,
     Break,
     Class,
@@ -52,6 +53,7 @@ pub enum TokenType {
     Foreach,
     Function,
     If,
+    Import,
     In,
     Nil,
     NotIn,
@@ -103,6 +105,7 @@ impl fmt::Display for TokenType {
             TokenType::String => "string",
             TokenType::Number => "number",
             TokenType::And => "and",
+            TokenType::As => "as",
             TokenType::Assert => "assert",
             TokenType::Break => "break",
             TokenType::Class => "class",
@@ -115,6 +118,7 @@ impl fmt::Display for TokenType {
             TokenType::Foreach => "foreach",
             TokenType::Function => "function",
             TokenType::If => "if",
+            TokenType::Import => "import",
             TokenType::In => "in",
             TokenType::Nil => "nil",
             TokenType::NotIn => "notin",

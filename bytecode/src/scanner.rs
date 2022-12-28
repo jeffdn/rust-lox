@@ -106,6 +106,7 @@ impl Scanner {
     fn find_identifier(&self, input_lexeme: &str) -> Result<Token, LoxError> {
         let token_type = match input_lexeme {
             "and"       => TokenType::And,
+            "as"        => TokenType::As,
             "assert"    => TokenType::Assert,
             "break"     => TokenType::Break,
             "class"     => TokenType::Class,
@@ -117,6 +118,7 @@ impl Scanner {
             "foreach"   => TokenType::Foreach,
             "fn"        => TokenType::Function,
             "if"        => TokenType::If,
+            "import"    => TokenType::Import,
             "in"        => TokenType::In,
             "nil"       => TokenType::Nil,
             "not"       => TokenType::NotIn,

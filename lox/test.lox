@@ -21,8 +21,8 @@ fn fib(n) {
 // }
 
 // while (true) {
-    var start = time();
-    print fib(30);
-    print "completed in: " + (time() - start) + " seconds";
-    cache.clear();
+//     var start = time();
+//     print fib(30);
+//     print "completed in: " + (time() - start) + " seconds";
+//     cache.clear();
 // }

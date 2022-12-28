@@ -1,0 +1,5 @@
+import "/Users/jeff/code/personal/rust-lox/lox/test.lox" as test;
+
+var start = time();
+print fib(30);
+print "completed in: " + (time() - start) + " seconds";

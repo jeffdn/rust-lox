@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
+    fs,
     rc::Rc,
 };
 
@@ -15,6 +16,7 @@ use crate::{
         Closure,
         Function,
         Instance,
+        Module,
         NativeFn,
         NativeFunction,
         Object,
@@ -304,21 +306,34 @@ impl VirtualMachine {
                     }
                 },
                 OpCode::GetProperty(index) => {
-                    let instance_ptr = self.stack.last().unwrap().clone();
-                    let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
-                        err!("not an instance");
-                    };
                     let name_constant = global!(index);
                     let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
                         unreachable!();
                     };
 
-                    match instance.fields.get(&**prop_name) {
-                        Some(prop) => {
-                            self.pop_stack()?;
-                            self.stack.push(prop.clone());
+                    let last = self.stack.last().unwrap().clone();
+                    match &*last.borrow() {
+                        Value::Object(Object::Instance(instance)) => {
+                            match instance.fields.get(&**prop_name) {
+                                Some(prop) => {
+                                    self.pop_stack()?;
+                                    self.stack.push(prop.clone());
+                                },
+                                None => self.bind_method(&instance.class, prop_name)?,
+                            };
                         },
-                        None => self.bind_method(&instance.class, prop_name)?,
+                        Value::Object(Object::Module(module)) => {
+                            match module.map.get(&**prop_name) {
+                                Some(prop) => {
+                                    self.pop_stack()?;
+                                    self.stack.push(prop.clone());
+                                },
+                                None => err!(
+                                    &format!("module '{}' has no property '{}'", module.name, prop_name)
+                                ),
+                            };
+                        },
+                        _ => err!("only modules and instances have properties"),
                     };
                 },
                 OpCode::SetProperty(index) => {
@@ -695,6 +710,40 @@ impl VirtualMachine {
                         err!(&format!("assertion failed: {}", message))
                     }
                 },
+                OpCode::Import(ref path, index) => {
+                    let path = *path.clone();
+                    let source = fs::read_to_string(&path)
+                        .ok()
+                        .ok_or_else(|| LoxError::RuntimeError(
+                                format!("unable to import file '{}'", path)
+                            )
+                        )?;
+
+                    let mut vm = VirtualMachine::new();
+                    vm.interpret(&source)?;
+
+                    let key = match &*global!(index).borrow() {
+                        Value::Object(Object::String(string)) => *string.clone(),
+                        _ => unreachable!(),
+                    };
+
+                    for (key, val) in vm.globals.clone() {
+                        self.globals.insert(key, val);
+                    }
+
+                    self.globals.insert(
+                        key.clone(),
+                        ValuePtr::new(
+                            obj!(
+                                Module,
+                                Module {
+                                    name: key,
+                                    map: vm.globals,
+                                }
+                            ),
+                        ),
+                    );
+                },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
 
@@ -856,6 +905,17 @@ impl VirtualMachine {
                     },
                 }
             },
+            Value::Object(Object::Module(module)) => {
+                match module.map.get(method_name) {
+                    Some(prop) => {
+                        self.stack[offset] = prop.clone();
+                        self.call_value(arg_count)
+                    },
+                    None => err!(
+                        &format!("module '{}' has no property '{}'", module.name, method_name)
+                    ),
+                }
+            },
             Value::Object(Object::Map(hmap)) => {
                 match method_name {
                     "clear" => hmap.map.clear(),
@@ -981,6 +1041,7 @@ impl VirtualMachine {
                 Object::Iterator(_) => Ok(true),
                 Object::List(list) => Ok(!list.is_empty()),
                 Object::Map(hmap) => Ok(!hmap.map.is_empty()),
+                Object::Module(_) => Ok(true),
                 Object::Native(_) => Ok(true),
                 Object::String(string) => Ok(!string.is_empty()),
                 Object::UpValue(value) => self.truthy(&value.location),

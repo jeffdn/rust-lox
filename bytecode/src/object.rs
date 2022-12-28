@@ -22,6 +22,7 @@ pub enum Object {
     Iterator(Box<ValueIter>),
     List(Box<Vec<ValuePtr>>),
     Map(Box<ValueMap>),
+    Module(Box<Module>),
     Native(Box<NativeFunction>),
     String(Box<String>),
     UpValue(Box<UpValue>),
@@ -83,6 +84,12 @@ impl ValueIter {
 
         Ok(value)
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Module {
+    pub name: String,
+    pub map: HashMap<String, ValuePtr>,
 }
 
 #[derive(Clone, Debug)]
@@ -261,6 +268,7 @@ impl fmt::Display for Object {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Object::Module(module) => format!("<module '{}'>", module.name),
             Object::Native(_) => "built-in".into(),
             Object::String(string) => string.clone().replace("\\n", "\n"),
             Object::UpValue(_) => "up-value".into(),

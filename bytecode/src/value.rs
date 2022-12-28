@@ -109,6 +109,14 @@ impl Hash for Value {
                             val.borrow().hash(state);
                         }
                     },
+                    Object::Module(module) => {
+                        MAP_HASH.hash(state);
+                        module.name.hash(state);
+                        for (key, val) in module.map.iter() {
+                            key.hash(state);
+                            val.borrow().hash(state);
+                        }
+                    },
                     Object::String(_) => {},
                     Object::UpValue(uv) => uv.location.borrow().hash(state),
                 };
