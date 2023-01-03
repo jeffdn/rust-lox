@@ -571,16 +571,13 @@ impl VirtualMachine {
                         self.frame_mut().pos += offset;
                     }
                 },
-                OpCode::Loop(offset) => {
-                    self.frame_mut().pos -= offset;
-                    continue;
-                },
+                OpCode::Loop(offset) => self.frame_mut().pos -= offset,
                 OpCode::Break(offset, fixed) => {
                     if !fixed {
                         err!("cannot break from outside a loop");
                     };
 
-                    self.frame_mut().pos += offset + 1;
+                    self.frame_mut().pos += offset;
                 },
                 OpCode::Continue(offset, fixed) => {
                     if !fixed {
@@ -588,7 +585,6 @@ impl VirtualMachine {
                     };
 
                     self.frame_mut().pos -= offset;
-                    continue;
                 },
                 OpCode::DefineIterator => {
                     let to_iterate = self.pop_stack()?;

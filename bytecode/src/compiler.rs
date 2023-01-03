@@ -262,9 +262,8 @@ impl Compiler {
 
     fn emit_loop(&mut self, loop_start: usize) -> Result<(), LoxError> {
         let last_code = self.chunk().code.len();
-        let offset = self.chunk().code.len() - loop_start;
 
-        self.emit_byte(OpCode::Loop(offset))?;
+        self.emit_byte(OpCode::Loop(last_code - loop_start + 1))?;
 
         // Now, look through all instructions emitted between the start of the loop and
         // the loop instructions. Any that take the shape of either:
@@ -278,8 +277,12 @@ impl Compiler {
         //     OpCode::Continue(start_of_loop, true)
         for code in self.chunk().code[loop_start..last_code].iter_mut() {
             match code {
-                OpCode::Break(initial, false) => *code = OpCode::Break(last_code - *initial, true),
-                OpCode::Continue(initial, false) => *code = OpCode::Continue(*initial - loop_start, true),
+                OpCode::Break(initial, false) => {
+                    *code = OpCode::Break(last_code - *initial + 1, true)
+                },
+                OpCode::Continue(initial, false) => {
+                    *code = OpCode::Continue(*initial - loop_start + 1, true)
+                },
                 _ => {},
             };
         }

@@ -96,17 +96,33 @@ assert cat.action() == 'Coco snuggles and purrs';
 // loops
 var new_list = [];
 foreach (var i in range(0, 5)) {
+  if (i == 2) {
+    continue;
+  }
+
+  if (i == 4) {
+    break;
+  }
+
   new_list = new_list + [i * 2];
 }
 
-assert new_list == [0, 2, 4, 6, 8];
+assert new_list == [0, 2, 6];
 
 var new_list = [];
 for (var i = 0; i < 5; i = i + 1) {
+  if (i == 2) {
+    continue;
+  }
+
+  if (i == 4) {
+    break;
+  }
+
   new_list = new_list + [i * 2];
 }
 
-assert new_list == [0, 2, 4, 6, 8];
+assert new_list == [0, 2, 6];
 
 
 // misc
