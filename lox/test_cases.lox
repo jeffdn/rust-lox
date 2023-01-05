@@ -50,6 +50,8 @@ list[-2] = 8;
 assert list == [1, 2, 3, 8, 5];
 assert 8 in list;
 
+assert list == list[:];
+
 
 // strings
 var string = "hello, world";

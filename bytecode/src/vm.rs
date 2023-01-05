@@ -14,7 +14,6 @@ use crate::{
         BoundMethod,
         Class,
         Closure,
-        Function,
         Instance,
         Module,
         NativeFn,
@@ -33,6 +32,9 @@ use crate::{
 
 #[cfg(feature="debug")]
 use crate::chunk::Chunk;
+
+#[cfg(feature="debug")]
+use crate::object::Function;
 
 static FRAMES_MAX: usize = 64;
 static STACK_MAX: usize = 256;
@@ -138,15 +140,27 @@ impl VirtualMachine {
         }
     }
 
-    pub fn frame(&self) -> &CallFrame {
+    fn should_continue(&self) -> bool {
+        let frame = self.frames.last().unwrap();
+
+        match &*frame.closure.borrow() {
+            Value::Object(Object::Closure(closure)) => {
+                frame.pos < closure.function.borrow().chunk.code.len()
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    fn frame(&self) -> &CallFrame {
         self.frames.last().unwrap()
     }
 
-    pub fn frame_mut(&mut self) -> &mut CallFrame {
+    fn frame_mut(&mut self) -> &mut CallFrame {
         self.frames.last_mut().unwrap()
     }
 
-    pub fn function(&self) -> Rc<RefCell<Function>> {
+    #[cfg(feature = "debug")]
+    fn function(&self) -> Rc<RefCell<Function>> {
         match &*self.frame().closure.borrow() {
             Value::Object(Object::Closure(closure)) => closure.function.clone(),
             _ => unreachable!(),
@@ -159,6 +173,18 @@ impl VirtualMachine {
 
     fn _convert_index(&self, len: usize, number: i32) -> Result<usize, LoxError> {
         self._extract_index(len, number as f64)
+    }
+
+    fn _get_slice_argument(&mut self, is_present: bool) -> Result<Option<i32>, LoxError> {
+        let arg: Option<i32> = match is_present {
+            true => match &*self.pop_stack()?.borrow() {
+                Value::Number(number) => Some(*number as i32),
+                _ => err!("only numbers can be used to slice containers"),
+            },
+            false => None,
+        };
+
+        Ok(arg)
     }
 
     fn _get_slice_range(
@@ -219,17 +245,21 @@ impl VirtualMachine {
             };
         }
 
-        while self.frame().pos < self.function().borrow().chunk.code.len() {
-            let pos = self.frame().pos;
+        while self.should_continue() {
+            let frame = self.frames.last().unwrap();
+            let pos = frame.pos;
+            let code = match &*frame.closure.borrow() {
+                Value::Object(Object::Closure(closure)) => {
+                    closure.function.borrow().chunk.code[pos].clone()
+                },
+                _ => unreachable!(),
+            };
 
             #[cfg(feature="debug")]
             self.dump(&self.function().borrow().chunk, pos);
 
-            match self.function().borrow().chunk.code[pos] {
-                OpCode::Constant(index) => {
-                    let constant = global!(index);
-                    self.stack.push(constant);
-                },
+            match code {
+                OpCode::Constant(index) => self.stack.push(global!(index)),
                 OpCode::False => self.stack_push_value(Value::Bool(false)),
                 OpCode::True => self.stack_push_value(Value::Bool(true)),
                 OpCode::Nil => self.stack_push_value(Value::Nil),
@@ -445,20 +475,8 @@ impl VirtualMachine {
                     };
                 },
                 OpCode::GetSlice(has_left, has_right) => {
-                    let right: Option<i32> = match has_right {
-                        true => match &*self.pop_stack()?.borrow() {
-                            Value::Number(number) => Some(*number as i32),
-                            _ => err!("only numbers can be used to slice containers")
-                        },
-                        false => None,
-                    };
-                    let left: Option<i32> = match has_left {
-                        true => match &*self.pop_stack()?.borrow() {
-                            Value::Number(number) => Some(*number as i32),
-                            _ => err!("only numbers can be used to slice containers"),
-                        },
-                        false => None,
-                    };
+                    let right = self._get_slice_argument(has_right)?;
+                    let left = self._get_slice_argument(has_left)?;
 
                     let value = match &*self.pop_stack()?.borrow() {
                         Value::Object(Object::List(list)) => {
