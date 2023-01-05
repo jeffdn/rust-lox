@@ -140,17 +140,6 @@ impl VirtualMachine {
         }
     }
 
-    fn should_continue(&self) -> bool {
-        let frame = self.frames.last().unwrap();
-
-        match &*frame.closure.borrow() {
-            Value::Object(Object::Closure(closure)) => {
-                frame.pos < closure.function.borrow().chunk.code.len()
-            },
-            _ => unreachable!(),
-        }
-    }
-
     fn frame(&self) -> &CallFrame {
         self.frames.last().unwrap()
     }
@@ -245,18 +234,27 @@ impl VirtualMachine {
             };
         }
 
-        while self.should_continue() {
-            let frame = self.frames.last().unwrap();
-            let pos = frame.pos;
-            let code = match &*frame.closure.borrow() {
-                Value::Object(Object::Closure(closure)) => {
-                    closure.function.borrow().chunk.code[pos].clone()
+        loop {
+            let code = match self.frames.last() {
+                Some(frame) => {
+                    let pos = frame.pos;
+
+                    #[cfg(feature="debug")]
+                    self.dump(&self.function().borrow().chunk, pos);
+
+                    match &*frame.closure.borrow() {
+                        Value::Object(Object::Closure(closure)) => {
+                            if frame.pos >= closure.function.borrow().chunk.code.len() {
+                                break;
+                            }
+
+                            closure.function.borrow().chunk.code[pos].clone()
+                        },
+                        _ => unreachable!(),
+                    }
                 },
                 _ => unreachable!(),
             };
-
-            #[cfg(feature="debug")]
-            self.dump(&self.function().borrow().chunk, pos);
 
             match code {
                 OpCode::Constant(index) => self.stack.push(global!(index)),
