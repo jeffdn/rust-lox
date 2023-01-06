@@ -19,6 +19,10 @@ use crate::{
     vm::VirtualMachine,
 };
 
+use tikv_jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn slurp_expr() -> String {
     let mut input_expr = String::new();
