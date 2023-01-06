@@ -70,6 +70,10 @@ assert 'c' in map;
 delete map['c'];
 assert 'c' not in map;
 
+delete map['a'];
+assert map.keys() == ['b'], "keys() generates a list of keys";
+assert map.values() == [2], "values() generates a list of values";
+
 
 // classes
 class Mammal {

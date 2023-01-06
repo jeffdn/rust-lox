@@ -921,29 +921,43 @@ impl VirtualMachine {
                 )),
             },
             Value::Object(Object::Map(hmap)) => {
-                match method_name {
-                    "clear" => hmap.map.clear(),
-                    _ => err!(&format!("map does not have the method '{}'", method_name)),
+                match (method_name, arg_count) {
+                    ("clear", 0) => hmap.map.clear(),
+                    ("keys", 0) => {
+                        self.stack[offset] =
+                            ValuePtr::new(obj!(List, hmap.map.keys().cloned().collect()));
+                    },
+                    ("values", 0) => {
+                        self.stack[offset] =
+                            ValuePtr::new(obj!(List, hmap.map.values().cloned().collect()));
+                    },
+                    _ => err!(&format!(
+                        "map does not have the method '{}' with {} argument(s)",
+                        method_name, arg_count
+                    )),
                 };
 
                 self.frame_mut().pos += 1;
                 Ok(())
             },
             Value::Object(Object::List(list)) => {
-                match method_name {
-                    "clear" => list.clear(),
-                    _ => err!(&format!("list does not have the method '{}'", method_name)),
+                match (method_name, arg_count) {
+                    ("clear", 0) => list.clear(),
+                    _ => err!(&format!(
+                        "list does not have the method '{}' with {} argument(s)",
+                        method_name, arg_count
+                    )),
                 };
 
                 self.frame_mut().pos += 1;
                 Ok(())
             },
             Value::Object(Object::String(string)) => {
-                match method_name {
-                    "clear" => string.clear(),
+                match (method_name, arg_count) {
+                    ("clear", 0) => string.clear(),
                     _ => err!(&format!(
-                        "string does not have the method '{}'",
-                        method_name
+                        "string does not have the method '{}' with {} argument(s)",
+                        method_name, arg_count
                     )),
                 };
 
