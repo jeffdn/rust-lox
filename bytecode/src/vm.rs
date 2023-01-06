@@ -237,18 +237,17 @@ impl VirtualMachine {
         loop {
             let code = match self.frames.last() {
                 Some(frame) => {
-                    let pos = frame.pos;
-
                     #[cfg(feature="debug")]
-                    self.dump(&self.function().borrow().chunk, pos);
+                    self.dump(&self.function().borrow().chunk, frame.pos);
 
                     match &*frame.closure.borrow() {
                         Value::Object(Object::Closure(closure)) => {
-                            if frame.pos >= closure.function.borrow().chunk.code.len() {
+                            let function = closure.function.borrow();
+                            if frame.pos >= function.chunk.code.len() {
                                 break;
                             }
 
-                            closure.function.borrow().chunk.code[pos].clone()
+                            function.chunk.code[frame.pos].clone()
                         },
                         _ => unreachable!(),
                     }
@@ -269,7 +268,7 @@ impl VirtualMachine {
                 OpCode::SetLocal(index) => {
                     let val = match self.stack.last() {
                         Some(val) => val.clone(),
-                        None => err!("empty stack"),
+                        None => unreachable!(),
                     };
                     let index = index + self.frame().stack_offset;
                     self.stack[index] = val;
@@ -282,7 +281,7 @@ impl VirtualMachine {
                                 None => err!(&format!("undefined variable: {}", &**string)),
                             }
                         },
-                        _ => err!("missing constant"),
+                        _ => unreachable!(),
                     };
 
                     self.stack.push(val.clone());
@@ -290,7 +289,7 @@ impl VirtualMachine {
                 OpCode::DefineGlobal(index) => {
                     let key = match &*global!(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
-                        _ => err!("missing constant"),
+                        _ => unreachable!(),
                     };
 
                     let val = self.pop_stack()?;
@@ -300,7 +299,7 @@ impl VirtualMachine {
                 OpCode::SetGlobal(index) => {
                     let key = match &*global!(index).borrow() {
                         Value::Object(Object::String(string)) => *string.clone(),
-                        _ => err!("missing constant"),
+                        _ => unreachable!(),
                     };
 
                     if !self.globals.contains_key(&key) {
@@ -309,7 +308,7 @@ impl VirtualMachine {
 
                     let val = match self.stack.last() {
                         Some(val) => val.clone(),
-                        None => err!("empty stack"),
+                        None => unreachable!(),
                     };
 
                     self.globals.insert(key, val);
