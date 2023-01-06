@@ -1,10 +1,4 @@
-use std::{
-    boxed::Box,
-    cell::RefCell,
-    collections::HashMap,
-    fmt,
-    rc::Rc,
-};
+use std::{boxed::Box, cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::{
     chunk::Chunk,
@@ -38,48 +32,34 @@ impl ValueIter {
     pub fn new(instance: ValuePtr) -> Result<Self, LoxError> {
         let value = match &*instance.borrow() {
             Value::Object(object) => match object {
-                Object::List(list) => {
-                    ValueIter {
-                        items: (0..list.len())
-                            .map(|x| ValuePtr::new(Value::Number(x as f64)))
-                            .collect(),
-                        next: 0,
-                    }
+                Object::List(list) => ValueIter {
+                    items: (0..list.len())
+                        .map(|x| ValuePtr::new(Value::Number(x as f64)))
+                        .collect(),
+                    next: 0,
                 },
-                Object::Map(hmap) => {
-                    ValueIter {
-                        items: hmap.map
-                            .keys()
-                            .cloned()
-                            .collect(),
-                        next: 0,
-                    }
+                Object::Map(hmap) => ValueIter {
+                    items: hmap.map.keys().cloned().collect(),
+                    next: 0,
                 },
-                Object::String(string) => {
-                    ValueIter {
-                        items: string.chars()
-                            .map(|x| ValuePtr::new(
-                                Value::Object(
-                                    Object::String(
-                                        Box::new(x.into())
-                                    )
-                                )
-                            ))
-                            .collect(),
-                        next: 0,
-                    }
+                Object::String(string) => ValueIter {
+                    items: string
+                        .chars()
+                        .map(|x| ValuePtr::new(Value::Object(Object::String(Box::new(x.into())))))
+                        .collect(),
+                    next: 0,
                 },
-                _ => return Err(
-                    LoxError::RuntimeError(
+                _ => {
+                    return Err(LoxError::RuntimeError(
                         "only lists, maps, and strings can be iterated".into(),
-                    )
-                ),
+                    ))
+                }
             },
-            _ => return Err(
-                LoxError::RuntimeError(
+            _ => {
+                return Err(LoxError::RuntimeError(
                     "only lists, maps, and strings can be iterated".into(),
-                )
-            ),
+                ))
+            }
         };
 
         Ok(value)
@@ -233,7 +213,7 @@ impl fmt::Display for Object {
                     closure.function.borrow().name,
                     class.name,
                 )
-            },
+            }
             Object::Class(class) => class.name.clone(),
             Object::Closure(closure) => closure.function.borrow().name.clone(),
             Object::Function(function) => function.name.clone(),
@@ -243,7 +223,7 @@ impl fmt::Display for Object {
                 };
 
                 format!("<{} instance>", class.name)
-            },
+            }
             Object::Iterator(iter) => format!(
                 "<iterator: next={}, items=[{}]>",
                 iter.next,

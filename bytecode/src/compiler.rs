@@ -48,19 +48,16 @@ impl Precedence {
             TokenType::Plus => Precedence::Term,
             TokenType::Slash => Precedence::Factor,
             TokenType::Star => Precedence::Factor,
-            TokenType::BangEqual |
-            TokenType::EqualEqual => Precedence::Equality,
-            TokenType::In |
-            TokenType::NotIn |
-            TokenType::Greater |
-            TokenType::GreaterEqual |
-            TokenType::Less |
-            TokenType::LessEqual => Precedence::Comparison,
+            TokenType::BangEqual | TokenType::EqualEqual => Precedence::Equality,
+            TokenType::In
+            | TokenType::NotIn
+            | TokenType::Greater
+            | TokenType::GreaterEqual
+            | TokenType::Less
+            | TokenType::LessEqual => Precedence::Comparison,
             TokenType::And => Precedence::And,
             TokenType::Or => Precedence::Or,
-            TokenType::Dot |
-            TokenType::LeftBracket |
-            TokenType::LeftParen => Precedence::Call,
+            TokenType::Dot | TokenType::LeftBracket | TokenType::LeftParen => Precedence::Call,
             _ => Precedence::None,
         }
     }
@@ -112,7 +109,7 @@ impl CompilerNode {
                 upvalue_count: 0,
                 chunk: Chunk::new(),
                 name: "<script>".into(),
-            }
+            },
         };
 
         let (token_type, length) = match function_type {
@@ -120,18 +117,16 @@ impl CompilerNode {
             _ => (TokenType::Skip, 0),
         };
 
-        node.locals.push(
-            Local {
-                name: Token {
-                    token_type,
-                    length,
-                    start: 0,
-                    line: 0,
-                },
-                depth: Some(0),
-                is_captured: false,
-            }
-        );
+        node.locals.push(Local {
+            name: Token {
+                token_type,
+                length,
+                start: 0,
+                line: 0,
+            },
+            depth: Some(0),
+            is_captured: false,
+        });
 
         node
     }
@@ -235,8 +230,9 @@ impl Compiler {
             }
 
             let idx = self.compiler().local_count - 1;
-            if self.compiler().locals[idx].depth.is_some() &&
-                self.compiler().locals[idx].depth.unwrap() <= self.compiler().scope_depth {
+            if self.compiler().locals[idx].depth.is_some()
+                && self.compiler().locals[idx].depth.unwrap() <= self.compiler().scope_depth
+            {
                 break;
             }
 
@@ -253,7 +249,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn emit_byte(&mut self, byte: OpCode) -> Result<(), LoxError>{
+    fn emit_byte(&mut self, byte: OpCode) -> Result<(), LoxError> {
         let previous_line = self.previous.line;
         self.chunk().write(byte, previous_line);
 
@@ -279,18 +275,18 @@ impl Compiler {
             match code {
                 OpCode::Break(initial, false) => {
                     *code = OpCode::Break(last_code - *initial + 1, true)
-                },
+                }
                 OpCode::Continue(initial, false) => {
                     *code = OpCode::Continue(*initial - loop_start + 1, true)
-                },
-                _ => {},
+                }
+                _ => {}
             };
         }
 
         Ok(())
     }
 
-    fn emit_jump(&mut self, byte: OpCode) -> Result<usize, LoxError>{
+    fn emit_jump(&mut self, byte: OpCode) -> Result<usize, LoxError> {
         let previous_line = self.previous.line;
         self.chunk().write(byte, previous_line);
 
@@ -326,9 +322,8 @@ impl Compiler {
     fn block(&mut self) -> Result<(), LoxError> {
         loop {
             match &self.current.token_type {
-                &TokenType::RightBrace |
-                &TokenType::Eof => break,
-                _ => self.declaration()?
+                &TokenType::RightBrace | &TokenType::Eof => break,
+                _ => self.declaration()?,
             };
         }
 
@@ -360,11 +355,8 @@ impl Compiler {
         self.block()?;
 
         let compiler = self.end_compiler()?;
-        let constant = self.make_constant(
-            Value::Object(
-                Object::Function(Box::new(compiler.function))
-            )
-        )?;
+        let constant =
+            self.make_constant(Value::Object(Object::Function(Box::new(compiler.function))))?;
 
         self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
     }
@@ -419,8 +411,9 @@ impl Compiler {
         self.named_variable(&class_name, false)?;
         self.consume(TokenType::LeftBrace, "expect '{' before class body")?;
 
-        while !self.check_current_token(&TokenType::RightBrace) &&
-              !self.check_current_token(&TokenType::Eof) {
+        while !self.check_current_token(&TokenType::RightBrace)
+            && !self.check_current_token(&TokenType::Eof)
+        {
             self.method()?;
         }
 
@@ -454,7 +447,10 @@ impl Compiler {
             false => self.emit_byte(OpCode::Nil)?,
         };
 
-        self.consume(TokenType::Semicolon, "expect ';' after variable declaration")?;
+        self.consume(
+            TokenType::Semicolon,
+            "expect ';' after variable declaration",
+        )?;
 
         self.define_variable(global)
     }
@@ -579,12 +575,21 @@ impl Compiler {
 
     fn import_statement(&mut self) -> Result<(), LoxError> {
         let path = self.scanner.get_string_literal(&self.current);
-        self.consume(TokenType::String, "expect '\"/path/to/file.lox\"' after 'import '")?;
+        self.consume(
+            TokenType::String,
+            "expect '\"/path/to/file.lox\"' after 'import '",
+        )?;
 
-        self.consume(TokenType::As, "expect 'as' after 'import \"/path/to/file.lox\"'")?;
+        self.consume(
+            TokenType::As,
+            "expect 'as' after 'import \"/path/to/file.lox\"'",
+        )?;
 
         let global: usize = self.parse_variable("expect variable name")?;
-        self.consume(TokenType::Semicolon, "expect ';' after 'import \"...\" as ...;'")?;
+        self.consume(
+            TokenType::Semicolon,
+            "expect ';' after 'import \"...\" as ...;'",
+        )?;
 
         self.emit_byte(OpCode::Import(Box::new(path), global))
     }
@@ -614,17 +619,15 @@ impl Compiler {
             true => self.emit_return(),
             false => {
                 if self.current_function().function_type == FunctionType::Initializer {
-                    return Err(
-                        LoxError::ParseError(
-                            "can't return from a class initializer".into()
-                        )
-                    );
+                    return Err(LoxError::ParseError(
+                        "can't return from a class initializer".into(),
+                    ));
                 }
 
                 self.expression()?;
                 self.consume(TokenType::Semicolon, "expect ';' after value")?;
                 self.emit_byte(OpCode::Return)
-            },
+            }
         }
     }
 
@@ -654,20 +657,20 @@ impl Compiler {
             }
 
             match self.current.token_type {
-                TokenType::Assert |
-                TokenType::Break |
-                TokenType::Class |
-                TokenType::Continue |
-                TokenType::Delete |
-                TokenType::For |
-                TokenType::Foreach |
-                TokenType::Function |
-                TokenType::If |
-                TokenType::Import |
-                TokenType::Print |
-                TokenType::Return |
-                TokenType::Var |
-                TokenType::While => break,
+                TokenType::Assert
+                | TokenType::Break
+                | TokenType::Class
+                | TokenType::Continue
+                | TokenType::Delete
+                | TokenType::For
+                | TokenType::Foreach
+                | TokenType::Function
+                | TokenType::If
+                | TokenType::Import
+                | TokenType::Print
+                | TokenType::Return
+                | TokenType::Var
+                | TokenType::While => break,
                 _ => self.advance()?,
             };
         }
@@ -745,23 +748,23 @@ impl Compiler {
             TokenType::BangEqual => {
                 self.emit_byte(OpCode::Equal)?;
                 self.emit_byte(OpCode::Not)
-            },
+            }
             TokenType::EqualEqual => self.emit_byte(OpCode::Equal),
             TokenType::Greater => self.emit_byte(OpCode::Greater),
             TokenType::GreaterEqual => {
                 self.emit_byte(OpCode::Less)?;
                 self.emit_byte(OpCode::Not)
-            },
+            }
             TokenType::Less => self.emit_byte(OpCode::Less),
             TokenType::LessEqual => {
                 self.emit_byte(OpCode::Greater)?;
                 self.emit_byte(OpCode::Not)
-            },
+            }
             TokenType::In => self.emit_byte(OpCode::In),
             TokenType::NotIn => {
                 self.emit_byte(OpCode::In)?;
                 self.emit_byte(OpCode::Not)
-            },
+            }
             _ => self.error("unreachable"),
         }
     }
@@ -811,12 +814,8 @@ impl Compiler {
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
 
         match self.chunk().code.last() {
-            Some(OpCode::GetIndex) => {},
-            _ => return Err(
-                LoxError::CompileError(
-                    "invalid 'delete' statement".into()
-                )
-            ),
+            Some(OpCode::GetIndex) => {}
+            _ => return Err(LoxError::CompileError("invalid 'delete' statement".into())),
         };
 
         let last_pos = self.chunk().code.len() - 1;
@@ -941,7 +940,7 @@ impl Compiler {
                 Err(_) => {
                     let index = self.identifier_constant(token)?;
                     (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
-                },
+                }
             },
         };
 
@@ -956,10 +955,16 @@ impl Compiler {
     }
 
     fn resolve_local(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
-        match self.compiler_at(depth).locals.iter().enumerate().rev().find(|(_, x)| {
-            self.scanner.get_string(&x.name) == self.scanner.get_string(token) ||
-                x.name.token_type == TokenType::This
-        }) {
+        match self
+            .compiler_at(depth)
+            .locals
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, x)| {
+                self.scanner.get_string(&x.name) == self.scanner.get_string(token)
+                    || x.name.token_type == TokenType::This
+            }) {
             Some((idx, local)) => match local.depth {
                 Some(_) => Ok(idx),
                 None => match self.error("can't read a local variable in its own initializer") {
@@ -971,19 +976,24 @@ impl Compiler {
         }
     }
 
-    fn add_upvalue(&mut self, index: usize, is_local: bool, depth: usize) -> Result<usize, LoxError> {
-        if let Some(uv) = self.compiler_at_mut(depth).upvalues.iter().find(|uv| {
-            uv.is_local == is_local && uv.index == index
-        }) {
-            return Ok(uv.index)
+    fn add_upvalue(
+        &mut self,
+        index: usize,
+        is_local: bool,
+        depth: usize,
+    ) -> Result<usize, LoxError> {
+        if let Some(uv) = self
+            .compiler_at_mut(depth)
+            .upvalues
+            .iter()
+            .find(|uv| uv.is_local == is_local && uv.index == index)
+        {
+            return Ok(uv.index);
         }
 
-        self.compiler_at_mut(depth).upvalues.push(
-            UpValue {
-                is_local,
-                index,
-            }
-        );
+        self.compiler_at_mut(depth)
+            .upvalues
+            .push(UpValue { is_local, index });
 
         self.compiler_at_mut(depth).function.upvalue_count += 1;
 
@@ -1028,9 +1038,11 @@ impl Compiler {
 
     fn super_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
         match self.classes.last() {
-            Some(class) => if !class.has_superclass {
-                self.error("can't use 'super' outside of a class")?;
-            },
+            Some(class) => {
+                if !class.has_superclass {
+                    self.error("can't use 'super' outside of a class")?;
+                }
+            }
             None => self.error("can't user 'super' inside a class without a superclass")?,
         };
 
@@ -1046,9 +1058,9 @@ impl Compiler {
 
     fn this_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
         if self.classes.is_empty() {
-            return Err(
-                LoxError::ParseError("can't use 'this' outside of classes".into())
-            );
+            return Err(LoxError::ParseError(
+                "can't use 'this' outside of classes".into(),
+            ));
         }
 
         self.variable(false)
@@ -1071,13 +1083,10 @@ impl Compiler {
             &TokenType::LeftBrace => Some(Compiler::map),
             &TokenType::LeftBracket => Some(Compiler::list),
             &TokenType::LeftParen => Some(Compiler::grouping),
-            &TokenType::Minus |
-            &TokenType::Bang => Some(Compiler::unary),
+            &TokenType::Minus | &TokenType::Bang => Some(Compiler::unary),
             &TokenType::Number => Some(Compiler::number),
             &TokenType::String => Some(Compiler::string),
-            &TokenType::Nil |
-            &TokenType::True |
-            &TokenType::False => Some(Compiler::literal),
+            &TokenType::Nil | &TokenType::True | &TokenType::False => Some(Compiler::literal),
             &TokenType::Identifier => Some(Compiler::variable),
             &TokenType::This => Some(Compiler::this_),
             &TokenType::Break => Some(Compiler::break_),
@@ -1089,19 +1098,19 @@ impl Compiler {
 
     fn get_infix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
         match token_type {
-            &TokenType::Minus |
-            &TokenType::Percent |
-            &TokenType::Plus |
-            &TokenType::Slash |
-            &TokenType::Star |
-            &TokenType::BangEqual |
-            &TokenType::EqualEqual |
-            &TokenType::Greater |
-            &TokenType::GreaterEqual |
-            &TokenType::In |
-            &TokenType::NotIn |
-            &TokenType::Less |
-            &TokenType::LessEqual => Some(Compiler::binary),
+            &TokenType::Minus
+            | &TokenType::Percent
+            | &TokenType::Plus
+            | &TokenType::Slash
+            | &TokenType::Star
+            | &TokenType::BangEqual
+            | &TokenType::EqualEqual
+            | &TokenType::Greater
+            | &TokenType::GreaterEqual
+            | &TokenType::In
+            | &TokenType::NotIn
+            | &TokenType::Less
+            | &TokenType::LessEqual => Some(Compiler::binary),
             &TokenType::Dot => Some(Compiler::dot),
             &TokenType::And => Some(Compiler::and_),
             &TokenType::Or => Some(Compiler::or_),
@@ -1127,8 +1136,9 @@ impl Compiler {
         while precedence_val <= Precedence::for_token_type(&self.current.token_type) as u8 {
             self.advance()?;
 
-            if self.previous.token_type == TokenType::NotIn &&
-                self.current.token_type == TokenType::In {
+            if self.previous.token_type == TokenType::NotIn
+                && self.current.token_type == TokenType::In
+            {
                 self.skip()?;
             }
 
@@ -1150,13 +1160,7 @@ impl Compiler {
     fn identifier_constant(&mut self, token: &Token) -> Result<usize, LoxError> {
         let constant = self.scanner.get_string(token);
 
-        self.make_constant(
-            Value::Object(
-                Object::String(
-                    Box::new(constant)
-                )
-            )
-        )
+        self.make_constant(Value::Object(Object::String(Box::new(constant))))
     }
 
     fn add_local(&mut self, name: Option<Token>) -> Result<(), LoxError> {
@@ -1166,13 +1170,11 @@ impl Compiler {
         };
 
         self.compiler_mut().local_count += 1;
-        self.compiler_mut().locals.push(
-            Local {
-                name: local_name,
-                depth: None,
-                is_captured: false,
-            }
-        );
+        self.compiler_mut().locals.push(Local {
+            name: local_name,
+            depth: None,
+            is_captured: false,
+        });
 
         Ok(())
     }
@@ -1182,7 +1184,11 @@ impl Compiler {
             return Ok(());
         }
 
-        let local = self.compiler().locals.iter().find(|local| local.name == self.previous);
+        let local = self
+            .compiler()
+            .locals
+            .iter()
+            .find(|local| local.name == self.previous);
 
         if local.is_some() {
             self.error("already a variable with this name in this scope")?;
@@ -1216,7 +1222,7 @@ impl Compiler {
                 };
 
                 Ok(())
-            },
+            }
         }
     }
 

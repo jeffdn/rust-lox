@@ -1,8 +1,4 @@
-use std::{
-    boxed::Box,
-    fmt,
-    iter::Iterator,
-};
+use std::{boxed::Box, fmt, iter::Iterator};
 
 use crate::value::{Value, ValueSet};
 
@@ -160,7 +156,7 @@ impl Chunk {
         self.constants.write(value)
     }
 
-    #[cfg(feature="debug")]
+    #[cfg(feature = "debug")]
     pub fn disassemble(&self, name: &str) {
         println!("=== {} ===", name);
 
@@ -169,7 +165,7 @@ impl Chunk {
         }
     }
 
-    #[cfg(feature="debug")]
+    #[cfg(feature = "debug")]
     pub fn disassemble_instruction(&self, code: &OpCode, offset: usize) {
         let line_str = if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
             "   |".into()
@@ -179,31 +175,50 @@ impl Chunk {
 
         let output = match code {
             OpCode::Constant(index) => format!(
-                "{:<20} {}", "op_constant", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_constant",
+                *index, //self.constants.get(*index),
             ),
             OpCode::GetLocal(index) => format!(
-                "{:<20} {}", "op_get_local", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_get_local",
+                *index, //self.constants.get(*index),
             ),
             OpCode::SetLocal(index) => format!(
-                "{:<20} {}", "op_set_local", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_set_local",
+                *index, //self.constants.get(*index),
             ),
             OpCode::GetGlobal(index) => format!(
-                "{:<20} {}", "op_get_global", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_get_global",
+                *index, //self.constants.get(*index),
             ),
             OpCode::DefineGlobal(index) => format!(
-                "{:<20} {}", "op_define_global", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_define_global",
+                *index, //self.constants.get(*index),
             ),
             OpCode::SetGlobal(index) => format!(
-                "{:<20} {}", "op_set_global", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_set_global",
+                *index, //self.constants.get(*index),
             ),
             OpCode::GetUpValue(index) => format!(
-                "{:<20} {}", "op_get_upvalue", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_get_upvalue",
+                *index, //self.constants.get(*index),
             ),
             OpCode::SetUpValue(index) => format!(
-                "{:<20} {}, {:?}", "op_set_upvalue", *index, self.constants.get(*index),
+                "{:<20} {}, {:?}",
+                "op_set_upvalue",
+                *index,
+                self.constants.get(*index),
             ),
             OpCode::GetProperty(index) => format!(
-                "{:<20} {}", "op_get_property", *index, //self.constants.get(*index),
+                "{:<20} {}",
+                "op_get_property",
+                *index, //self.constants.get(*index),
             ),
             OpCode::SetProperty(index) => format!("{:<20} {}", "op_set_property", *index),
             OpCode::GetSuper(index) => format!("{:<20} {}", "op_get_super", *index),
@@ -213,8 +228,12 @@ impl Chunk {
             OpCode::JumpIfFalse(offset) => format!("{:<20} {}", "op_jump_if_false", offset),
             OpCode::Loop(offset) => format!("{:<20} {}", "op_loop", offset),
             OpCode::Break(offset, fixed) => format!("{:<20} {} {}", "op_break", offset, fixed),
-            OpCode::Continue(offset, fixed) => format!("{:<20} {} {}", "op_continue", offset, fixed),
-            OpCode::IteratorNext(index, jump) => format!("{:<20} {} {}", "op_iterator_next", index, jump),
+            OpCode::Continue(offset, fixed) => {
+                format!("{:<20} {} {}", "op_continue", offset, fixed)
+            }
+            OpCode::IteratorNext(index, jump) => {
+                format!("{:<20} {} {}", "op_iterator_next", index, jump)
+            }
             OpCode::BuildList(item_count) => format!("{:<20} {}", "op_build_list", item_count),
             OpCode::BuildMap(item_count) => format!("{:<20} {}", "op_build_map", item_count),
             OpCode::Call(offset) => format!("{:<20} {}", "op_call", offset),

@@ -3,12 +3,8 @@ use std::time::SystemTime;
 use crate::{
     errors::LoxError,
     object::Object,
-    value::{
-        Value,
-        ValuePtr,
-    },
+    value::{Value, ValuePtr},
 };
-
 
 pub fn _range(input: &[ValuePtr]) -> Result<Value, LoxError> {
     match (&*input[0].borrow(), &*input[1].borrow()) {
@@ -21,24 +17,15 @@ pub fn _range(input: &[ValuePtr]) -> Result<Value, LoxError> {
                 false => stop..start,
             };
 
-            Ok(
-                Value::Object(
-                    Object::List(
-                        Box::new(
-                            range_iter
-                                .map(|x| ValuePtr::new(Value::Number(x.into())))
-                                .collect()
-                        )
-                    )
-                )
-            )
-
-        },
-        _ => Err(
-            LoxError::RuntimeError(
-                "range(start, stop) takes two numbers".into()
-            )
-        ),
+            Ok(Value::Object(Object::List(Box::new(
+                range_iter
+                    .map(|x| ValuePtr::new(Value::Number(x.into())))
+                    .collect(),
+            ))))
+        }
+        _ => Err(LoxError::RuntimeError(
+            "range(start, stop) takes two numbers".into(),
+        )),
     }
 }
 
@@ -53,9 +40,13 @@ pub fn _str(input: &[ValuePtr]) -> Result<Value, LoxError> {
     match &*input[0].borrow() {
         Value::Object(object) => match object {
             Object::String(string) => Ok(Value::Object(Object::String(Box::new(*string.clone())))),
-            _ => Err(LoxError::RuntimeError("string() only accepts primitives".into())),
+            _ => Err(LoxError::RuntimeError(
+                "string() only accepts primitives".into(),
+            )),
         },
-        _ => Ok(Value::Object(Object::String(Box::new((*input[0].borrow()).to_string())))),
+        _ => Ok(Value::Object(Object::String(Box::new(
+            (*input[0].borrow()).to_string(),
+        )))),
     }
 }
 
@@ -65,9 +56,13 @@ pub fn _len(input: &[ValuePtr]) -> Result<Value, LoxError> {
             Object::List(list) => Ok(Value::Number(list.len() as f64)),
             Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
             Object::String(string) => Ok(Value::Number(string.len() as f64)),
-            _ => Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
+            _ => Err(LoxError::RuntimeError(
+                "len() only accepts strings, lists, and maps".into(),
+            )),
         },
-        _ => Err(LoxError::RuntimeError("len() only accepts strings, lists, and maps".into())),
+        _ => Err(LoxError::RuntimeError(
+            "len() only accepts strings, lists, and maps".into(),
+        )),
     }
 }
 

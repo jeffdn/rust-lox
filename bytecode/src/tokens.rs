@@ -147,12 +147,7 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(
-        token_type: TokenType,
-        start: usize,
-        length: usize,
-        line: usize,
-    ) -> Token {
+    pub fn new(token_type: TokenType, start: usize, length: usize, line: usize) -> Token {
         Token {
             token_type,
             start,

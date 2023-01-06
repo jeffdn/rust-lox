@@ -25,14 +25,12 @@ impl Scanner {
         self.start = self.current;
 
         if self.at_end() {
-            return Ok(
-                Token {
-                    token_type: TokenType::Eof,
-                    start: self.start,
-                    length: 1,
-                    line: self.line,
-                }
-            );
+            return Ok(Token {
+                token_type: TokenType::Eof,
+                start: self.start,
+                length: 1,
+                line: self.line,
+            });
         }
 
         let next = self.advance();
@@ -91,7 +89,7 @@ impl Scanner {
                 }
 
                 Err(LoxError::ParseError("no matching token".into()))
-            },
+            }
         }
     }
 
@@ -105,32 +103,32 @@ impl Scanner {
 
     fn find_identifier(&self, input_lexeme: &str) -> Result<Token, LoxError> {
         let token_type = match input_lexeme {
-            "and"       => TokenType::And,
-            "as"        => TokenType::As,
-            "assert"    => TokenType::Assert,
-            "break"     => TokenType::Break,
-            "class"     => TokenType::Class,
-            "continue"  => TokenType::Continue,
-            "else"      => TokenType::Else,
-            "delete"    => TokenType::Delete,
-            "false"     => TokenType::False,
-            "for"       => TokenType::For,
-            "foreach"   => TokenType::Foreach,
-            "fn"        => TokenType::Function,
-            "if"        => TokenType::If,
-            "import"    => TokenType::Import,
-            "in"        => TokenType::In,
-            "nil"       => TokenType::Nil,
-            "not"       => TokenType::NotIn,
-            "or"        => TokenType::Or,
-            "print"     => TokenType::Print,
-            "return"    => TokenType::Return,
-            "super"     => TokenType::Super,
-            "this"      => TokenType::This,
-            "true"      => TokenType::True,
-            "var"       => TokenType::Var,
-            "while"     => TokenType::While,
-            _           => TokenType::Identifier,
+            "and" => TokenType::And,
+            "as" => TokenType::As,
+            "assert" => TokenType::Assert,
+            "break" => TokenType::Break,
+            "class" => TokenType::Class,
+            "continue" => TokenType::Continue,
+            "else" => TokenType::Else,
+            "delete" => TokenType::Delete,
+            "false" => TokenType::False,
+            "for" => TokenType::For,
+            "foreach" => TokenType::Foreach,
+            "fn" => TokenType::Function,
+            "if" => TokenType::If,
+            "import" => TokenType::Import,
+            "in" => TokenType::In,
+            "nil" => TokenType::Nil,
+            "not" => TokenType::NotIn,
+            "or" => TokenType::Or,
+            "print" => TokenType::Print,
+            "return" => TokenType::Return,
+            "super" => TokenType::Super,
+            "this" => TokenType::This,
+            "true" => TokenType::True,
+            "var" => TokenType::Var,
+            "while" => TokenType::While,
+            _ => TokenType::Identifier,
         };
 
         self.make_token(token_type)
@@ -181,17 +179,19 @@ impl Scanner {
     fn skip_whitespace(&mut self) {
         loop {
             match self.peek() {
-                ' ' | '\r' | '\t' => { self.advance(); }
+                ' ' | '\r' | '\t' => {
+                    self.advance();
+                }
                 '\n' => {
                     self.line += 1;
                     self.advance();
-                },
+                }
                 '/' => match self.peek_twice() == '/' {
                     true => {
                         while !self.at_end() && self.peek() != '\n' {
                             self.advance();
                         }
-                    },
+                    }
                     false => break,
                 },
                 _ => break,
@@ -230,14 +230,12 @@ impl Scanner {
     }
 
     fn make_token(&self, token_type: TokenType) -> Result<Token, LoxError> {
-        Ok(
-            Token {
-                token_type,
-                start: self.start,
-                length: self.current - self.start,
-                line: self.line,
-            }
-        )
+        Ok(Token {
+            token_type,
+            start: self.start,
+            length: self.current - self.start,
+            line: self.line,
+        })
     }
 
     fn advance(&mut self) -> char {
@@ -246,10 +244,14 @@ impl Scanner {
     }
 
     pub fn get_string(&self, token: &Token) -> String {
-        self.chars[token.start..(token.start + token.length)].iter().collect()
+        self.chars[token.start..(token.start + token.length)]
+            .iter()
+            .collect()
     }
 
     pub fn get_string_literal(&self, token: &Token) -> String {
-        self.chars[(token.start + 1)..(token.start + token.length - 1)].iter().collect()
+        self.chars[(token.start + 1)..(token.start + token.length - 1)]
+            .iter()
+            .collect()
     }
 }

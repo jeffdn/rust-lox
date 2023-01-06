@@ -9,15 +9,11 @@ pub mod value;
 pub mod vm;
 
 use std::{
-    env,
-    fs,
+    env, fs,
     io::{self, Write},
 };
 
-use crate::{
-    errors::LoxError,
-    vm::VirtualMachine,
-};
+use crate::{errors::LoxError, vm::VirtualMachine};
 
 use tikv_jemallocator::Jemalloc;
 
@@ -44,19 +40,16 @@ fn run_lox_repl() -> Result<(), LoxError> {
         let input_expr = slurp_expr();
 
         match vm.interpret(&input_expr) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => println!("{}", e),
         };
     }
 }
 
 fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
-    let source = fs::read_to_string(script_path)
-        .ok()
-        .ok_or_else(|| LoxError::InputError(
-                format!("unable to parse source file '{}'", script_path)
-            )
-        )?;
+    let source = fs::read_to_string(script_path).ok().ok_or_else(|| {
+        LoxError::InputError(format!("unable to parse source file '{}'", script_path))
+    })?;
 
     let mut vm = VirtualMachine::new();
     vm.interpret(&source)
