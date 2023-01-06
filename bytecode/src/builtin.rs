@@ -22,7 +22,7 @@ pub fn _range(input: &[ValuePtr]) -> Result<Value, LoxError> {
                     .map(|x| ValuePtr::new(Value::Number(x.into())))
                     .collect(),
             ))))
-        }
+        },
         _ => Err(LoxError::RuntimeError(
             "range(start, stop) takes two numbers".into(),
         )),

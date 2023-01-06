@@ -40,7 +40,7 @@ fn run_lox_repl() -> Result<(), LoxError> {
         let input_expr = slurp_expr();
 
         match vm.interpret(&input_expr) {
-            Ok(_) => {}
+            Ok(_) => {},
             Err(e) => println!("{}", e),
         };
     }

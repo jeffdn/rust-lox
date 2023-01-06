@@ -230,10 +230,10 @@ impl Chunk {
             OpCode::Break(offset, fixed) => format!("{:<20} {} {}", "op_break", offset, fixed),
             OpCode::Continue(offset, fixed) => {
                 format!("{:<20} {} {}", "op_continue", offset, fixed)
-            }
+            },
             OpCode::IteratorNext(index, jump) => {
                 format!("{:<20} {} {}", "op_iterator_next", index, jump)
-            }
+            },
             OpCode::BuildList(item_count) => format!("{:<20} {}", "op_build_list", item_count),
             OpCode::BuildMap(item_count) => format!("{:<20} {}", "op_build_map", item_count),
             OpCode::Call(offset) => format!("{:<20} {}", "op_call", offset),

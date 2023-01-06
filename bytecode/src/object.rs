@@ -53,13 +53,13 @@ impl ValueIter {
                     return Err(LoxError::RuntimeError(
                         "only lists, maps, and strings can be iterated".into(),
                     ))
-                }
+                },
             },
             _ => {
                 return Err(LoxError::RuntimeError(
                     "only lists, maps, and strings can be iterated".into(),
                 ))
-            }
+            },
         };
 
         Ok(value)
@@ -213,7 +213,7 @@ impl fmt::Display for Object {
                     closure.function.borrow().name,
                     class.name,
                 )
-            }
+            },
             Object::Class(class) => class.name.clone(),
             Object::Closure(closure) => closure.function.borrow().name.clone(),
             Object::Function(function) => function.name.clone(),
@@ -223,7 +223,7 @@ impl fmt::Display for Object {
                 };
 
                 format!("<{} instance>", class.name)
-            }
+            },
             Object::Iterator(iter) => format!(
                 "<iterator: next={}, items=[{}]>",
                 iter.next,

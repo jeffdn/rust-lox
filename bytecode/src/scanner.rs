@@ -89,7 +89,7 @@ impl Scanner {
                 }
 
                 Err(LoxError::ParseError("no matching token".into()))
-            }
+            },
         }
     }
 
@@ -181,17 +181,17 @@ impl Scanner {
             match self.peek() {
                 ' ' | '\r' | '\t' => {
                     self.advance();
-                }
+                },
                 '\n' => {
                     self.line += 1;
                     self.advance();
-                }
+                },
                 '/' => match self.peek_twice() == '/' {
                     true => {
                         while !self.at_end() && self.peek() != '\n' {
                             self.advance();
                         }
-                    }
+                    },
                     false => break,
                 },
                 _ => break,

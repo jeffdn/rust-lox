@@ -275,11 +275,11 @@ impl Compiler {
             match code {
                 OpCode::Break(initial, false) => {
                     *code = OpCode::Break(last_code - *initial + 1, true)
-                }
+                },
                 OpCode::Continue(initial, false) => {
                     *code = OpCode::Continue(*initial - loop_start + 1, true)
-                }
-                _ => {}
+                },
+                _ => {},
             };
         }
 
@@ -627,7 +627,7 @@ impl Compiler {
                 self.expression()?;
                 self.consume(TokenType::Semicolon, "expect ';' after value")?;
                 self.emit_byte(OpCode::Return)
-            }
+            },
         }
     }
 
@@ -748,23 +748,23 @@ impl Compiler {
             TokenType::BangEqual => {
                 self.emit_byte(OpCode::Equal)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             TokenType::EqualEqual => self.emit_byte(OpCode::Equal),
             TokenType::Greater => self.emit_byte(OpCode::Greater),
             TokenType::GreaterEqual => {
                 self.emit_byte(OpCode::Less)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             TokenType::Less => self.emit_byte(OpCode::Less),
             TokenType::LessEqual => {
                 self.emit_byte(OpCode::Greater)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             TokenType::In => self.emit_byte(OpCode::In),
             TokenType::NotIn => {
                 self.emit_byte(OpCode::In)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             _ => self.error("unreachable"),
         }
     }
@@ -814,7 +814,7 @@ impl Compiler {
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
 
         match self.chunk().code.last() {
-            Some(OpCode::GetIndex) => {}
+            Some(OpCode::GetIndex) => {},
             _ => return Err(LoxError::CompileError("invalid 'delete' statement".into())),
         };
 
@@ -940,7 +940,7 @@ impl Compiler {
                 Err(_) => {
                     let index = self.identifier_constant(token)?;
                     (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
-                }
+                },
             },
         };
 
@@ -1042,7 +1042,7 @@ impl Compiler {
                 if !class.has_superclass {
                     self.error("can't use 'super' outside of a class")?;
                 }
-            }
+            },
             None => self.error("can't user 'super' inside a class without a superclass")?,
         };
 
@@ -1222,7 +1222,7 @@ impl Compiler {
                 };
 
                 Ok(())
-            }
+            },
         }
     }
 
