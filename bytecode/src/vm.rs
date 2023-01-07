@@ -598,7 +598,7 @@ impl VirtualMachine {
                 },
                 OpCode::IteratorNext(index, jump) => {
                     let stack_index = index + self.frame().stack_offset;
-                    let iterator_ptr = self.stack[index - 1].clone();
+                    let iterator_ptr = self.stack[stack_index - 1].clone();
                     let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut() else {
                         unreachable!();
                     };

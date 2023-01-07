@@ -34,6 +34,8 @@ global_set(4);
 assert global_get() == 4;
 global_set(2);
 assert global_get() == 6;
+main();
+assert global_get() == 0;
 
 
 // lists
