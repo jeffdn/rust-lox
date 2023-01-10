@@ -65,13 +65,8 @@ impl VirtualMachine {
         }
     }
 
-    pub fn define_native(
-        &mut self,
-        name: &str,
-        function: NativeFn,
-        arity: usize,
-    ) -> Result<(), LoxError> {
-        let function = ValuePtr::new(obj!(
+    fn build_native(&self, name: &str, function: NativeFn, arity: usize) -> ValuePtr {
+        ValuePtr::new(obj!(
             Native,
             NativeFunction {
                 function,
@@ -79,10 +74,12 @@ impl VirtualMachine {
                 name: String::from(name),
                 arity,
             }
-        ));
-        self.globals.insert(String::from(name), function);
+        ))
+    }
 
-        Ok(())
+    fn define_native(&mut self, name: &str, function: NativeFn, arity: usize) {
+        let function = self.build_native(name, function, arity);
+        self.globals.insert(String::from(name), function);
     }
 
     pub fn interpret(&mut self, input: &str) -> Result<(), LoxError> {
@@ -101,13 +98,45 @@ impl VirtualMachine {
         self.stack.push(closure.clone());
         self.call(closure, 0)?;
 
-        self.define_native("len", builtin::_len, 1)?;
-        self.define_native("range", builtin::_range, 2)?;
-        self.define_native("str", builtin::_str, 1)?;
-        self.define_native("time", builtin::_time, 0)?;
-        self.define_native("type", builtin::_type, 1)?;
+        self.define_native("len", builtin::_len, 1);
+        self.define_native("range", builtin::_range, 2);
+        self.define_native("str", builtin::_str, 1);
+        self.define_native("time", builtin::_time, 0);
+        self.define_native("type", builtin::_type, 1);
+
+        self.globals.insert("colors".into(), self.build_colors());
 
         self.run()
+    }
+
+    fn build_colors(&self) -> ValuePtr {
+        macro_rules! color_fn {
+            ( $name:expr, $symbol:tt ) => {
+                ($name.into(), self.build_native($name, builtin::$symbol, 1))
+            };
+        }
+
+        let color_globals = HashMap::from_iter(
+            vec![
+                color_fn! { "black", _black },
+                color_fn! { "red", _red },
+                color_fn! { "green", _green },
+                color_fn! { "yellow", _yellow },
+                color_fn! { "blue", _blue },
+                color_fn! { "magenta", _magenta },
+                color_fn! { "cyan", _cyan },
+                color_fn! { "white", _white },
+            ]
+            .into_iter(),
+        );
+
+        ValuePtr::new(obj!(
+            Module,
+            Module {
+                name: "colors".into(),
+                map: color_globals,
+            }
+        ))
     }
 
     #[cfg(feature = "debug")]

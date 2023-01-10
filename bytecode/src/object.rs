@@ -250,10 +250,7 @@ impl fmt::Display for Object {
             ),
             Object::Module(module) => format!("<module '{}'>", module.name),
             Object::Native(_) => "built-in".into(),
-            Object::String(string) => string
-                .clone()
-                .replace("\\n", "\n")
-                .replace("\\u001b", "\x1b"),
+            Object::String(string) => string.clone().replace("\\n", "\n"),
             Object::UpValue(_) => "up-value".into(),
         };
 

@@ -89,3 +89,24 @@ pub fn _type(input: &[ValuePtr]) -> Result<Value, LoxError> {
 
     Ok(Value::Object(Object::String(Box::new(output.into()))))
 }
+
+macro_rules! color_fn {
+    ( $name:tt, $code:expr ) => {
+        pub fn $name(input: &[ValuePtr]) -> Result<Value, LoxError> {
+            Ok(Value::Object(Object::String(Box::new(format!(
+                "\x1b[{}m{}\x1b[0m",
+                $code,
+                input[0].borrow()
+            )))))
+        }
+    };
+}
+
+color_fn! { _black, "30" }
+color_fn! { _red, "31" }
+color_fn! { _green, "32" }
+color_fn! { _yellow, "33" }
+color_fn! { _blue, "34" }
+color_fn! { _magenta, "35" }
+color_fn! { _cyan, "36" }
+color_fn! { _white, "37" }

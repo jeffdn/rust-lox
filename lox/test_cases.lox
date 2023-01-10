@@ -5,7 +5,7 @@ print "booleans...";
 assert true;
 assert !false;
 assert !!true;
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // numbers
@@ -13,7 +13,7 @@ print "numbers...";
 assert 4 % 2 == 0;
 assert 4 % 3 == 1;
 assert 4 * 6 == 24;
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // closures
@@ -41,7 +41,7 @@ global_set(2);
 assert global_get() == 6;
 main();
 assert global_get() == 0;
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // lists
@@ -60,14 +60,14 @@ assert list == [1, 2, 3, 8, 5];
 assert 8 in list;
 
 assert list == list[:];
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // strings
 print "strings...";
 var string = "hello, world";
 assert string[0:5] == "hello";
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // maps
@@ -86,7 +86,7 @@ assert 'c' not in map;
 delete map['a'];
 assert map.keys() == ['b'], "keys() generates a list of keys";
 assert map.values() == [2], "values() generates a list of values";
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // classes
@@ -112,7 +112,7 @@ assert mammal.action() == 'Coco snuggles';
 
 var cat = Cat('Coco');
 assert cat.action() == 'Coco snuggles and purrs';
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // loops
@@ -146,7 +146,7 @@ for (var i = 0; i < 5; i = i + 1) {
 }
 
 assert new_list == [0, 2, 6];
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
 
 
 // misc
@@ -154,4 +154,15 @@ print "misc...";
 assert range(1, 4) == [1, 2, 3];
 assert str(4) == '4';
 assert '4' == "4";
-println "\u001b[32m ok \u001b[0m";
+println colors.green(' ok');
+
+
+// colors!
+println colors.black('black!');
+println colors.green('green!');
+println colors.red('red!');
+println colors.yellow('yellow!');
+println colors.blue('blue!');
+println colors.magenta('magenta!');
+println colors.cyan('cyan!');
+println colors.white('white!');
