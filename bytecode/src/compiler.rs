@@ -608,10 +608,10 @@ impl Compiler {
         self.emit_byte(OpCode::Assert(has_message))
     }
 
-    fn print_statement(&mut self) -> Result<(), LoxError> {
+    fn print_statement(&mut self, newline: bool) -> Result<(), LoxError> {
         self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
-        self.emit_byte(OpCode::Print)
+        self.emit_byte(OpCode::Print(newline))
     }
 
     fn return_statement(&mut self) -> Result<(), LoxError> {
@@ -698,7 +698,9 @@ impl Compiler {
 
     fn statement(&mut self) -> Result<(), LoxError> {
         if self.token_type_matches(&TokenType::Print)? {
-            self.print_statement()
+            self.print_statement(false)
+        } else if self.token_type_matches(&TokenType::Println)? {
+            self.print_statement(true)
         } else if self.token_type_matches(&TokenType::Assert)? {
             self.assert_statement()
         } else if self.token_type_matches(&TokenType::Delete)? {
@@ -1344,7 +1346,7 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        let input = "var foo = 123;\nprint foo;\n";
+        let input = "var foo = 123;\nprintln foo;\n";
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile().unwrap();
 
@@ -1354,7 +1356,7 @@ mod tests {
                 OpCode::Constant(1),
                 OpCode::DefineGlobal(0),
                 OpCode::GetGlobal(2),
-                OpCode::Print,
+                OpCode::Print(true),
                 OpCode::Nil,
                 OpCode::Return,
             ],
@@ -1369,7 +1371,7 @@ mod tests {
                 return foo;
             }
             var foo = bar();
-            print foo;
+            println foo;
         "#;
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile().unwrap();
@@ -1383,7 +1385,7 @@ mod tests {
                 OpCode::Call(0),
                 OpCode::DefineGlobal(2),
                 OpCode::GetGlobal(5),
-                OpCode::Print,
+                OpCode::Print(true),
                 OpCode::Nil,
                 OpCode::Return,
             ],
@@ -1393,7 +1395,7 @@ mod tests {
     #[test]
     fn test_build_list() {
         let input = r#"
-            print [1, 2, 1 + 2];
+            println [1, 2, 1 + 2];
         "#;
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile().unwrap();
@@ -1407,7 +1409,7 @@ mod tests {
                 OpCode::Constant(3),
                 OpCode::Add,
                 OpCode::BuildList(3),
-                OpCode::Print,
+                OpCode::Print(true),
                 OpCode::Nil,
                 OpCode::Return,
             ]
@@ -1417,7 +1419,7 @@ mod tests {
     #[test]
     fn test_build_map() {
         let input = r#"
-            print {'a': 1};
+            println {'a': 1};
         "#;
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile().unwrap();
@@ -1428,7 +1430,7 @@ mod tests {
                 OpCode::Constant(0),
                 OpCode::Constant(1),
                 OpCode::BuildMap(2),
-                OpCode::Print,
+                OpCode::Print(true),
                 OpCode::Nil,
                 OpCode::Return,
             ]

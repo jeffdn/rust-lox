@@ -568,7 +568,14 @@ impl VirtualMachine {
                     };
                     self.stack_push_value(Value::Number(-item));
                 },
-                OpCode::Print => println!("{}", *(self.pop_stack()?).borrow()),
+                OpCode::Print(newline) => {
+                    let value = self.pop_stack()?;
+
+                    match newline {
+                        true => println!("{}", *value.borrow()),
+                        false => print!("{}", *value.borrow()),
+                    };
+                },
                 OpCode::Jump(offset) => self.frame_mut().pos += offset,
                 OpCode::JumpIfFalse(offset) => {
                     if !self.truthy(self.stack.last().unwrap())? {

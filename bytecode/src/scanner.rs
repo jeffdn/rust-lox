@@ -122,6 +122,7 @@ impl Scanner {
             "not" => TokenType::NotIn,
             "or" => TokenType::Or,
             "print" => TokenType::Print,
+            "println" => TokenType::Println,
             "return" => TokenType::Return,
             "super" => TokenType::Super,
             "this" => TokenType::This,
