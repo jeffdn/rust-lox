@@ -1,9 +1,9 @@
-use std::boxed::Box;
+use std::{boxed::Box, collections::HashMap};
 
 use crate::{
     chunk::{Chunk, OpCode, UpValue},
     errors::LoxError,
-    object::{Function, FunctionType, Object},
+    object::{Function, FunctionType, Object, ValueMap},
     scanner::Scanner,
     tokens::{Token, TokenType},
     value::Value,
@@ -865,7 +865,16 @@ impl Compiler {
         }
 
         self.consume(TokenType::RightBracket, "expect list to end with ']'")?;
-        self.emit_byte(OpCode::BuildList(item_count))
+
+        match item_count {
+            0 => {
+                let constant = self.make_constant(Value::Object(Object::List(Box::new(
+                    Vec::with_capacity(16),
+                ))))?;
+                self.emit_byte(OpCode::Constant(constant))
+            },
+            _ => self.emit_byte(OpCode::BuildList(item_count)),
+        }
     }
 
     fn map(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -886,7 +895,17 @@ impl Compiler {
         }
 
         self.consume(TokenType::RightBrace, "expect map to end with '}'")?;
-        self.emit_byte(OpCode::BuildMap(item_count))
+
+        match item_count {
+            0 => {
+                let constant =
+                    self.make_constant(Value::Object(Object::Map(Box::new(ValueMap {
+                        map: HashMap::with_capacity(16),
+                    }))))?;
+                self.emit_byte(OpCode::Constant(constant))
+            },
+            _ => self.emit_byte(OpCode::BuildMap(item_count)),
+        }
     }
 
     fn literal(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -1396,6 +1415,7 @@ mod tests {
     fn test_build_list() {
         let input = r#"
             println [1, 2, 1 + 2];
+            print [];
         "#;
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile().unwrap();
@@ -1410,6 +1430,8 @@ mod tests {
                 OpCode::Add,
                 OpCode::BuildList(3),
                 OpCode::Print(true),
+                OpCode::Constant(4),
+                OpCode::Print(false),
                 OpCode::Nil,
                 OpCode::Return,
             ]
@@ -1420,6 +1442,7 @@ mod tests {
     fn test_build_map() {
         let input = r#"
             println {'a': 1};
+            print {};
         "#;
         let mut compiler = Compiler::new(&input);
         let function = compiler.compile().unwrap();
@@ -1431,6 +1454,8 @@ mod tests {
                 OpCode::Constant(1),
                 OpCode::BuildMap(2),
                 OpCode::Print(true),
+                OpCode::Constant(2),
+                OpCode::Print(false),
                 OpCode::Nil,
                 OpCode::Return,
             ]
