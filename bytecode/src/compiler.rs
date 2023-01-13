@@ -331,9 +331,13 @@ impl Compiler {
     }
 
     fn function(&mut self, function_type: FunctionType) -> Result<(), LoxError> {
-        self.init_compiler(function_type);
+        self.init_compiler(function_type.clone());
 
         self.begin_scope()?;
+
+        if function_type == FunctionType::Method || function_type == FunctionType::Initializer {
+            self.named_variable(&self.synthetic_token(TokenType::This), false)?;
+        }
 
         self.consume(TokenType::LeftParen, "expect '(' after function name")?;
 
@@ -1072,7 +1076,6 @@ impl Compiler {
         let name = self.identifier_constant(&self.previous.clone())?;
 
         self.named_variable(&self.synthetic_token(TokenType::This), false)?;
-        self.named_variable(&self.synthetic_token(TokenType::Super), false)?;
 
         self.emit_byte(OpCode::GetSuper(name))
     }
@@ -1084,7 +1087,7 @@ impl Compiler {
             ));
         }
 
-        self.variable(false)
+        self.named_variable(&self.synthetic_token(TokenType::This), false)
     }
 
     fn unary(&mut self, _can_assign: bool) -> Result<(), LoxError> {
@@ -1179,7 +1182,11 @@ impl Compiler {
     }
 
     fn identifier_constant(&mut self, token: &Token) -> Result<usize, LoxError> {
-        let constant = self.scanner.get_string(token);
+        let constant = match token.token_type {
+            TokenType::This => "this".into(),
+            TokenType::Super => "super".into(),
+            _ => self.scanner.get_string(token),
+        };
 
         self.make_constant(Value::Object(Object::String(Box::new(constant))))
     }

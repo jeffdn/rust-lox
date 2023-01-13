@@ -74,13 +74,6 @@ var bodies = [
 fn advance(bodies, dt) {
   for (var i = 0; i < N_BODIES; i = i + 1) {
     var bi = bodies[i];
-    // var bi_x = bodies[i].x;
-    // var bi_y = bodies[i].y;
-    // var bi_z = bodies[i].z;
-    // var bi_vx = bodies[i].vx;
-    // var bi_vy = bodies[i].vy;
-    // var bi_vz = bodies[i].vz;
-    // var bi_mass = bodies[i].mass;
 
     for (var j = i + 1; j < N_BODIES; j = j + 1) {
       var bj = bodies[j];
@@ -149,7 +142,7 @@ offset_momentum(bodies);
 
 var start = time();
 print "starting n-body simulation...";
-foreach (var i in range(0, 500000)) {
+foreach (var i in range(0, 5000)) {
   advance(bodies, ADVANCE_DT);
 }
 println colors.green(' done!');
