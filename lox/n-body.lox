@@ -12,8 +12,6 @@ class Body {
     this.vx = vx;
     this.vy = vy;
     this.vz = vz;
-    println mass_ratio;
-    println SOLAR_MASS;
     this.mass_ratio = mass_ratio;
     this.mass = mass_ratio * SOLAR_MASS;
     this.mass_half = mass_ratio * SOLAR_MASS * 0.5;
@@ -73,39 +71,88 @@ var bodies = [
   NEPTUNE
 ];
 
-//fn advance(bodies, dt) {
-//  for (var i = 0; i < n_bodies; i = i + 1) {
-//    var bi = bodies[i];
-//    // var bi_x = bodies[i].x;
-//    // var bi_y = bodies[i].y;
-//    // var bi_z = bodies[i].z;
-//    // var bi_vx = bodies[i].vx;
-//    // var bi_vy = bodies[i].vy;
-//    // var bi_vz = bodies[i].vz;
-//    // var bi_mass = bodies[i].mass;
-//
-//    for (var j = i; j < n_bodies; j = j + 1) {
-//      var bj = bodies[j];
-//      var dx = bi.x - bj.x;
-//      var dy = bi.y - bj.y;
-//      var dz = bi.z - bj.z;
-//      var distance_square = (dx * dx) + (dy * dy) + (dz * dz);
-//      var mag = dt / (distance_square * sqrt(distance_square));
-//
-//      var bj_mass_mag = bj.mass * mag;
-//      bi.vx = bi.vx - (dx * bj_mass_mag);
-//      bi.vy = bi.vy - (dy * bj_mass_mag);
-//      bi.vz = bi.vz - (dz * bj_mass_mag);
-//
-//      var bi.mass_mag = bi.mass * mag;
-//      bj.vx = bj.vx + (dx * bi_mass_mag);
-//      bj.vy = bj.vy + (dy * bi_mass_mag);
-//      bj.vz = bj.vz + (dz * bi_mass_mag);
-//    }
-//
-//    bi.x = bi.x + (bi.vx * dt);
-//    bi.y = bi.y + (bi.vy * dt);
-//    bi.z = bi.z + (bi.vz * dt);
-//}
-//
-//advance(bodies, ADVANCE_DT);
+fn advance(bodies, dt) {
+  for (var i = 0; i < N_BODIES; i = i + 1) {
+    var bi = bodies[i];
+    // var bi_x = bodies[i].x;
+    // var bi_y = bodies[i].y;
+    // var bi_z = bodies[i].z;
+    // var bi_vx = bodies[i].vx;
+    // var bi_vy = bodies[i].vy;
+    // var bi_vz = bodies[i].vz;
+    // var bi_mass = bodies[i].mass;
+
+    for (var j = i + 1; j < N_BODIES; j = j + 1) {
+      var bj = bodies[j];
+      var dx = bi.x - bj.x;
+      var dy = bi.y - bj.y;
+      var dz = bi.z - bj.z;
+      var distance_square = (dx * dx) + (dy * dy) + (dz * dz);
+      var mag = dt / (distance_square * sqrt(distance_square));
+
+      var bj_mass_mag = bj.mass * mag;
+      bi.vx = bi.vx - (dx * bj_mass_mag);
+      bi.vy = bi.vy - (dy * bj_mass_mag);
+      bi.vz = bi.vz - (dz * bj_mass_mag);
+
+      var bi_mass_mag = bi.mass * mag;
+      bj.vx = bj.vx + (dx * bi_mass_mag);
+      bj.vy = bj.vy + (dy * bi_mass_mag);
+      bj.vz = bj.vz + (dz * bi_mass_mag);
+    }
+
+    bi.x = bi.x + (bi.vx * dt);
+    bi.y = bi.y + (bi.vy * dt);
+    bi.z = bi.z + (bi.vz * dt);
+  }
+}
+
+fn energy(bodies) {
+  var e = 0.0;
+
+  for (var i = 0; i < N_BODIES; i = i + 1) {
+    var bi = bodies[i];
+
+    e = e + (bi.vx * bi.vx + bi.vy * bi.vy + bi.vz * bi.vz) * bi.mass_half;
+
+    for (var j = i + 1; j < N_BODIES; j = j + 1) {
+      var bj = bodies[j];
+      var dx = bi.x - bj.x;
+      var dy = bi.y - bj.y;
+      var dz = bi.z - bj.z;
+      var dist = sqrt(dx * dx + dy * dy + dz * dz);
+      e = e - (bi.mass * bj.mass / dist);
+    }
+  }
+  return e;
+}
+
+fn offset_momentum(bodies) {
+  var px = 0.0;
+  var py = 0.0;
+  var pz = 0.0;
+
+  for (var i = 0; i < N_BODIES; i = i + 1) {
+    var bi = bodies[i];
+    px = px - (bi.vx * bi.mass_ratio);
+    py = py - (bi.vy * bi.mass_ratio);
+    pz = pz - (bi.vz * bi.mass_ratio);
+  }
+
+  var sun = bodies[0];
+  sun.vx = px;
+  sun.vy = py;
+  sun.vz = pz;
+}
+
+offset_momentum(bodies);
+
+var start = time();
+print "starting n-body simulation...";
+foreach (var i in range(0, 500000)) {
+  advance(bodies, ADVANCE_DT);
+}
+println colors.green(' done!');
+println "completed in " + colors.green(time() - start) + " seconds";
+
+println 'final energy: ' + colors.green(energy(bodies));

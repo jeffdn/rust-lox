@@ -100,6 +100,7 @@ impl VirtualMachine {
 
         self.define_native("len", builtin::_len, 1);
         self.define_native("range", builtin::_range, 2);
+        self.define_native("sqrt", builtin::_sqrt, 1);
         self.define_native("str", builtin::_str, 1);
         self.define_native("time", builtin::_time, 0);
         self.define_native("type", builtin::_type, 1);

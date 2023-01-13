@@ -984,7 +984,7 @@ impl Compiler {
             .rev()
             .find(|(_, x)| {
                 self.scanner.get_string(&x.name) == self.scanner.get_string(token)
-                    || x.name.token_type == TokenType::This
+                    || (x.name.token_type == TokenType::This && token.token_type == TokenType::This)
             }) {
             Some((idx, local)) => match local.depth {
                 Some(_) => Ok(idx),
@@ -1344,7 +1344,11 @@ impl Compiler {
         let output = match token.token_type {
             TokenType::Eof => "at end of file".into(),
             TokenType::Error => "unknown".into(),
-            _ => format!("at {}", self.scanner.get_string(&token)),
+            _ => format!(
+                "at {} on line {}",
+                self.scanner.get_string(&token),
+                token.line
+            ),
         };
 
         Err(LoxError::CompileError(format!("{}: {}", output, message)))
