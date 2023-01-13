@@ -1,0 +1,111 @@
+var PI = 3.141592653589793;
+var SOLAR_MASS = 4 * PI * PI;
+var DAYS_PER_YEAR = 365.24;
+var N_BODIES = 5;
+var ADVANCE_DT = 0.01;
+
+class Body {
+  init(x, y, z, vx, vy, vz, mass_ratio) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.vx = vx;
+    this.vy = vy;
+    this.vz = vz;
+    println mass_ratio;
+    println SOLAR_MASS;
+    this.mass_ratio = mass_ratio;
+    this.mass = mass_ratio * SOLAR_MASS;
+    this.mass_half = mass_ratio * SOLAR_MASS * 0.5;
+  }
+}
+
+var SUN = Body(
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  1.0
+);
+var JUPITER = Body(
+  4.841431442464721,
+  -1.1603200440274284,
+  -0.10362204447112311,
+  0.606326392995832,
+  2.81198684491626,
+  -0.02521836165988763,
+  0.0009547919384243266
+);
+var SATURN = Body(
+  8.34336671824458,
+  4.124798564124305,
+  -0.4035234171143214,
+  -1.0107743461787924,
+  1.8256623712304119,
+  0.008415761376584154,
+  0.0002858859806661308
+);
+var URANUS = Body(
+  12.894369562139131,
+  -15.111151401698631,
+  -0.22330757889265573,
+  1.0827910064415354,
+  0.8687130181696082,
+  -0.010832637401363636,
+  0.00004366244043351563
+);
+var NEPTUNE = Body(
+  15.379697114850917,
+  -25.919314609987964,
+  0.17925877295037118,
+  0.979090732243898,
+  0.5946989986476762,
+  -0.034755955504078104,
+  0.000051513890204661145
+);
+var bodies = [
+  SUN,
+  JUPITER,
+  SATURN,
+  URANUS,
+  NEPTUNE
+];
+
+//fn advance(bodies, dt) {
+//  for (var i = 0; i < n_bodies; i = i + 1) {
+//    var bi = bodies[i];
+//    // var bi_x = bodies[i].x;
+//    // var bi_y = bodies[i].y;
+//    // var bi_z = bodies[i].z;
+//    // var bi_vx = bodies[i].vx;
+//    // var bi_vy = bodies[i].vy;
+//    // var bi_vz = bodies[i].vz;
+//    // var bi_mass = bodies[i].mass;
+//
+//    for (var j = i; j < n_bodies; j = j + 1) {
+//      var bj = bodies[j];
+//      var dx = bi.x - bj.x;
+//      var dy = bi.y - bj.y;
+//      var dz = bi.z - bj.z;
+//      var distance_square = (dx * dx) + (dy * dy) + (dz * dz);
+//      var mag = dt / (distance_square * sqrt(distance_square));
+//
+//      var bj_mass_mag = bj.mass * mag;
+//      bi.vx = bi.vx - (dx * bj_mass_mag);
+//      bi.vy = bi.vy - (dy * bj_mass_mag);
+//      bi.vz = bi.vz - (dz * bj_mass_mag);
+//
+//      var bi.mass_mag = bi.mass * mag;
+//      bj.vx = bj.vx + (dx * bi_mass_mag);
+//      bj.vy = bj.vy + (dy * bi_mass_mag);
+//      bj.vz = bj.vz + (dz * bi_mass_mag);
+//    }
+//
+//    bi.x = bi.x + (bi.vx * dt);
+//    bi.y = bi.y + (bi.vy * dt);
+//    bi.z = bi.z + (bi.vz * dt);
+//}
+//
+//advance(bodies, ADVANCE_DT);

@@ -90,6 +90,15 @@ pub fn _type(input: &[ValuePtr]) -> Result<Value, LoxError> {
     Ok(Value::Object(Object::String(Box::new(output.into()))))
 }
 
+pub fn _sqrt(input: &[ValuePtr]) -> Result<Value, LoxError> {
+    match &*input[0].borrow() {
+        Value::Number(number) => Ok(Value::Number(number.sqrt())),
+        _ => Err(LoxError::RuntimeError(
+            "sqrt() only operates on numbers".into(),
+        )),
+    }
+}
+
 macro_rules! color_fn {
     ( $name:tt, $code:expr ) => {
         pub fn $name(input: &[ValuePtr]) -> Result<Value, LoxError> {
