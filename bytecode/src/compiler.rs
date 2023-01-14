@@ -986,10 +986,8 @@ impl Compiler {
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, x)| {
-                self.scanner.get_string(&x.name) == self.scanner.get_string(token)
-                    || (x.name.token_type == TokenType::This && token.token_type == TokenType::This)
-            }) {
+            .find(|(_, x)| self.scanner.get_string(&x.name) == self.scanner.get_string(token))
+        {
             Some((idx, local)) => match local.depth {
                 Some(_) => Ok(idx),
                 None => match self.error("can't read a local variable in its own initializer") {
