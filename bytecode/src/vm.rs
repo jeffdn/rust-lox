@@ -153,10 +153,9 @@ impl VirtualMachine {
     }
 
     fn pop_stack(&mut self) -> Result<ValuePtr, LoxError> {
-        match self.stack.pop() {
-            Some(item) => Ok(item),
-            None => Err(LoxError::RuntimeError("stack empty".into())),
-        }
+        self.stack
+            .pop()
+            .ok_or_else(|| LoxError::RuntimeError("stack empty".into()))
     }
 
     fn frame(&self) -> &CallFrame {
@@ -179,17 +178,18 @@ impl VirtualMachine {
         self.stack.push(ValuePtr::new(value));
     }
 
-    fn _convert_index(&self, len: usize, number: i32) -> Result<usize, LoxError> {
+    fn _convert_index(&self, len: usize, number: i32) -> usize {
         self._extract_index(len, number as f64)
     }
 
     fn _get_slice_argument(&mut self, is_present: bool) -> Result<Option<i32>, LoxError> {
-        let arg: Option<i32> = match is_present {
-            true => match &*self.pop_stack()?.borrow() {
-                Value::Number(number) => Some(*number as i32),
-                _ => err!("only numbers can be used to slice containers"),
-            },
-            false => None,
+        if !is_present {
+            return Ok(None);
+        }
+
+        let arg: Option<i32> = match &*self.pop_stack()?.borrow() {
+            Value::Number(number) => Some(*number as i32),
+            _ => err!("only numbers can be used to slice containers"),
         };
 
         Ok(arg)
@@ -200,28 +200,24 @@ impl VirtualMachine {
         len: usize,
         left: Option<i32>,
         right: Option<i32>,
-    ) -> Result<(usize, usize), LoxError> {
-        let left = match left {
-            Some(left) => self._convert_index(len, left)?,
-            None => 0,
-        };
-        let right = match right {
-            Some(right) => self._convert_index(len, right)?,
-            None => len,
-        };
+    ) -> (usize, usize) {
+        let left = left.map_or_else(|| 0, |left| self._convert_index(len, left));
+        let right = right.map_or_else(|| len, |right| self._convert_index(len, right));
 
-        Ok((left, right))
+        (left, right)
     }
 
-    fn _extract_index(&self, len: usize, number: f64) -> Result<usize, LoxError> {
-        let index = match number < 0.0f64 {
-            true => (len as f64 + number) as usize,
-            false => number as usize,
+    fn _extract_index(&self, len: usize, number: f64) -> usize {
+        let index = if number < 0.0f64 {
+            (len as f64 + number) as usize
+        } else {
+            number as usize
         };
 
-        match index > len {
-            true => Ok(len),
-            false => Ok(index),
+        if index > len {
+            len
+        } else {
+            index
         }
     }
 
@@ -255,24 +251,23 @@ impl VirtualMachine {
         }
 
         loop {
-            let code = match self.frames.last() {
-                Some(frame) => {
-                    #[cfg(feature = "debug")]
-                    self.dump(&self.function().borrow().chunk, frame.pos);
+            let code = {
+                let frame = self.frames.last().unwrap();
 
-                    match &*frame.closure.borrow() {
-                        Value::Object(Object::Closure(closure)) => {
-                            let function = closure.function.borrow();
-                            if frame.pos >= function.chunk.code.len() {
-                                break;
-                            }
+                #[cfg(feature = "debug")]
+                self.dump(&self.function().borrow().chunk, frame.pos);
 
-                            function.chunk.code[frame.pos].clone()
-                        },
-                        _ => unreachable!(),
-                    }
-                },
-                _ => unreachable!(),
+                match &*frame.closure.borrow() {
+                    Value::Object(Object::Closure(closure)) => {
+                        let function = closure.function.borrow();
+                        if frame.pos >= function.chunk.code.len() {
+                            break;
+                        }
+
+                        function.chunk.code[frame.pos].clone()
+                    },
+                    _ => unreachable!(),
+                }
             };
 
             match code {
@@ -288,20 +283,16 @@ impl VirtualMachine {
                     self.stack.push(self.stack[index].clone());
                 },
                 OpCode::SetLocal(index) => {
-                    let val = match self.stack.last() {
-                        Some(val) => val.clone(),
-                        None => unreachable!(),
-                    };
+                    let val = self.stack.last().unwrap().clone();
                     let index = index + self.frame().stack_offset;
                     self.stack[index] = val;
                 },
                 OpCode::GetGlobal(index) => {
                     let val = match &*global!(index).borrow() {
                         Value::Object(Object::String(string)) => {
-                            match self.globals.get(&**string) {
-                                Some(val) => val,
-                                None => err!(&format!("undefined variable: {}", &**string)),
-                            }
+                            self.globals.get(&**string).ok_or_else(|| {
+                                LoxError::RuntimeError(format!("undefined variable: {}", &**string))
+                            })?
                         },
                         _ => unreachable!(),
                     };
@@ -328,10 +319,7 @@ impl VirtualMachine {
                         err!(&format!("undefined variable: {}", key))
                     }
 
-                    let val = match self.stack.last() {
-                        Some(val) => val.clone(),
-                        None => unreachable!(),
-                    };
+                    let val = self.stack.last().unwrap().clone();
 
                     self.globals.insert(key, val);
                 },
@@ -429,14 +417,14 @@ impl VirtualMachine {
                     let value = match &*container.borrow() {
                         Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                let index_usize = self._extract_index(list.len(), *number)?;
+                                let index_usize = self._extract_index(list.len(), *number);
                                 list[index_usize].clone()
                             },
                             _ => err!("lists can only be indexed with integers"),
                         },
                         Value::Object(Object::String(string)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                let index_usize = self._extract_index(string.len(), *number)?;
+                                let index_usize = self._extract_index(string.len(), *number);
 
                                 ValuePtr::new(obj!(
                                     String,
@@ -462,7 +450,7 @@ impl VirtualMachine {
                     match &mut *container.borrow_mut() {
                         Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                let index_usize = self._extract_index(list.len(), *number)?;
+                                let index_usize = self._extract_index(list.len(), *number);
                                 list[index_usize] = value.clone();
                             },
                             _ => err!("lists can only be indexed with integers"),
@@ -482,7 +470,7 @@ impl VirtualMachine {
                     match &mut *container.borrow_mut() {
                         Value::Object(Object::List(list)) => match &*index.borrow() {
                             Value::Number(number) => {
-                                let index_usize = self._extract_index(list.len(), *number)?;
+                                let index_usize = self._extract_index(list.len(), *number);
                                 list.remove(index_usize);
                             },
                             _ => err!("lists can only be indexed with integers"),
@@ -499,19 +487,21 @@ impl VirtualMachine {
 
                     let value = match &*self.pop_stack()?.borrow() {
                         Value::Object(Object::List(list)) => {
-                            let (left, right) = self._get_slice_range(list.len(), left, right)?;
-                            let tmp_value = match left > right {
-                                true => vec![],
-                                false => list[left..right].to_vec(),
+                            let (left, right) = self._get_slice_range(list.len(), left, right);
+                            let tmp_value = if left > right {
+                                vec![]
+                            } else {
+                                list[left..right].to_vec()
                             };
 
                             obj!(List, tmp_value)
                         },
                         Value::Object(Object::String(string)) => {
-                            let (left, right) = self._get_slice_range(string.len(), left, right)?;
-                            let tmp_value = match left > right {
-                                true => "".to_string(),
-                                false => string[left..right].to_string(),
+                            let (left, right) = self._get_slice_range(string.len(), left, right);
+                            let tmp_value = if left > right {
+                                "".to_string()
+                            } else {
+                                string[left..right].to_string()
                             };
 
                             obj!(String, tmp_value)
@@ -601,10 +591,11 @@ impl VirtualMachine {
                 OpCode::Print(newline) => {
                     let value = self.pop_stack()?;
 
-                    match newline {
-                        true => println!("{}", *value.borrow()),
-                        false => print!("{}", *value.borrow()),
-                    };
+                    if newline {
+                        println!("{}", *value.borrow())
+                    } else {
+                        print!("{}", *value.borrow())
+                    }
                 },
                 OpCode::Jump(offset) => self.frame_mut().pos += offset,
                 OpCode::JumpIfFalse(offset) => {
@@ -693,14 +684,15 @@ impl VirtualMachine {
 
                     let mut captured: Vec<UpValuePtr> = Vec::with_capacity(upvalues.len());
                     for uv in upvalues.iter() {
-                        let new_upvalue = match uv.is_local {
-                            true => self.capture_upvalue(uv.index)?,
-                            false => match &*self.frame().closure.borrow() {
+                        let new_upvalue = if uv.is_local {
+                            self.capture_upvalue(uv.index)?
+                        } else {
+                            match &*self.frame().closure.borrow() {
                                 Value::Object(Object::Closure(closure)) => {
                                     closure.upvalues[index - 1].clone()
                                 },
                                 _ => unreachable!(),
-                            },
+                            }
                         };
 
                         captured.push(new_upvalue);
@@ -724,12 +716,7 @@ impl VirtualMachine {
                     self.close_upvalues(value);
                 },
                 OpCode::Assert(has_message) => {
-                    let mut message_ptr: Option<ValuePtr> = None;
-
-                    if has_message {
-                        message_ptr = Some(self.pop_stack()?);
-                    }
-
+                    let message_ptr = self.pop_stack().ok();
                     let assertion_ptr = self.pop_stack()?;
 
                     if !self.truthy(&assertion_ptr)? {
@@ -935,8 +922,8 @@ impl VirtualMachine {
                 },
                 None => {
                     let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
-                            unreachable!();
-                        };
+                        unreachable!();
+                    };
 
                     match class.methods.get(method_name) {
                         Some(prop) => self.call(prop.clone(), arg_count),
@@ -1090,18 +1077,11 @@ impl VirtualMachine {
             Value::Nil => Ok(false),
             Value::Number(number) => Ok(*number != 0.0f64),
             Value::Object(object) => match object {
-                Object::BoundMethod(_) => Ok(true),
-                Object::Class(_) => Ok(true),
-                Object::Closure(_) => Ok(true),
-                Object::Function(_) => Ok(true),
-                Object::Instance(_) => Ok(true),
-                Object::Iterator(_) => Ok(true),
                 Object::List(list) => Ok(!list.is_empty()),
                 Object::Map(hmap) => Ok(!hmap.map.is_empty()),
-                Object::Module(_) => Ok(true),
-                Object::Native(_) => Ok(true),
                 Object::String(string) => Ok(!string.is_empty()),
                 Object::UpValue(value) => self.truthy(&value.location),
+                _ => Ok(true),
             },
         }
     }
