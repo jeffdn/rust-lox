@@ -716,7 +716,12 @@ impl VirtualMachine {
                     self.close_upvalues(value);
                 },
                 OpCode::Assert(has_message) => {
-                    let message_ptr = self.pop_stack().ok();
+                    let message_ptr = if has_message {
+                        self.pop_stack().ok()
+                    } else {
+                        None
+                    };
+
                     let assertion_ptr = self.pop_stack()?;
 
                     if !self.truthy(&assertion_ptr)? {
