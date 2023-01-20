@@ -238,10 +238,11 @@ impl Compiler {
 
             let local = self.compiler_mut().locals.pop().unwrap();
 
-            match local.is_captured {
-                true => self.emit_byte(OpCode::CloseUpValue)?,
-                false => self.emit_byte(OpCode::Pop)?,
-            };
+            if local.is_captured {
+                self.emit_byte(OpCode::CloseUpValue)?;
+            } else {
+                self.emit_byte(OpCode::Pop)?;
+            }
 
             self.compiler_mut().local_count -= 1;
         }
@@ -446,10 +447,11 @@ impl Compiler {
     fn var_declaration(&mut self) -> Result<(), LoxError> {
         let global: usize = self.parse_variable("expect variable name")?;
 
-        match self.token_type_matches(&TokenType::Equal)? {
-            true => self.expression()?,
-            false => self.emit_byte(OpCode::Nil)?,
-        };
+        if self.token_type_matches(&TokenType::Equal)? {
+            self.expression()?;
+        } else {
+            self.emit_byte(OpCode::Nil)?;
+        }
 
         self.consume(
             TokenType::Semicolon,
@@ -619,20 +621,19 @@ impl Compiler {
     }
 
     fn return_statement(&mut self) -> Result<(), LoxError> {
-        match self.token_type_matches(&TokenType::Semicolon)? {
-            true => self.emit_return(),
-            false => {
-                if self.current_function().function_type == FunctionType::Initializer {
-                    return Err(LoxError::ParseError(
-                        "can't return from a class initializer".into(),
-                    ));
-                }
-
-                self.expression()?;
-                self.consume(TokenType::Semicolon, "expect ';' after value")?;
-                self.emit_byte(OpCode::Return)
-            },
+        if self.token_type_matches(&TokenType::Semicolon)? {
+            return self.emit_return();
         }
+
+        if self.current_function().function_type == FunctionType::Initializer {
+            return Err(LoxError::ParseError(
+                "can't return from a class initializer".into(),
+            ));
+        }
+
+        self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        self.emit_byte(OpCode::Return)
     }
 
     fn while_statement(&mut self) -> Result<(), LoxError> {
@@ -819,13 +820,12 @@ impl Compiler {
         self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
 
-        match self.chunk().code.last() {
-            Some(OpCode::GetIndex) => {},
-            _ => return Err(LoxError::CompileError("invalid 'delete' statement".into())),
+        let last = self.chunk().code.last_mut();
+        let Some(OpCode::GetIndex) = last else {
+            return Err(LoxError::CompileError("invalid 'delete' statement".into()));
         };
 
-        let last_pos = self.chunk().code.len() - 1;
-        self.chunk().code[last_pos] = OpCode::DeleteIndex;
+        *last.unwrap() = OpCode::DeleteIndex;
 
         Ok(())
     }
@@ -988,12 +988,14 @@ impl Compiler {
             .rev()
             .find(|(_, x)| self.scanner.get_string(&x.name) == self.scanner.get_string(token))
         {
-            Some((idx, local)) => match local.depth {
-                Some(_) => Ok(idx),
-                None => match self.error("can't read a local variable in its own initializer") {
-                    Err(e) => Err(e),
-                    _ => Err(LoxError::ResolutionError),
-                },
+            Some((idx, local)) => {
+                if local.depth.is_none() {
+                    return Err(self
+                        .error("can't read a local variable in its own initializer")
+                        .expect_err(""));
+                }
+
+                Ok(idx)
             },
             None => Err(LoxError::ResolutionError),
         }
@@ -1164,9 +1166,8 @@ impl Compiler {
                 self.skip()?;
             }
 
-            let infix_rule = match self.get_infix_rule(&self.previous.token_type.clone()) {
-                Some(rule) => rule,
-                None => break,
+            let Some(infix_rule) = self.get_infix_rule(&self.previous.token_type.clone()) else {
+                break
             };
 
             infix_rule(self, can_assign)?;
@@ -1190,10 +1191,7 @@ impl Compiler {
     }
 
     fn add_local(&mut self, name: Option<Token>) -> Result<(), LoxError> {
-        let local_name = match name {
-            Some(name) => name,
-            None => self.previous.clone(),
-        };
+        let local_name = name.unwrap_or_else(|| self.previous.clone());
 
         self.compiler_mut().local_count += 1;
         self.compiler_mut().locals.push(Local {

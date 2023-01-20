@@ -551,10 +551,7 @@ impl VirtualMachine {
                     match (&*right, &*left) {
                         (Value::Object(Object::List(b)), Value::Object(Object::List(a))) => {
                             let mut new_list: Vec<ValuePtr> = *a.clone();
-
-                            for item in b.iter() {
-                                new_list.push(item.clone());
-                            }
+                            new_list.extend_from_slice(&b);
 
                             self.stack_push_value(obj!(List, new_list))
                         },
@@ -716,12 +713,7 @@ impl VirtualMachine {
                     self.close_upvalues(value);
                 },
                 OpCode::Assert(has_message) => {
-                    let message_ptr = if has_message {
-                        self.pop_stack().ok()
-                    } else {
-                        None
-                    };
-
+                    let message_ptr = has_message.then(|| self.pop_stack().ok()).flatten();
                     let assertion_ptr = self.pop_stack()?;
 
                     if !self.truthy(&assertion_ptr)? {
