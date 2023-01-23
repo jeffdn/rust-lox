@@ -152,6 +152,14 @@ impl Chunk {
         self.code.iter()
     }
 
+    pub fn len(&self) -> usize {
+        self.code.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.code.is_empty()
+    }
+
     pub fn add_constant(&mut self, value: Value) -> usize {
         self.constants.write(value)
     }

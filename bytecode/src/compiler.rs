@@ -258,7 +258,7 @@ impl Compiler {
     }
 
     fn emit_loop(&mut self, loop_start: usize) -> Result<(), LoxError> {
-        let last_code = self.chunk().code.len();
+        let last_code = self.chunk().len();
 
         self.emit_byte(OpCode::Loop(last_code - loop_start + 1))?;
 
@@ -291,7 +291,7 @@ impl Compiler {
         let previous_line = self.previous.line;
         self.chunk().write(byte, previous_line);
 
-        Ok(self.chunk().code.len())
+        Ok(self.chunk().len())
     }
 
     fn emit_return(&mut self) -> Result<(), LoxError> {
@@ -304,7 +304,7 @@ impl Compiler {
     }
 
     fn patch_jump(&mut self, offset: usize) -> Result<(), LoxError> {
-        let jump = self.chunk().code.len() - offset;
+        let jump = self.chunk().len() - offset;
 
         self.chunk().code[offset - 1] = match self.chunk().code[offset - 1] {
             OpCode::Jump(_) => OpCode::Jump(jump),
@@ -481,7 +481,7 @@ impl Compiler {
             self.expression_statement()?;
         }
 
-        let mut loop_start = self.chunk().code.len();
+        let mut loop_start = self.chunk().len();
         let mut exit_jump: Option<usize> = None;
 
         // This is the loop condition -- if present, the loop instruction will return
@@ -498,7 +498,7 @@ impl Compiler {
         // body of the loop.
         if !self.token_type_matches(&TokenType::RightParen)? {
             let body_jump = self.emit_jump(OpCode::Jump(0))?;
-            let increment_start = self.chunk().code.len();
+            let increment_start = self.chunk().len();
 
             self.expression()?;
             self.emit_byte(OpCode::Pop)?;
@@ -542,7 +542,7 @@ impl Compiler {
 
         self.consume(TokenType::RightParen, "expect ')' after for clauses")?;
 
-        let loop_start = self.chunk().code.len();
+        let loop_start = self.chunk().len();
 
         self.emit_byte(OpCode::IteratorNext(offset, 0))?;
 
@@ -637,7 +637,7 @@ impl Compiler {
     }
 
     fn while_statement(&mut self) -> Result<(), LoxError> {
-        let loop_start = self.chunk().code.len();
+        let loop_start = self.chunk().len();
 
         self.consume(TokenType::LeftParen, "expect '(' after 'while'")?;
         self.expression()?;
@@ -732,12 +732,12 @@ impl Compiler {
     }
 
     fn break_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
-        let current_len = self.chunk().code.len();
+        let current_len = self.chunk().len();
         self.emit_byte(OpCode::Break(current_len, false))
     }
 
     fn continue_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
-        let current_len = self.chunk().code.len();
+        let current_len = self.chunk().len();
         self.emit_byte(OpCode::Continue(current_len, false))
     }
 

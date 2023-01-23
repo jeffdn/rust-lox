@@ -548,27 +548,27 @@ impl VirtualMachine {
                     let right = right.borrow();
                     let left = left.borrow();
 
-                    match (&*right, &*left) {
+                    let output = match (&*right, &*left) {
                         (Value::Object(Object::List(b)), Value::Object(Object::List(a))) => {
                             let mut new_list: Vec<ValuePtr> = *a.clone();
-                            new_list.extend_from_slice(&b);
+                            new_list.extend_from_slice(b);
 
-                            self.stack_push_value(obj!(List, new_list))
+                            obj!(List, new_list)
                         },
-                        (Value::Number(b), Value::Number(a)) => {
-                            self.stack_push_value(Value::Number(a + b));
-                        },
+                        (Value::Number(b), Value::Number(a)) => Value::Number(a + b),
                         (Value::Number(b), Value::Object(Object::String(a))) => {
-                            self.stack_push_value(obj!(String, format!("{}{}", a, b)));
+                            obj!(String, format!("{}{}", a, b))
                         },
                         (Value::Object(Object::String(b)), Value::Number(a)) => {
-                            self.stack_push_value(obj!(String, format!("{}{}", a, b)));
+                            obj!(String, format!("{}{}", a, b))
                         },
                         (Value::Object(Object::String(b)), Value::Object(Object::String(a))) => {
-                            self.stack_push_value(obj!(String, format!("{}{}", a, b)));
+                            obj!(String, format!("{}{}", a, b))
                         },
                         _ => err!("operation '+' only operates on numbers and strings"),
                     };
+
+                    self.stack_push_value(output);
                 },
                 OpCode::Subtract => binary! { -, '-', Value::Number },
                 OpCode::Modulo => binary! { %, '%', Value::Number },
