@@ -13,7 +13,10 @@ use std::{
     io::{self, Write},
 };
 
-use crate::{errors::LoxError, vm::VirtualMachine};
+use crate::{
+    errors::{LoxError, LoxResult},
+    vm::VirtualMachine,
+};
 
 use tikv_jemallocator::Jemalloc;
 
@@ -30,7 +33,7 @@ fn slurp_expr() -> String {
     input_expr
 }
 
-fn run_lox_repl() -> Result<(), LoxError> {
+fn run_lox_repl() -> LoxResult<()> {
     let mut vm = VirtualMachine::new();
 
     loop {
@@ -46,7 +49,7 @@ fn run_lox_repl() -> Result<(), LoxError> {
     }
 }
 
-fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
+fn run_lox_file(script_path: &str) -> LoxResult<()> {
     let source = fs::read_to_string(script_path).ok().ok_or_else(|| {
         LoxError::InputError(format!("unable to parse source file '{}'", script_path))
     })?;
@@ -55,7 +58,7 @@ fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
     vm.interpret(&source)
 }
 
-fn main() -> Result<(), LoxError> {
+fn main() -> LoxResult<()> {
     let args: Vec<String> = env::args().collect();
 
     match args.len() {

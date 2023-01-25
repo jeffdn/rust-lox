@@ -4,7 +4,7 @@ use crate::{
     builtin,
     chunk::OpCode,
     compiler::Compiler,
-    errors::LoxError,
+    errors::{LoxError, LoxResult},
     object::{
         BoundMethod, Class, Closure, Instance, Module, NativeFn, NativeFunction, Object, UpValue,
         UpValuePtr, ValueIter, ValueMap,
@@ -82,7 +82,7 @@ impl VirtualMachine {
         self.globals.insert(String::from(name), function);
     }
 
-    pub fn interpret(&mut self, input: &str) -> Result<(), LoxError> {
+    pub fn interpret(&mut self, input: &str) -> LoxResult<()> {
         let mut compiler = Compiler::new(input);
         let function = compiler.compile()?;
 
@@ -152,7 +152,7 @@ impl VirtualMachine {
         chunk.disassemble_instruction(&chunk.code[idx], idx);
     }
 
-    fn pop_stack(&mut self) -> Result<ValuePtr, LoxError> {
+    fn pop_stack(&mut self) -> LoxResult<ValuePtr> {
         self.stack
             .pop()
             .ok_or_else(|| LoxError::RuntimeError("stack empty".into()))
@@ -182,7 +182,7 @@ impl VirtualMachine {
         self._extract_index(len, number as f64)
     }
 
-    fn _get_slice_argument(&mut self, is_present: bool) -> Result<Option<i32>, LoxError> {
+    fn _get_slice_argument(&mut self, is_present: bool) -> LoxResult<Option<i32>> {
         if !is_present {
             return Ok(None);
         }
@@ -221,7 +221,7 @@ impl VirtualMachine {
         }
     }
 
-    pub fn run(&mut self) -> Result<(), LoxError> {
+    pub fn run(&mut self) -> LoxResult<()> {
         macro_rules! binary {
             ( $op:tt, $op_char:expr, $output:expr ) => {
                 {
@@ -804,7 +804,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn read_string(&self, index: usize) -> Result<String, LoxError> {
+    fn read_string(&self, index: usize) -> LoxResult<String> {
         match &*self.frame().closure.borrow() {
             Value::Object(Object::Closure(closure)) => {
                 match &*closure
@@ -823,12 +823,7 @@ impl VirtualMachine {
         }
     }
 
-    fn check_arity(
-        &self,
-        name: &str,
-        callee_arity: usize,
-        arg_count: usize,
-    ) -> Result<(), LoxError> {
+    fn check_arity(&self, name: &str, callee_arity: usize, arg_count: usize) -> LoxResult<()> {
         if callee_arity != arg_count {
             err!(&format!(
                 "{}: expected {} arguments but {} were given",
@@ -839,7 +834,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn call(&mut self, callee: ValuePtr, arg_count: usize) -> Result<(), LoxError> {
+    fn call(&mut self, callee: ValuePtr, arg_count: usize) -> LoxResult<()> {
         let frame = CallFrame {
             closure: callee,
             stack_offset: self.stack.len() - arg_count - 1,
@@ -851,7 +846,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn call_value(&mut self, arg_count: usize) -> Result<(), LoxError> {
+    fn call_value(&mut self, arg_count: usize) -> LoxResult<()> {
         let offset = self.stack.len() - arg_count - 1;
         let at_offset = self.stack[offset].clone();
 
@@ -906,7 +901,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn invoke(&mut self, method_name: &str, arg_count: usize) -> Result<(), LoxError> {
+    fn invoke(&mut self, method_name: &str, arg_count: usize) -> LoxResult<()> {
         let offset = self.stack.len() - arg_count - 1;
         let at_offset = self.stack[offset].clone();
         let mut at_offset_borrowed = at_offset.borrow_mut();
@@ -989,7 +984,7 @@ impl VirtualMachine {
         }
     }
 
-    fn bind_method(&mut self, class_ptr: &ValuePtr, name: &str) -> Result<(), LoxError> {
+    fn bind_method(&mut self, class_ptr: &ValuePtr, name: &str) -> LoxResult<()> {
         let Value::Object(Object::Class(class)) = &*class_ptr.borrow() else {
             unreachable!();
         };
@@ -1018,7 +1013,7 @@ impl VirtualMachine {
         }
     }
 
-    fn capture_upvalue(&mut self, upvalue_index: usize) -> Result<UpValuePtr, LoxError> {
+    fn capture_upvalue(&mut self, upvalue_index: usize) -> LoxResult<UpValuePtr> {
         let item = &self.stack[self.frame().stack_offset + upvalue_index];
 
         for (idx, upvalue) in self.upvalues.iter().enumerate() {
@@ -1055,7 +1050,7 @@ impl VirtualMachine {
         // }
     }
 
-    fn define_method(&mut self, name: &str) -> Result<(), LoxError> {
+    fn define_method(&mut self, name: &str) -> LoxResult<()> {
         let method = self.pop_stack()?;
         let class_ptr = self.stack[self.stack.len() - 1].clone();
         let Value::Object(Object::Class(class)) = &mut *class_ptr.borrow_mut() else {
@@ -1068,7 +1063,7 @@ impl VirtualMachine {
     }
 
     #[allow(clippy::only_used_in_recursion)]
-    fn truthy(&self, item: &ValuePtr) -> Result<bool, LoxError> {
+    fn truthy(&self, item: &ValuePtr) -> LoxResult<bool> {
         match &*item.borrow() {
             Value::Bool(boolean) => Ok(*boolean),
             Value::Nil => Ok(false),

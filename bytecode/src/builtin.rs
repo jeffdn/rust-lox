@@ -1,12 +1,12 @@
 use std::time::SystemTime;
 
 use crate::{
-    errors::LoxError,
+    errors::{LoxError, LoxResult},
     object::Object,
     value::{Value, ValuePtr},
 };
 
-pub fn _range(input: &[ValuePtr]) -> Result<Value, LoxError> {
+pub fn _range(input: &[ValuePtr]) -> LoxResult<Value> {
     match (&*input[0].borrow(), &*input[1].borrow()) {
         (Value::Number(start), Value::Number(stop)) => {
             let start = *start as i32;
@@ -29,14 +29,14 @@ pub fn _range(input: &[ValuePtr]) -> Result<Value, LoxError> {
     }
 }
 
-pub fn _time(_: &[ValuePtr]) -> Result<Value, LoxError> {
+pub fn _time(_: &[ValuePtr]) -> LoxResult<Value> {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(unix_now) => Ok(Value::Number(unix_now.as_secs_f64())),
         Err(_) => Err(LoxError::RuntimeError("time() failed, uh oh".into())),
     }
 }
 
-pub fn _str(input: &[ValuePtr]) -> Result<Value, LoxError> {
+pub fn _str(input: &[ValuePtr]) -> LoxResult<Value> {
     match &*input[0].borrow() {
         Value::Object(object) => match object {
             Object::String(string) => Ok(Value::Object(Object::String(Box::new(*string.clone())))),
@@ -50,7 +50,7 @@ pub fn _str(input: &[ValuePtr]) -> Result<Value, LoxError> {
     }
 }
 
-pub fn _len(input: &[ValuePtr]) -> Result<Value, LoxError> {
+pub fn _len(input: &[ValuePtr]) -> LoxResult<Value> {
     match &*input[0].borrow() {
         Value::Object(object) => match object {
             Object::List(list) => Ok(Value::Number(list.len() as f64)),
@@ -66,7 +66,7 @@ pub fn _len(input: &[ValuePtr]) -> Result<Value, LoxError> {
     }
 }
 
-pub fn _type(input: &[ValuePtr]) -> Result<Value, LoxError> {
+pub fn _type(input: &[ValuePtr]) -> LoxResult<Value> {
     let output: &str = match &*input[0].borrow() {
         Value::Bool(_) => "bool",
         Value::Nil => "nil",
@@ -90,7 +90,7 @@ pub fn _type(input: &[ValuePtr]) -> Result<Value, LoxError> {
     Ok(Value::Object(Object::String(Box::new(output.into()))))
 }
 
-pub fn _sqrt(input: &[ValuePtr]) -> Result<Value, LoxError> {
+pub fn _sqrt(input: &[ValuePtr]) -> LoxResult<Value> {
     match &*input[0].borrow() {
         Value::Number(number) => Ok(Value::Number(number.sqrt())),
         _ => Err(LoxError::RuntimeError(
@@ -101,7 +101,7 @@ pub fn _sqrt(input: &[ValuePtr]) -> Result<Value, LoxError> {
 
 macro_rules! color_fn {
     ( $name:tt, $code:expr ) => {
-        pub fn $name(input: &[ValuePtr]) -> Result<Value, LoxError> {
+        pub fn $name(input: &[ValuePtr]) -> LoxResult<Value> {
             Ok(Value::Object(Object::String(Box::new(format!(
                 "\x1b[{}m{}\x1b[0m",
                 $code,

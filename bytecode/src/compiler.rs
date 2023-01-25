@@ -2,7 +2,7 @@ use std::{boxed::Box, collections::HashMap};
 
 use crate::{
     chunk::{Chunk, OpCode, UpValue},
-    errors::LoxError,
+    errors::{LoxError, LoxResult},
     object::{Function, FunctionType, Object, ValueMap},
     scanner::Scanner,
     tokens::{Token, TokenType},
@@ -93,7 +93,7 @@ struct CompilerNode {
     function: Function,
 }
 
-type FixRule = fn(&mut Compiler, bool) -> Result<(), LoxError>;
+type FixRule = fn(&mut Compiler, bool) -> LoxResult<()>;
 
 impl CompilerNode {
     pub fn new(function_type: FunctionType) -> CompilerNode {
@@ -188,7 +188,7 @@ impl Compiler {
         &mut self.current_function().chunk
     }
 
-    pub fn compile(&mut self) -> Result<Function, LoxError> {
+    pub fn compile(&mut self) -> LoxResult<Function> {
         self.advance()?;
 
         while !self.token_type_matches(&TokenType::Eof)? {
@@ -205,7 +205,7 @@ impl Compiler {
         Ok(self.compilers.pop().unwrap().function)
     }
 
-    fn end_compiler(&mut self) -> Result<CompilerNode, LoxError> {
+    fn end_compiler(&mut self) -> LoxResult<CompilerNode> {
         self.emit_return()?;
 
         #[cfg(feature = "debug")]
@@ -216,12 +216,12 @@ impl Compiler {
         Ok(self.compilers.pop().unwrap())
     }
 
-    fn begin_scope(&mut self) -> Result<(), LoxError> {
+    fn begin_scope(&mut self) -> LoxResult<()> {
         self.compiler_mut().scope_depth += 1;
         Ok(())
     }
 
-    fn end_scope(&mut self) -> Result<(), LoxError> {
+    fn end_scope(&mut self) -> LoxResult<()> {
         self.compiler_mut().scope_depth -= 1;
 
         loop {
@@ -250,14 +250,14 @@ impl Compiler {
         Ok(())
     }
 
-    fn emit_byte(&mut self, byte: OpCode) -> Result<(), LoxError> {
+    fn emit_byte(&mut self, byte: OpCode) -> LoxResult<()> {
         let previous_line = self.previous.line;
         self.chunk().write(byte, previous_line);
 
         Ok(())
     }
 
-    fn emit_loop(&mut self, loop_start: usize) -> Result<(), LoxError> {
+    fn emit_loop(&mut self, loop_start: usize) -> LoxResult<()> {
         let last_code = self.chunk().len();
 
         self.emit_byte(OpCode::Loop(last_code - loop_start + 1))?;
@@ -287,14 +287,14 @@ impl Compiler {
         Ok(())
     }
 
-    fn emit_jump(&mut self, byte: OpCode) -> Result<usize, LoxError> {
+    fn emit_jump(&mut self, byte: OpCode) -> LoxResult<usize> {
         let previous_line = self.previous.line;
         self.chunk().write(byte, previous_line);
 
         Ok(self.chunk().len())
     }
 
-    fn emit_return(&mut self) -> Result<(), LoxError> {
+    fn emit_return(&mut self) -> LoxResult<()> {
         match self.current_function().function_type {
             FunctionType::Initializer => self.emit_byte(OpCode::GetLocal(0))?,
             _ => self.emit_byte(OpCode::Nil)?,
@@ -303,7 +303,7 @@ impl Compiler {
         self.emit_byte(OpCode::Return)
     }
 
-    fn patch_jump(&mut self, offset: usize) -> Result<(), LoxError> {
+    fn patch_jump(&mut self, offset: usize) -> LoxResult<()> {
         let jump = self.chunk().len() - offset;
 
         self.chunk().code[offset - 1] = match self.chunk().code[offset - 1] {
@@ -316,11 +316,11 @@ impl Compiler {
         Ok(())
     }
 
-    fn expression(&mut self) -> Result<(), LoxError> {
+    fn expression(&mut self) -> LoxResult<()> {
         self.parse_precedence(&Precedence::Assignment)
     }
 
-    fn block(&mut self) -> Result<(), LoxError> {
+    fn block(&mut self) -> LoxResult<()> {
         loop {
             match &self.current.token_type {
                 &TokenType::RightBrace | &TokenType::Eof => break,
@@ -331,7 +331,7 @@ impl Compiler {
         self.consume(TokenType::RightBrace, "expect '}' after block")
     }
 
-    fn function(&mut self, function_type: FunctionType) -> Result<(), LoxError> {
+    fn function(&mut self, function_type: FunctionType) -> LoxResult<()> {
         self.init_compiler(function_type.clone());
 
         self.begin_scope()?;
@@ -366,7 +366,7 @@ impl Compiler {
         self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
     }
 
-    fn method(&mut self) -> Result<(), LoxError> {
+    fn method(&mut self) -> LoxResult<()> {
         self.consume(TokenType::Identifier, "expect method name")?;
 
         let previous = self.previous.clone();
@@ -385,7 +385,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn class_declaration(&mut self) -> Result<(), LoxError> {
+    fn class_declaration(&mut self) -> LoxResult<()> {
         self.consume(TokenType::Identifier, "expect class name")?;
         let class_name = self.previous.clone();
         let name_constant = self.identifier_constant(&class_name)?;
@@ -434,7 +434,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn function_declaration(&mut self) -> Result<(), LoxError> {
+    fn function_declaration(&mut self) -> LoxResult<()> {
         let global = self.parse_variable("expect function name")?;
 
         self.mark_initialized()?;
@@ -444,7 +444,7 @@ impl Compiler {
         self.define_variable(global)
     }
 
-    fn var_declaration(&mut self) -> Result<(), LoxError> {
+    fn var_declaration(&mut self) -> LoxResult<()> {
         let global: usize = self.parse_variable("expect variable name")?;
 
         if self.token_type_matches(&TokenType::Equal)? {
@@ -461,14 +461,14 @@ impl Compiler {
         self.define_variable(global)
     }
 
-    fn expression_statement(&mut self) -> Result<(), LoxError> {
+    fn expression_statement(&mut self) -> LoxResult<()> {
         self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
 
         self.emit_byte(OpCode::Pop)
     }
 
-    fn for_statement(&mut self) -> Result<(), LoxError> {
+    fn for_statement(&mut self) -> LoxResult<()> {
         self.begin_scope()?;
 
         self.consume(TokenType::LeftParen, "expect '(' after 'for'")?;
@@ -521,7 +521,7 @@ impl Compiler {
         self.end_scope()
     }
 
-    fn foreach_statement(&mut self) -> Result<(), LoxError> {
+    fn foreach_statement(&mut self) -> LoxResult<()> {
         self.begin_scope()?;
 
         // This statement must take the shape of:
@@ -555,7 +555,7 @@ impl Compiler {
         self.end_scope()
     }
 
-    fn if_statement(&mut self) -> Result<(), LoxError> {
+    fn if_statement(&mut self) -> LoxResult<()> {
         self.consume(TokenType::LeftParen, "expect '(' after 'if'")?;
         self.expression()?;
         self.consume(TokenType::RightParen, "expect ')' after if statement")?;
@@ -579,7 +579,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn import_statement(&mut self) -> Result<(), LoxError> {
+    fn import_statement(&mut self) -> LoxResult<()> {
         let path = self.scanner.get_string_literal(&self.current);
         self.consume(
             TokenType::String,
@@ -600,7 +600,7 @@ impl Compiler {
         self.emit_byte(OpCode::Import(Box::new(path), global))
     }
 
-    fn assert_statement(&mut self) -> Result<(), LoxError> {
+    fn assert_statement(&mut self) -> LoxResult<()> {
         let mut has_message = false;
 
         self.expression()?;
@@ -614,13 +614,13 @@ impl Compiler {
         self.emit_byte(OpCode::Assert(has_message))
     }
 
-    fn print_statement(&mut self, newline: bool) -> Result<(), LoxError> {
+    fn print_statement(&mut self, newline: bool) -> LoxResult<()> {
         self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
         self.emit_byte(OpCode::Print(newline))
     }
 
-    fn return_statement(&mut self) -> Result<(), LoxError> {
+    fn return_statement(&mut self) -> LoxResult<()> {
         if self.token_type_matches(&TokenType::Semicolon)? {
             return self.emit_return();
         }
@@ -636,7 +636,7 @@ impl Compiler {
         self.emit_byte(OpCode::Return)
     }
 
-    fn while_statement(&mut self) -> Result<(), LoxError> {
+    fn while_statement(&mut self) -> LoxResult<()> {
         let loop_start = self.chunk().len();
 
         self.consume(TokenType::LeftParen, "expect '(' after 'while'")?;
@@ -653,7 +653,7 @@ impl Compiler {
         self.emit_byte(OpCode::Pop)
     }
 
-    fn synchronize(&mut self) -> Result<(), LoxError> {
+    fn synchronize(&mut self) -> LoxResult<()> {
         self.panic_mode = false;
 
         while !self.check_current_token(&TokenType::Eof) {
@@ -683,7 +683,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn declaration(&mut self) -> Result<(), LoxError> {
+    fn declaration(&mut self) -> LoxResult<()> {
         if self.token_type_matches(&TokenType::Class)? {
             self.class_declaration()?;
         } else if self.token_type_matches(&TokenType::Function)? {
@@ -701,7 +701,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn statement(&mut self) -> Result<(), LoxError> {
+    fn statement(&mut self) -> LoxResult<()> {
         if self.token_type_matches(&TokenType::Print)? {
             self.print_statement(false)
         } else if self.token_type_matches(&TokenType::Println)? {
@@ -731,17 +731,17 @@ impl Compiler {
         }
     }
 
-    fn break_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn break_(&mut self, _can_assign: bool) -> LoxResult<()> {
         let current_len = self.chunk().len();
         self.emit_byte(OpCode::Break(current_len, false))
     }
 
-    fn continue_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn continue_(&mut self, _can_assign: bool) -> LoxResult<()> {
         let current_len = self.chunk().len();
         self.emit_byte(OpCode::Continue(current_len, false))
     }
 
-    fn binary(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn binary(&mut self, _can_assign: bool) -> LoxResult<()> {
         let operator_type = self.previous.token_type.clone();
         let precedence = Precedence::for_token_type(&operator_type);
         self.parse_precedence(&precedence.get_parent())?;
@@ -776,7 +776,7 @@ impl Compiler {
         }
     }
 
-    fn call(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn call(&mut self, _can_assign: bool) -> LoxResult<()> {
         let arg_count = self.argument_list()?;
 
         self.emit_byte(OpCode::Call(arg_count))?;
@@ -784,7 +784,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn dot(&mut self, can_assign: bool) -> Result<(), LoxError> {
+    fn dot(&mut self, can_assign: bool) -> LoxResult<()> {
         self.consume(TokenType::Identifier, "expect property name after '.'")?;
         let name = self.identifier_constant(&self.previous.clone())?;
 
@@ -801,7 +801,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn finish_slice(&mut self, has_left: bool) -> Result<(), LoxError> {
+    fn finish_slice(&mut self, has_left: bool) -> LoxResult<()> {
         if self.token_type_matches(&TokenType::RightBracket)? {
             return self.emit_byte(OpCode::GetSlice(has_left, false));
         }
@@ -816,7 +816,7 @@ impl Compiler {
         self.emit_byte(OpCode::GetSlice(has_left, true))
     }
 
-    fn delete_statement(&mut self) -> Result<(), LoxError> {
+    fn delete_statement(&mut self) -> LoxResult<()> {
         self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
 
@@ -830,7 +830,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn index(&mut self, can_assign: bool) -> Result<(), LoxError> {
+    fn index(&mut self, can_assign: bool) -> LoxResult<()> {
         if self.token_type_matches(&TokenType::Colon)? {
             return self.finish_slice(false);
         }
@@ -854,7 +854,7 @@ impl Compiler {
         }
     }
 
-    fn list(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn list(&mut self, _can_assign: bool) -> LoxResult<()> {
         let mut item_count: usize = 0;
 
         if !self.check_current_token(&TokenType::RightBracket) {
@@ -881,7 +881,7 @@ impl Compiler {
         }
     }
 
-    fn map(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn map(&mut self, _can_assign: bool) -> LoxResult<()> {
         let mut item_count: usize = 0;
 
         if !self.check_current_token(&TokenType::RightBrace) {
@@ -912,7 +912,7 @@ impl Compiler {
         }
     }
 
-    fn literal(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn literal(&mut self, _can_assign: bool) -> LoxResult<()> {
         match self.previous.token_type {
             TokenType::Nil => self.emit_byte(OpCode::Nil),
             TokenType::False => self.emit_byte(OpCode::False),
@@ -921,13 +921,13 @@ impl Compiler {
         }
     }
 
-    fn grouping(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn grouping(&mut self, _can_assign: bool) -> LoxResult<()> {
         self.expression()?;
 
         self.consume(TokenType::RightParen, "expect ')' after expression")
     }
 
-    fn number(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn number(&mut self, _can_assign: bool) -> LoxResult<()> {
         let value: f64 = match self.scanner.get_string(&self.previous).parse() {
             Ok(value) => value,
             Err(_) => return self.error("unable to extract number"),
@@ -938,7 +938,7 @@ impl Compiler {
         self.emit_byte(OpCode::Constant(constant))
     }
 
-    fn or_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn or_(&mut self, _can_assign: bool) -> LoxResult<()> {
         let else_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
         let and_jump = self.emit_jump(OpCode::Jump(0))?;
 
@@ -949,7 +949,7 @@ impl Compiler {
         self.patch_jump(and_jump)
     }
 
-    fn string(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn string(&mut self, _can_assign: bool) -> LoxResult<()> {
         let value = self.scanner.get_string_literal(&self.previous);
 
         let constant = self.make_constant(Value::Object(Object::String(Box::new(value))))?;
@@ -957,7 +957,7 @@ impl Compiler {
         self.emit_byte(OpCode::Constant(constant))
     }
 
-    fn named_variable(&mut self, token: &Token, can_assign: bool) -> Result<(), LoxError> {
+    fn named_variable(&mut self, token: &Token, can_assign: bool) -> LoxResult<()> {
         let (get_op, set_op) = match self.resolve_local(token, 0) {
             Ok(index) => (OpCode::GetLocal(index), OpCode::SetLocal(index)),
             Err(_) => match self.resolve_upvalue(token, 0) {
@@ -979,7 +979,7 @@ impl Compiler {
         }
     }
 
-    fn resolve_local(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
+    fn resolve_local(&mut self, token: &Token, depth: usize) -> LoxResult<usize> {
         match self
             .compiler_at(depth)
             .locals
@@ -1001,12 +1001,7 @@ impl Compiler {
         }
     }
 
-    fn add_upvalue(
-        &mut self,
-        index: usize,
-        is_local: bool,
-        depth: usize,
-    ) -> Result<usize, LoxError> {
+    fn add_upvalue(&mut self, index: usize, is_local: bool, depth: usize) -> LoxResult<usize> {
         if let Some(uv) = self
             .compiler_at_mut(depth)
             .upvalues
@@ -1025,7 +1020,7 @@ impl Compiler {
         Ok(index)
     }
 
-    fn resolve_upvalue(&mut self, token: &Token, depth: usize) -> Result<usize, LoxError> {
+    fn resolve_upvalue(&mut self, token: &Token, depth: usize) -> LoxResult<usize> {
         if depth + 2 >= self.compilers.len() {
             return Err(LoxError::ResolutionError);
         }
@@ -1057,11 +1052,11 @@ impl Compiler {
         }
     }
 
-    fn variable(&mut self, can_assign: bool) -> Result<(), LoxError> {
+    fn variable(&mut self, can_assign: bool) -> LoxResult<()> {
         self.named_variable(&self.previous.clone(), can_assign)
     }
 
-    fn super_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn super_(&mut self, _can_assign: bool) -> LoxResult<()> {
         match self.classes.last() {
             Some(class) => {
                 if !class.has_superclass {
@@ -1080,7 +1075,7 @@ impl Compiler {
         self.emit_byte(OpCode::GetSuper(name))
     }
 
-    fn this_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn this_(&mut self, _can_assign: bool) -> LoxResult<()> {
         if self.classes.is_empty() {
             return Err(LoxError::ParseError(
                 "can't use 'this' outside of classes".into(),
@@ -1090,7 +1085,7 @@ impl Compiler {
         self.named_variable(&self.synthetic_token(TokenType::This), false)
     }
 
-    fn unary(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn unary(&mut self, _can_assign: bool) -> LoxResult<()> {
         let operator_type = self.previous.token_type.clone();
 
         self.parse_precedence(&Precedence::Unary)?;
@@ -1144,7 +1139,7 @@ impl Compiler {
         }
     }
 
-    fn parse_precedence(&mut self, precedence: &Precedence) -> Result<(), LoxError> {
+    fn parse_precedence(&mut self, precedence: &Precedence) -> LoxResult<()> {
         self.advance()?;
 
         let prefix_rule = match self.get_prefix_rule(&self.previous.token_type.clone()) {
@@ -1180,7 +1175,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn identifier_constant(&mut self, token: &Token) -> Result<usize, LoxError> {
+    fn identifier_constant(&mut self, token: &Token) -> LoxResult<usize> {
         let constant = match token.token_type {
             TokenType::This => "this".into(),
             TokenType::Super => "super".into(),
@@ -1190,7 +1185,7 @@ impl Compiler {
         self.make_constant(Value::Object(Object::String(Box::new(constant))))
     }
 
-    fn add_local(&mut self, name: Option<Token>) -> Result<(), LoxError> {
+    fn add_local(&mut self, name: Option<Token>) -> LoxResult<()> {
         let local_name = name.unwrap_or_else(|| self.previous.clone());
 
         self.compiler_mut().local_count += 1;
@@ -1203,7 +1198,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn declare_variable(&mut self) -> Result<(), LoxError> {
+    fn declare_variable(&mut self) -> LoxResult<()> {
         if self.compiler().scope_depth == 0 {
             return Ok(());
         }
@@ -1223,7 +1218,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn parse_variable(&mut self, message: &str) -> Result<usize, LoxError> {
+    fn parse_variable(&mut self, message: &str) -> LoxResult<usize> {
         self.consume(TokenType::Identifier, message)?;
 
         self.declare_variable()?;
@@ -1235,7 +1230,7 @@ impl Compiler {
         self.identifier_constant(&self.previous.clone())
     }
 
-    fn mark_initialized(&mut self) -> Result<(), LoxError> {
+    fn mark_initialized(&mut self) -> LoxResult<()> {
         match self.compiler().scope_depth {
             0 => Ok(()),
             _ => {
@@ -1250,7 +1245,7 @@ impl Compiler {
         }
     }
 
-    fn define_variable(&mut self, global: usize) -> Result<(), LoxError> {
+    fn define_variable(&mut self, global: usize) -> LoxResult<()> {
         if self.compiler().scope_depth > 0 {
             self.mark_initialized()?;
             return Ok(());
@@ -1259,7 +1254,7 @@ impl Compiler {
         self.emit_byte(OpCode::DefineGlobal(global))
     }
 
-    fn argument_list(&mut self) -> Result<usize, LoxError> {
+    fn argument_list(&mut self) -> LoxResult<usize> {
         let mut arg_count: usize = 0;
 
         if !self.check_current_token(&TokenType::RightParen) {
@@ -1278,7 +1273,7 @@ impl Compiler {
         Ok(arg_count)
     }
 
-    fn and_(&mut self, _can_assign: bool) -> Result<(), LoxError> {
+    fn and_(&mut self, _can_assign: bool) -> LoxResult<()> {
         let end_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
 
         self.emit_byte(OpCode::Pop)?;
@@ -1287,7 +1282,7 @@ impl Compiler {
         self.patch_jump(end_jump)
     }
 
-    fn make_constant(&mut self, value: Value) -> Result<usize, LoxError> {
+    fn make_constant(&mut self, value: Value) -> LoxResult<usize> {
         let constant = self.chunk().add_constant(value);
 
         if constant == usize::MAX {
@@ -1297,7 +1292,7 @@ impl Compiler {
         Ok(constant)
     }
 
-    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<(), LoxError> {
+    fn consume(&mut self, token_type: TokenType, message: &str) -> LoxResult<()> {
         if self.current.token_type == token_type {
             self.advance()?;
             return Ok(());
@@ -1306,7 +1301,7 @@ impl Compiler {
         self.error_at_current(message)
     }
 
-    fn token_type_matches(&mut self, token_type: &TokenType) -> Result<bool, LoxError> {
+    fn token_type_matches(&mut self, token_type: &TokenType) -> LoxResult<bool> {
         if !self.check_current_token(token_type) {
             return Ok(false);
         }
@@ -1320,7 +1315,7 @@ impl Compiler {
         &self.current.token_type == token_type
     }
 
-    fn advance_until_error(&mut self) -> Result<(), LoxError> {
+    fn advance_until_error(&mut self) -> LoxResult<()> {
         loop {
             self.current = self.scanner.scan_token()?;
 
@@ -1334,16 +1329,16 @@ impl Compiler {
         Ok(())
     }
 
-    fn skip(&mut self) -> Result<(), LoxError> {
+    fn skip(&mut self) -> LoxResult<()> {
         self.advance_until_error()
     }
 
-    fn advance(&mut self) -> Result<(), LoxError> {
+    fn advance(&mut self) -> LoxResult<()> {
         self.previous = self.current.clone();
         self.advance_until_error()
     }
 
-    fn error_at(&self, token: Token, message: &str) -> Result<(), LoxError> {
+    fn error_at(&self, token: Token, message: &str) -> LoxResult<()> {
         let output = match token.token_type {
             TokenType::Eof => "at end of file".into(),
             TokenType::Error => "unknown".into(),
@@ -1357,11 +1352,11 @@ impl Compiler {
         Err(LoxError::CompileError(format!("{}: {}", output, message)))
     }
 
-    fn error(&self, message: &str) -> Result<(), LoxError> {
+    fn error(&self, message: &str) -> LoxResult<()> {
         self.error_at(self.previous.clone(), message)
     }
 
-    fn error_at_current(&self, message: &str) -> Result<(), LoxError> {
+    fn error_at_current(&self, message: &str) -> LoxResult<()> {
         self.error_at(self.current.clone(), message)
     }
 }

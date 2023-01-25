@@ -1,5 +1,7 @@
 use std::fmt;
 
+pub type LoxResult<T> = Result<T, LoxError>;
+
 #[derive(Debug)]
 pub enum LoxError {
     CompileError(String),

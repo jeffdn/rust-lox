@@ -2,7 +2,7 @@ use std::{boxed::Box, cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
 use crate::{
     chunk::Chunk,
-    errors::LoxError,
+    errors::{LoxError, LoxResult},
     value::{Value, ValuePtr},
 };
 
@@ -29,7 +29,7 @@ pub struct ValueIter {
 }
 
 impl ValueIter {
-    pub fn new(instance: ValuePtr) -> Result<Self, LoxError> {
+    pub fn new(instance: ValuePtr) -> LoxResult<Self> {
         let value = match &*instance.borrow() {
             Value::Object(object) => match object {
                 Object::List(list) => ValueIter {
@@ -155,7 +155,7 @@ pub enum FunctionType {
     Script,
 }
 
-pub type NativeFn = fn(&[ValuePtr]) -> Result<Value, LoxError>;
+pub type NativeFn = fn(&[ValuePtr]) -> LoxResult<Value>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {

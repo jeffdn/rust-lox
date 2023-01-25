@@ -1,5 +1,5 @@
 use crate::{
-    errors::LoxError,
+    errors::{LoxError, LoxResult},
     tokens::{Token, TokenType},
 };
 
@@ -20,7 +20,7 @@ impl Scanner {
         }
     }
 
-    pub fn scan_token(&mut self) -> Result<Token, LoxError> {
+    pub fn scan_token(&mut self) -> LoxResult<Token> {
         self.skip_whitespace();
         self.start = self.current;
 
@@ -101,7 +101,7 @@ impl Scanner {
         matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_')
     }
 
-    fn find_identifier(&self, input_lexeme: &str) -> Result<Token, LoxError> {
+    fn find_identifier(&self, input_lexeme: &str) -> LoxResult<Token> {
         let token_type = match input_lexeme {
             "and" => TokenType::And,
             "as" => TokenType::As,
@@ -135,7 +135,7 @@ impl Scanner {
         self.make_token(token_type)
     }
 
-    fn add_identifier(&mut self) -> Result<Token, LoxError> {
+    fn add_identifier(&mut self) -> LoxResult<Token> {
         while self.is_alphanumeric(self.peek()) {
             self.advance();
         }
@@ -144,7 +144,7 @@ impl Scanner {
         self.find_identifier(&output)
     }
 
-    fn add_string(&mut self, end: char) -> Result<Token, LoxError> {
+    fn add_string(&mut self, end: char) -> LoxResult<Token> {
         while !self.at_end() && self.peek() != end {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -161,7 +161,7 @@ impl Scanner {
         self.make_token(TokenType::String)
     }
 
-    fn add_number(&mut self) -> Result<Token, LoxError> {
+    fn add_number(&mut self) -> LoxResult<Token> {
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -230,7 +230,7 @@ impl Scanner {
         true
     }
 
-    fn make_token(&self, token_type: TokenType) -> Result<Token, LoxError> {
+    fn make_token(&self, token_type: TokenType) -> LoxResult<Token> {
         Ok(Token {
             token_type,
             start: self.start,
