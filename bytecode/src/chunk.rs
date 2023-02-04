@@ -117,7 +117,7 @@ impl fmt::Display for OpCode {
             OpCode::Method(_) => "op_method",
         };
 
-        write!(f, "{:<20}", as_string)
+        write!(f, "{as_string:<20}")
     }
 }
 
@@ -166,7 +166,7 @@ impl Chunk {
 
     #[cfg(feature = "debug")]
     pub fn disassemble(&self, name: &str) {
-        println!("=== {} ===", name);
+        println!("=== {name} ===");
 
         for (idx, chunk) in self.iter().enumerate() {
             self.disassemble_instruction(chunk, idx);
@@ -230,29 +230,29 @@ impl Chunk {
             ),
             OpCode::SetProperty(index) => format!("{:<20} {}", "op_set_property", *index),
             OpCode::GetSuper(index) => format!("{:<20} {}", "op_get_super", *index),
-            OpCode::GetSlice(left, right) => format!("{:<20} {} {}", "op_get_slice", left, right),
-            OpCode::Assert(has_message) => format!("{:<20} {}", "op_assert", has_message),
-            OpCode::Jump(offset) => format!("{:<20} {}", "op_jump", offset),
-            OpCode::JumpIfFalse(offset) => format!("{:<20} {}", "op_jump_if_false", offset),
-            OpCode::Loop(offset) => format!("{:<20} {}", "op_loop", offset),
-            OpCode::Break(offset, fixed) => format!("{:<20} {} {}", "op_break", offset, fixed),
+            OpCode::GetSlice(left, right) => format!("{:<20} {left} {right}", "op_get_slice"),
+            OpCode::Assert(has_message) => format!("{:<20} {has_message}", "op_assert"),
+            OpCode::Jump(offset) => format!("{:<20} {offset}", "op_jump"),
+            OpCode::JumpIfFalse(offset) => format!("{:<20} {offset}", "op_jump_if_false"),
+            OpCode::Loop(offset) => format!("{:<20} {offset}", "op_loop"),
+            OpCode::Break(offset, fixed) => format!("{:<20} {offset} {fixed}", "op_break"),
             OpCode::Continue(offset, fixed) => {
-                format!("{:<20} {} {}", "op_continue", offset, fixed)
-            },
+                format!("{:<20} {offset} {fixed}", "op_continue")
+            }
             OpCode::IteratorNext(index, jump) => {
-                format!("{:<20} {} {}", "op_iterator_next", index, jump)
-            },
-            OpCode::BuildList(item_count) => format!("{:<20} {}", "op_build_list", item_count),
-            OpCode::BuildMap(item_count) => format!("{:<20} {}", "op_build_map", item_count),
-            OpCode::Call(offset) => format!("{:<20} {}", "op_call", offset),
-            OpCode::Invoke(index, offset) => format!("{:<20} {} {}", "op_invoke", index, offset),
-            OpCode::Closure(index, _) => format!("{:<20} {}", "op_closure", index),
-            OpCode::Import(path, index) => format!("{:<20} {} {}", "op_import", path, index),
-            OpCode::Class(index) => format!("{:<20} {}", "op_class", index),
-            OpCode::Method(index) => format!("{:<20} {}", "op_method", index),
+                format!("{:<20} {index} {jump}", "op_iterator_next")
+            }
+            OpCode::BuildList(item_count) => format!("{:<20} {item_count}", "op_build_list"),
+            OpCode::BuildMap(item_count) => format!("{:<20} {item_count}", "op_build_map"),
+            OpCode::Call(offset) => format!("{:<20} {offset}", "op_call"),
+            OpCode::Invoke(index, offset) => format!("{:<20} {index} {offset}", "op_invoke"),
+            OpCode::Closure(index, _) => format!("{:<20} {index}", "op_closure"),
+            OpCode::Import(path, index) => format!("{:<20} {path} {index}", "op_import"),
+            OpCode::Class(index) => format!("{:<20} {index}", "op_class"),
+            OpCode::Method(index) => format!("{:<20} {index}", "op_method"),
             _ => code.to_string(),
         };
 
-        println!("{} {:0>4} {}", line_str, offset, output);
+        println!("{line_str} {offset:0>4} {output}");
     }
 }

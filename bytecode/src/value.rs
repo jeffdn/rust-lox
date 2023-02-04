@@ -78,7 +78,7 @@ impl Hash for Value {
                 mantissa.hash(state);
                 exponent.hash(state);
                 sign.hash(state);
-            },
+            }
             Value::Object(object) => {
                 match object {
                     Object::BoundMethod(_) => METHOD_HASH.hash(state),
@@ -91,20 +91,20 @@ impl Hash for Value {
                         for item in iterator.items.iter() {
                             item.borrow().hash(state);
                         }
-                    },
+                    }
                     Object::List(list) => {
                         LIST_HASH.hash(state);
                         for item in list.iter() {
                             item.borrow().hash(state);
                         }
-                    },
+                    }
                     Object::Map(hmap) => {
                         MAP_HASH.hash(state);
                         for (key, val) in hmap.map.iter() {
                             key.borrow().hash(state);
                             val.borrow().hash(state);
                         }
-                    },
+                    }
                     Object::Module(module) => {
                         MAP_HASH.hash(state);
                         module.name.hash(state);
@@ -112,16 +112,16 @@ impl Hash for Value {
                             key.hash(state);
                             val.borrow().hash(state);
                         }
-                    },
-                    Object::String(_) => {},
+                    }
+                    Object::String(_) => {}
                     Object::UpValue(uv) => uv.location.borrow().hash(state),
                 };
 
                 match object {
-                    Object::List(_) | Object::Map(_) | Object::UpValue(_) => {},
+                    Object::List(_) | Object::Map(_) | Object::UpValue(_) => {}
                     _ => object.to_string().hash(state),
                 };
-            },
+            }
         };
     }
 }
@@ -135,7 +135,7 @@ impl fmt::Display for Value {
             Value::Object(object) => object.to_string(),
         };
 
-        write!(f, "{}", output)
+        write!(f, "{output}")
     }
 }
 

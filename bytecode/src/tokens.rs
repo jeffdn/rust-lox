@@ -136,7 +136,7 @@ impl fmt::Display for TokenType {
             TokenType::Error => "error",
         };
 
-        write!(f, "{}", output)
+        write!(f, "{output}")
     }
 }
 

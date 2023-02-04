@@ -43,15 +43,15 @@ fn run_lox_repl() -> LoxResult<()> {
         let input_expr = slurp_expr();
 
         match vm.interpret(&input_expr) {
-            Ok(_) => {},
-            Err(e) => println!("{}", e),
+            Ok(_) => {}
+            Err(e) => println!("{e}"),
         };
     }
 }
 
 fn run_lox_file(script_path: &str) -> LoxResult<()> {
     let source = fs::read_to_string(script_path).ok().ok_or_else(|| {
-        LoxError::InputError(format!("unable to parse source file '{}'", script_path))
+        LoxError::InputError(format!("unable to parse source file '{script_path}'"))
     })?;
 
     let mut vm = VirtualMachine::new();
