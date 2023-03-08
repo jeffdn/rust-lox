@@ -2,7 +2,7 @@ use std::fmt;
 
 pub type LoxResult<T> = Result<T, LoxError>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LoxError {
     CompileError(String),
     InputError(String),

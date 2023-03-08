@@ -45,8 +45,8 @@ pub enum OpCode {
     Jump(usize),
     JumpIfFalse(usize),
     Loop(usize),
-    Break(usize, bool),
-    Continue(usize, bool),
+    Break(usize),
+    Continue(usize),
     DefineIterator,
     IteratorNext(usize, usize),
     BuildList(usize),
@@ -100,8 +100,8 @@ impl fmt::Display for OpCode {
             OpCode::Jump(_) => "op_jump",
             OpCode::JumpIfFalse(_) => "op_jump_if_false",
             OpCode::Loop(_) => "op_loop",
-            OpCode::Break(_, _) => "op_break",
-            OpCode::Continue(_, _) => "op_continue",
+            OpCode::Break(_) => "op_break",
+            OpCode::Continue(_) => "op_continue",
             OpCode::DefineIterator => "op_define_iterator",
             OpCode::IteratorNext(_, _) => "op_iterator_next",
             OpCode::BuildList(_) => "op_build_list",
@@ -235,13 +235,13 @@ impl Chunk {
             OpCode::Jump(offset) => format!("{:<20} {offset}", "op_jump"),
             OpCode::JumpIfFalse(offset) => format!("{:<20} {offset}", "op_jump_if_false"),
             OpCode::Loop(offset) => format!("{:<20} {offset}", "op_loop"),
-            OpCode::Break(offset, fixed) => format!("{:<20} {offset} {fixed}", "op_break"),
-            OpCode::Continue(offset, fixed) => {
-                format!("{:<20} {offset} {fixed}", "op_continue")
-            }
+            OpCode::Break(offset) => format!("{:<20} {offset}", "op_break"),
+            OpCode::Continue(offset) => {
+                format!("{:<20} {offset}", "op_continue")
+            },
             OpCode::IteratorNext(index, jump) => {
                 format!("{:<20} {index} {jump}", "op_iterator_next")
-            }
+            },
             OpCode::BuildList(item_count) => format!("{:<20} {item_count}", "op_build_list"),
             OpCode::BuildMap(item_count) => format!("{:<20} {item_count}", "op_build_map"),
             OpCode::Call(offset) => format!("{:<20} {offset}", "op_call"),

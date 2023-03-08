@@ -247,6 +247,17 @@ impl Compiler {
             self.compiler_mut().local_count -= 1;
         }
 
+        if self.compiler().scope_depth == 0
+            && self
+                .chunk()
+                .code
+                .iter()
+                .find(|code| matches!(code, OpCode::Break(_) | OpCode::Continue(_)))
+                .is_some()
+        {
+            self.error_at_current("ending scope without correcting a break or continue")?;
+        }
+
         Ok(())
     }
 
@@ -274,13 +285,9 @@ impl Compiler {
         //     OpCode::Continue(start_of_loop, true)
         for code in self.chunk().code[loop_start..last_code].iter_mut() {
             match code {
-                OpCode::Break(initial, false) => {
-                    *code = OpCode::Break(last_code - *initial + 1, true)
-                }
-                OpCode::Continue(initial, false) => {
-                    *code = OpCode::Continue(*initial - loop_start + 1, true)
-                }
-                _ => {}
+                OpCode::Break(initial) => *code = OpCode::Jump(last_code - *initial + 1),
+                OpCode::Continue(initial) => *code = OpCode::Loop(*initial - loop_start + 1),
+                _ => {},
             };
         }
 
@@ -733,12 +740,12 @@ impl Compiler {
 
     fn break_(&mut self, _can_assign: bool) -> LoxResult<()> {
         let current_len = self.chunk().len();
-        self.emit_byte(OpCode::Break(current_len, false))
+        self.emit_byte(OpCode::Break(current_len))
     }
 
     fn continue_(&mut self, _can_assign: bool) -> LoxResult<()> {
         let current_len = self.chunk().len();
-        self.emit_byte(OpCode::Continue(current_len, false))
+        self.emit_byte(OpCode::Continue(current_len))
     }
 
     fn binary(&mut self, _can_assign: bool) -> LoxResult<()> {
@@ -755,23 +762,23 @@ impl Compiler {
             TokenType::BangEqual => {
                 self.emit_byte(OpCode::Equal)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             TokenType::EqualEqual => self.emit_byte(OpCode::Equal),
             TokenType::Greater => self.emit_byte(OpCode::Greater),
             TokenType::GreaterEqual => {
                 self.emit_byte(OpCode::Less)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             TokenType::Less => self.emit_byte(OpCode::Less),
             TokenType::LessEqual => {
                 self.emit_byte(OpCode::Greater)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             TokenType::In => self.emit_byte(OpCode::In),
             TokenType::NotIn => {
                 self.emit_byte(OpCode::In)?;
                 self.emit_byte(OpCode::Not)
-            }
+            },
             _ => self.error("unreachable"),
         }
     }
@@ -876,7 +883,7 @@ impl Compiler {
                     Vec::with_capacity(16),
                 ))))?;
                 self.emit_byte(OpCode::Constant(constant))
-            }
+            },
             _ => self.emit_byte(OpCode::BuildList(item_count)),
         }
     }
@@ -907,7 +914,7 @@ impl Compiler {
                         map: HashMap::with_capacity(16),
                     }))))?;
                 self.emit_byte(OpCode::Constant(constant))
-            }
+            },
             _ => self.emit_byte(OpCode::BuildMap(item_count)),
         }
     }
@@ -965,7 +972,7 @@ impl Compiler {
                 Err(_) => {
                     let index = self.identifier_constant(token)?;
                     (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
-                }
+                },
             },
         };
 
@@ -996,7 +1003,7 @@ impl Compiler {
                 }
 
                 Ok(idx)
-            }
+            },
             None => Err(LoxError::ResolutionError),
         }
     }
@@ -1062,7 +1069,7 @@ impl Compiler {
                 if !class.has_superclass {
                     self.error("can't use 'super' outside of a class")?;
                 }
-            }
+            },
             None => self.error("can't user 'super' inside a class without a superclass")?,
         };
 
@@ -1241,7 +1248,7 @@ impl Compiler {
                 };
 
                 Ok(())
-            }
+            },
         }
     }
 
@@ -1461,6 +1468,38 @@ mod tests {
                 OpCode::Nil,
                 OpCode::Return,
             ]
+        );
+    }
+
+    #[test]
+    fn test_improper_use_of_break_fails() {
+        let input = r#"
+            if (true) {
+                break;
+            }
+        "#;
+        let mut compiler = Compiler::new(&input);
+        assert_eq!(
+            compiler.compile().expect_err("didn't fail as expected"),
+            LoxError::CompileError(
+                "at end of file: ending scope without correcting a break or continue".into()
+            )
+        );
+    }
+
+    #[test]
+    fn test_improper_use_of_continue_fails() {
+        let input = r#"
+            if (true) {
+                continue;
+            }
+        "#;
+        let mut compiler = Compiler::new(&input);
+        assert_eq!(
+            compiler.compile().expect_err("didn't fail as expected"),
+            LoxError::CompileError(
+                "at end of file: ending scope without correcting a break or continue".into()
+            )
         );
     }
 }
