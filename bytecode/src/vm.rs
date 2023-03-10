@@ -90,7 +90,7 @@ impl VirtualMachine {
             Closure,
             Closure {
                 upvalues: Vec::with_capacity(STACK_MAX),
-                function: Rc::new(RefCell::new(function)),
+                function,
                 obj: None,
             }
         ));
@@ -167,7 +167,7 @@ impl VirtualMachine {
     }
 
     #[cfg(feature = "debug")]
-    fn function(&self) -> Rc<RefCell<Function>> {
+    fn function(&self) -> Function {
         match &*self.frame().closure.borrow() {
             Value::Object(Object::Closure(closure)) => closure.function.clone(),
             _ => unreachable!(),
@@ -239,14 +239,27 @@ impl VirtualMachine {
 
         macro_rules! global {
             ( $pos:expr ) => {{
-                let value_ptr = match &*self.frame().closure.borrow() {
-                    Value::Object(Object::Closure(closure)) => {
-                        closure.function.borrow().chunk.constants.get($pos).clone()
-                    },
-                    _ => unreachable!(),
-                };
+                let Value::Object(Object::Closure(closure)) = &*self.frame().closure.borrow() else {
+                                                                                unreachable!();
+                                                                            };
 
-                value_ptr
+                closure.function.chunk.constants.get($pos).clone()
+            }};
+        }
+
+        macro_rules! truthy {
+            ( $item:expr ) => {{
+                match &*$item.borrow() {
+                    Value::Bool(boolean) => Ok(*boolean),
+                    Value::Nil => Ok(false),
+                    Value::Number(number) => Ok(*number != 0.0f64),
+                    Value::Object(object) => match object {
+                        Object::List(list) => Ok(!list.is_empty()),
+                        Object::Map(hmap) => Ok(!hmap.map.is_empty()),
+                        Object::String(string) => Ok(!string.is_empty()),
+                        _ => Ok(true),
+                    },
+                }
             }};
         }
 
@@ -255,19 +268,17 @@ impl VirtualMachine {
                 let frame = self.frames.last().unwrap();
 
                 #[cfg(feature = "debug")]
-                self.dump(&self.function().borrow().chunk, frame.pos);
+                self.dump(&self.function().chunk, frame.pos);
 
-                match &*frame.closure.borrow() {
-                    Value::Object(Object::Closure(closure)) => {
-                        let function = closure.function.borrow();
-                        if frame.pos >= function.chunk.code.len() {
-                            break;
-                        }
+                let Value::Object(Object::Closure(closure)) = &*frame.closure.borrow() else {
+                    unreachable!();
+                };
 
-                        function.chunk.code[frame.pos].clone()
-                    },
-                    _ => unreachable!(),
+                if frame.pos >= closure.function.chunk.code.len() {
+                    break;
                 }
+
+                closure.function.chunk.code[frame.pos].clone()
             };
 
             match code {
@@ -576,7 +587,7 @@ impl VirtualMachine {
                 OpCode::Divide => binary! { /, '/', Value::Number },
                 OpCode::Not => {
                     let item = self.pop_stack()?;
-                    self.stack_push_value(Value::Bool(!self.truthy(&item)?));
+                    self.stack_push_value(Value::Bool(!truthy!(&item)?));
                 },
                 OpCode::Negate => {
                     let item = match *(self.pop_stack()?).borrow() {
@@ -596,7 +607,7 @@ impl VirtualMachine {
                 },
                 OpCode::Jump(offset) => self.frame_mut().pos += offset,
                 OpCode::JumpIfFalse(offset) => {
-                    if !self.truthy(self.stack.last().unwrap())? {
+                    if !truthy!(self.stack.last().unwrap())? {
                         self.frame_mut().pos += offset;
                     }
                 },
@@ -661,9 +672,7 @@ impl VirtualMachine {
                 OpCode::Closure(index, ref upvalues) => {
                     let constant = global!(index);
                     let function = match &*constant.borrow() {
-                        Value::Object(Object::Function(function)) => {
-                            Rc::new(RefCell::new(*function.clone()))
-                        },
+                        Value::Object(Object::Function(function)) => *function.clone(),
                         _ => unreachable!(),
                     };
 
@@ -704,7 +713,7 @@ impl VirtualMachine {
                     let message_ptr = has_message.then(|| self.pop_stack().ok()).flatten();
                     let assertion_ptr = self.pop_stack()?;
 
-                    if !self.truthy(&assertion_ptr)? {
+                    if !truthy!(&assertion_ptr)? {
                         let message = if has_message {
                             match &*message_ptr.unwrap().borrow() {
                                 Value::Object(Object::String(message)) => format!("{message}"),
@@ -795,14 +804,7 @@ impl VirtualMachine {
     fn read_string(&self, index: usize) -> LoxResult<String> {
         match &*self.frame().closure.borrow() {
             Value::Object(Object::Closure(closure)) => {
-                match &*closure
-                    .function
-                    .borrow()
-                    .chunk
-                    .constants
-                    .get(index)
-                    .borrow()
-                {
+                match &*closure.function.chunk.constants.get(index).borrow() {
                     Value::Object(Object::String(name)) => Ok(*name.clone()),
                     _ => err!("tried to read a string and failed"),
                 }
@@ -840,9 +842,7 @@ impl VirtualMachine {
         match &*at_offset.borrow() {
             Value::Object(object) => match object {
                 Object::Closure(closure) => {
-                    let function = closure.function.borrow();
-
-                    self.check_arity(&function.name, function.arity, arg_count)?;
+                    self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
                     self.call(at_offset.clone(), arg_count)?;
                 },
                 Object::BoundMethod(bound_method) => {
@@ -1039,21 +1039,5 @@ impl VirtualMachine {
         class.methods.insert(String::from(name), method);
 
         Ok(())
-    }
-
-    #[allow(clippy::only_used_in_recursion)]
-    fn truthy(&self, item: &ValuePtr) -> LoxResult<bool> {
-        match &*item.borrow() {
-            Value::Bool(boolean) => Ok(*boolean),
-            Value::Nil => Ok(false),
-            Value::Number(number) => Ok(*number != 0.0f64),
-            Value::Object(object) => match object {
-                Object::List(list) => Ok(!list.is_empty()),
-                Object::Map(hmap) => Ok(!hmap.map.is_empty()),
-                Object::String(string) => Ok(!string.is_empty()),
-                Object::UpValue(value) => self.truthy(&value.location),
-                _ => Ok(true),
-            },
-        }
     }
 }

@@ -53,13 +53,13 @@ impl ValueIter {
                     return Err(LoxError::RuntimeError(
                         "only lists, maps, and strings can be iterated".into(),
                     ))
-                }
+                },
             },
             _ => {
                 return Err(LoxError::RuntimeError(
                     "only lists, maps, and strings can be iterated".into(),
                 ))
-            }
+            },
         };
 
         Ok(value)
@@ -161,7 +161,7 @@ pub type NativeFn = fn(&[ValuePtr]) -> LoxResult<Value>;
 pub struct Closure {
     pub obj: Option<Object>,
     pub upvalues: Vec<UpValuePtr>,
-    pub function: Rc<RefCell<Function>>,
+    pub function: Function,
 }
 
 #[derive(Clone)]
@@ -210,12 +210,11 @@ impl fmt::Display for Object {
 
                 format!(
                     "<method {} on {} instance>",
-                    closure.function.borrow().name,
-                    class.name,
+                    closure.function.name, class.name,
                 )
-            }
+            },
             Object::Class(class) => class.name.clone(),
-            Object::Closure(closure) => closure.function.borrow().name.clone(),
+            Object::Closure(closure) => closure.function.name.clone(),
             Object::Function(function) => function.name.clone(),
             Object::Instance(instance) => {
                 let Value::Object(Object::Class(class)) = &*instance.class.0.borrow() else {
@@ -223,7 +222,7 @@ impl fmt::Display for Object {
                 };
 
                 format!("<{} instance>", class.name)
-            }
+            },
             Object::Iterator(iter) => format!(
                 "<iterator: next={}, items=[{}]>",
                 iter.next,
