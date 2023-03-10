@@ -20,7 +20,7 @@ pub struct ValuePtr(pub Rc<RefCell<Value>>);
 
 impl Eq for ValuePtr {}
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for ValuePtr {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.borrow().hash(state);
@@ -66,7 +66,7 @@ static METHOD_HASH: u64 = 16751306561248198995;
 
 impl Eq for Value {}
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
@@ -78,7 +78,7 @@ impl Hash for Value {
                 mantissa.hash(state);
                 exponent.hash(state);
                 sign.hash(state);
-            }
+            },
             Value::Object(object) => {
                 match object {
                     Object::BoundMethod(_) => METHOD_HASH.hash(state),
@@ -91,20 +91,20 @@ impl Hash for Value {
                         for item in iterator.items.iter() {
                             item.borrow().hash(state);
                         }
-                    }
+                    },
                     Object::List(list) => {
                         LIST_HASH.hash(state);
                         for item in list.iter() {
                             item.borrow().hash(state);
                         }
-                    }
+                    },
                     Object::Map(hmap) => {
                         MAP_HASH.hash(state);
                         for (key, val) in hmap.map.iter() {
                             key.borrow().hash(state);
                             val.borrow().hash(state);
                         }
-                    }
+                    },
                     Object::Module(module) => {
                         MAP_HASH.hash(state);
                         module.name.hash(state);
@@ -112,16 +112,16 @@ impl Hash for Value {
                             key.hash(state);
                             val.borrow().hash(state);
                         }
-                    }
-                    Object::String(_) => {}
+                    },
+                    Object::String(_) => {},
                     Object::UpValue(uv) => uv.location.borrow().hash(state),
                 };
 
                 match object {
-                    Object::List(_) | Object::Map(_) | Object::UpValue(_) => {}
+                    Object::List(_) | Object::Map(_) | Object::UpValue(_) => {},
                     _ => object.to_string().hash(state),
                 };
-            }
+            },
         };
     }
 }

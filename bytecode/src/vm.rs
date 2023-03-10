@@ -839,6 +839,12 @@ impl VirtualMachine {
 
         match &*at_offset.borrow() {
             Value::Object(object) => match object {
+                Object::Closure(closure) => {
+                    let function = closure.function.borrow();
+
+                    self.check_arity(&function.name, function.arity, arg_count)?;
+                    self.call(at_offset.clone(), arg_count)?;
+                },
                 Object::BoundMethod(bound_method) => {
                     let arg_range_start = self.stack.len() - arg_count;
                     self.stack[arg_range_start - 1] = bound_method.receiver.clone();
@@ -869,15 +875,6 @@ impl VirtualMachine {
                     self.pop_stack()?;
                     self.stack_push_value(result);
                     self.frame_mut().pos += 1;
-                },
-                Object::Closure(closure) => {
-                    self.check_arity(
-                        &closure.function.borrow().name,
-                        closure.function.borrow().arity,
-                        arg_count,
-                    )?;
-
-                    self.call(at_offset.clone(), arg_count)?;
                 },
                 _ => err!("can only call functions and classes"),
             },

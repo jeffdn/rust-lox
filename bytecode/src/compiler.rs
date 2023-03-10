@@ -252,8 +252,7 @@ impl Compiler {
                 .chunk()
                 .code
                 .iter()
-                .find(|code| matches!(code, OpCode::Break(_) | OpCode::Continue(_)))
-                .is_some()
+                .any(|code| matches!(code, OpCode::Break(_) | OpCode::Continue(_)))
         {
             self.error_at_current("ending scope without correcting a break or continue")?;
         }
