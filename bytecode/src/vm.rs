@@ -214,11 +214,7 @@ impl VirtualMachine {
             number as usize
         };
 
-        if index > len {
-            len
-        } else {
-            index
-        }
+        index.min(len)
     }
 
     pub fn run(&mut self) -> LoxResult<()> {
@@ -765,8 +761,8 @@ impl VirtualMachine {
                         return Ok(());
                     }
 
-                    self.stack.truncate(old_frame.stack_offset);
-                    self.stack.push(result);
+                    self.stack.truncate(old_frame.stack_offset + 1);
+                    *self.stack.last_mut().unwrap() = result;
                 },
                 OpCode::Class(index) => {
                     let class_name = self.read_string(index)?;

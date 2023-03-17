@@ -275,13 +275,13 @@ impl Compiler {
         // Now, look through all instructions emitted between the start of the loop and
         // the loop instructions. Any that take the shape of either:
         //
-        //     OpCode::Break(position, false)
-        //     OpCode::Continue(position, false)
+        //     OpCode::Break(position)
+        //     OpCode::Continue(position)
         //
         //  Will be replaced with, respectively:
         //
-        //     OpCode::Break(end_of_loop, true)
-        //     OpCode::Continue(start_of_loop, true)
+        //     OpCode::Jump(end_of_loop)
+        //     OpCode::Loop(start_of_loop)
         for code in self.chunk().code[loop_start..last_code].iter_mut() {
             match code {
                 OpCode::Break(initial) => *code = OpCode::Jump(last_code - *initial + 1),
