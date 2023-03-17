@@ -112,6 +112,9 @@ assert mammal.action() == 'Coco snuggles';
 
 var cat = Cat('Coco');
 assert cat.action() == 'Coco snuggles and purrs';
+
+cat.name = 'Melvin';
+assert cat.action() == 'Melvin snuggles and purrs';
 println colors.green(' ok');
 
 

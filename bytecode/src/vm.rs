@@ -222,13 +222,14 @@ impl VirtualMachine {
             ( $op:tt, $op_char:expr, $output:expr ) => {
                 {
                     let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
+                    let left = self.stack.last_mut().unwrap();
 
-                    let (Value::Number(b), Value::Number(a)) = (&*right.borrow(), &*left.borrow()) else {
-                        err!(&format!("comparison '{}' only operates on numbers", $op_char));
+                    let result = match (&*right.borrow(), &*left.borrow()) {
+                        (Value::Number(b), Value::Number(a)) => a $op b,
+                        _ => err!(&format!("comparison '{}' only operates on numbers", $op_char)),
                     };
 
-                    self.stack_push_value($output(a $op b));
+                    *left = ValuePtr::new($output(result));
                 }
             };
         }
@@ -360,8 +361,7 @@ impl VirtualMachine {
                         Value::Object(Object::Instance(instance)) => {
                             match instance.fields.get(&**prop_name) {
                                 Some(prop) => {
-                                    self.pop_stack()?;
-                                    self.stack.push(prop.clone());
+                                    *self.stack.last_mut().unwrap() = prop.clone();
                                 },
                                 None => self.bind_method(&instance.class, prop_name)?,
                             };
@@ -369,8 +369,7 @@ impl VirtualMachine {
                         Value::Object(Object::Module(module)) => {
                             match module.map.get(&**prop_name) {
                                 Some(prop) => {
-                                    self.pop_stack()?;
-                                    self.stack.push(prop.clone());
+                                    *self.stack.last_mut().unwrap() = prop.clone();
                                 },
                                 None => err!(&format!(
                                     "module '{}' has no property '{}'",
@@ -392,10 +391,9 @@ impl VirtualMachine {
                     };
 
                     let value = self.pop_stack()?;
-                    self.pop_stack()?;
 
                     instance.fields.insert(*prop_name.clone(), value.clone());
-                    self.stack.push(value);
+                    *self.stack.last_mut().unwrap() = value;
                 },
                 OpCode::GetSuper(index) => {
                     let instance_ptr = self.pop_stack()?;
@@ -550,12 +548,9 @@ impl VirtualMachine {
                 },
                 OpCode::Add => {
                     let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
+                    let left = self.stack.last_mut().unwrap();
 
-                    let right = right.borrow();
-                    let left = left.borrow();
-
-                    let output = match (&*right, &*left) {
+                    let output = match (&*right.borrow(), &*left.borrow()) {
                         (Value::Object(Object::List(b)), Value::Object(Object::List(a))) => {
                             let mut new_list: Vec<ValuePtr> = *a.clone();
                             new_list.extend_from_slice(b);
@@ -575,7 +570,7 @@ impl VirtualMachine {
                         _ => err!("operation '+' only operates on numbers and strings"),
                     };
 
-                    self.stack_push_value(output);
+                    *left = ValuePtr::new(output);
                 },
                 OpCode::Subtract => binary! { -, '-', Value::Number },
                 OpCode::Modulo => binary! { %, '%', Value::Number },

@@ -6,7 +6,7 @@ fn main() {
     var a = "initial";
 
     fn set() { a = "updated"; }
-    fn get() { print a; }
+    fn get() { println a; }
 
     global_set = set;
     global_get = get;
@@ -14,9 +14,11 @@ fn main() {
 }
 
 main();
+global_get();
 global_set();
 global_get();
 main();
+global_get();
 global_set();
 global_get();
 
@@ -27,7 +29,7 @@ fn other_main() {
   {
     var a = "one";
     fn one() {
-      print a;
+      println a;
     }
     global_one = one;
   }
@@ -35,7 +37,7 @@ fn other_main() {
   {
     var a = "two";
     fn two() {
-      print a;
+      println a;
     }
     global_two = two;
   }
