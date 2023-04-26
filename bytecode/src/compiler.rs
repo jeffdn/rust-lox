@@ -74,13 +74,13 @@ struct ClassCompiler {
     pub has_superclass: bool,
 }
 
-pub struct Compiler {
+pub struct Compiler<'a> {
     compilers: Vec<CompilerNode>,
     classes: Vec<ClassCompiler>,
 
     current: Token,
     previous: Token,
-    scanner: Scanner,
+    scanner: Scanner<'a>,
 
     panic_mode: bool,
 }
@@ -92,8 +92,6 @@ struct CompilerNode {
     scope_depth: usize,
     function: Function,
 }
-
-type FixRule = fn(&mut Compiler, bool) -> LoxResult<()>;
 
 impl CompilerNode {
     pub fn new(function_type: FunctionType) -> CompilerNode {
@@ -132,7 +130,7 @@ impl CompilerNode {
     }
 }
 
-impl Compiler {
+impl<'a> Compiler<'a> {
     pub fn new(source: &str) -> Compiler {
         Compiler {
             compilers: vec![CompilerNode::new(FunctionType::Script)],
@@ -157,7 +155,7 @@ impl Compiler {
     fn init_compiler(&mut self, function_type: FunctionType) {
         let mut compiler = CompilerNode::new(function_type);
 
-        compiler.function.name = self.scanner.get_string(&self.previous);
+        compiler.function.name = self.scanner.get_string(&self.previous).into();
 
         self.compilers.push(compiler);
     }
@@ -379,7 +377,7 @@ impl Compiler {
         let name_constant = self.identifier_constant(&previous)?;
         let name = self.scanner.get_string(&previous);
 
-        let function_type = match name.as_str() {
+        let function_type = match name {
             "init" => FunctionType::Initializer,
             _ => FunctionType::Method,
         };
@@ -586,7 +584,7 @@ impl Compiler {
     }
 
     fn import_statement(&mut self) -> LoxResult<()> {
-        let path = self.scanner.get_string_literal(&self.current);
+        let path = self.scanner.get_string_literal(&self.current).into();
         self.consume(
             TokenType::String,
             "expect '\"/path/to/file.lox\"' after 'import '",
@@ -956,7 +954,7 @@ impl Compiler {
     }
 
     fn string(&mut self, _can_assign: bool) -> LoxResult<()> {
-        let value = self.scanner.get_string_literal(&self.previous);
+        let value = self.scanner.get_string_literal(&self.previous).to_string();
 
         let constant = self.make_constant(Value::Object(Object::String(Box::new(value))))?;
 
@@ -1103,25 +1101,29 @@ impl Compiler {
         }
     }
 
-    fn get_prefix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
+    fn run_prefix_rule(&mut self, token_type: &TokenType, can_assign: bool) -> LoxResult<()> {
         match token_type {
-            &TokenType::LeftBrace => Some(Compiler::map),
-            &TokenType::LeftBracket => Some(Compiler::list),
-            &TokenType::LeftParen => Some(Compiler::grouping),
-            &TokenType::Minus | &TokenType::Bang => Some(Compiler::unary),
-            &TokenType::Number => Some(Compiler::number),
-            &TokenType::String => Some(Compiler::string),
-            &TokenType::Nil | &TokenType::True | &TokenType::False => Some(Compiler::literal),
-            &TokenType::Identifier => Some(Compiler::variable),
-            &TokenType::This => Some(Compiler::this_),
-            &TokenType::Break => Some(Compiler::break_),
-            &TokenType::Continue => Some(Compiler::continue_),
-            &TokenType::Super => Some(Compiler::super_),
-            _ => None,
+            &TokenType::LeftBrace => self.map(can_assign),
+            &TokenType::LeftBracket => self.list(can_assign),
+            &TokenType::LeftParen => self.grouping(can_assign),
+            &TokenType::Minus | &TokenType::Bang => self.unary(can_assign),
+            &TokenType::Number => self.number(can_assign),
+            &TokenType::String => self.string(can_assign),
+            &TokenType::Nil | &TokenType::True | &TokenType::False => self.literal(can_assign),
+            &TokenType::Identifier => self.variable(can_assign),
+            &TokenType::This => self.this_(can_assign),
+            &TokenType::Break => self.break_(can_assign),
+            &TokenType::Continue => self.continue_(can_assign),
+            &TokenType::Super => self.super_(can_assign),
+            _ => self.error("expect expression -- prefix"),
         }
     }
 
-    fn get_infix_rule(&mut self, token_type: &TokenType) -> Option<FixRule> {
+    fn run_infix_rule(
+        &mut self,
+        token_type: &TokenType,
+        can_assign: bool,
+    ) -> Option<LoxResult<()>> {
         match token_type {
             &TokenType::Minus
             | &TokenType::Percent
@@ -1135,12 +1137,12 @@ impl Compiler {
             | &TokenType::In
             | &TokenType::NotIn
             | &TokenType::Less
-            | &TokenType::LessEqual => Some(Compiler::binary),
-            &TokenType::Dot => Some(Compiler::dot),
-            &TokenType::And => Some(Compiler::and_),
-            &TokenType::Or => Some(Compiler::or_),
-            &TokenType::LeftParen => Some(Compiler::call),
-            &TokenType::LeftBracket => Some(Compiler::index),
+            | &TokenType::LessEqual => Some(self.binary(can_assign)),
+            &TokenType::Dot => Some(self.dot(can_assign)),
+            &TokenType::And => Some(self.and_(can_assign)),
+            &TokenType::Or => Some(self.or_(can_assign)),
+            &TokenType::LeftParen => Some(self.call(can_assign)),
+            &TokenType::LeftBracket => Some(self.index(can_assign)),
             _ => None,
         }
     }
@@ -1148,15 +1150,10 @@ impl Compiler {
     fn parse_precedence(&mut self, precedence: &Precedence) -> LoxResult<()> {
         self.advance()?;
 
-        let prefix_rule = match self.get_prefix_rule(&self.previous.token_type.clone()) {
-            Some(rule) => rule,
-            None => return self.error("expect expression -- prefix"),
-        };
-
         let precedence_val = precedence.clone() as u8;
         let can_assign = precedence_val <= Precedence::Assignment as u8;
 
-        prefix_rule(self, can_assign)?;
+        self.run_prefix_rule(&self.previous.token_type.clone(), can_assign)?;
 
         while precedence_val <= Precedence::for_token_type(&self.current.token_type) as u8 {
             self.advance()?;
@@ -1167,11 +1164,10 @@ impl Compiler {
                 self.skip()?;
             }
 
-            let Some(infix_rule) = self.get_infix_rule(&self.previous.token_type.clone()) else {
-                break
+            match self.run_infix_rule(&self.previous.token_type.clone(), can_assign) {
+                Some(rule) => rule?,
+                None => break,
             };
-
-            infix_rule(self, can_assign)?;
 
             if can_assign && self.token_type_matches(&TokenType::Equal)? {
                 self.error("invalid assignment target")?;
@@ -1185,7 +1181,7 @@ impl Compiler {
         let constant = match token.token_type {
             TokenType::This => "this".into(),
             TokenType::Super => "super".into(),
-            _ => self.scanner.get_string(token),
+            _ => self.scanner.get_string(token).into(),
         };
 
         self.make_constant(Value::Object(Object::String(Box::new(constant))))

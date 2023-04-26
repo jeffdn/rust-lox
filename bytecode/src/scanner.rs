@@ -3,16 +3,18 @@ use crate::{
     tokens::{Token, TokenType},
 };
 
-pub struct Scanner {
+pub struct Scanner<'a> {
+    source: &'a str,
     chars: Vec<char>,
     start: usize,
     current: usize,
     line: usize,
 }
 
-impl Scanner {
+impl<'a> Scanner<'a> {
     pub fn new(source: &str) -> Scanner {
         Scanner {
+            source,
             chars: source.chars().collect(),
             start: 0,
             current: 0,
@@ -244,15 +246,11 @@ impl Scanner {
         self.chars[self.current - 1]
     }
 
-    pub fn get_string(&self, token: &Token) -> String {
-        self.chars[token.start..(token.start + token.length)]
-            .iter()
-            .collect()
+    pub fn get_string(&self, token: &Token) -> &'a str {
+        &self.source[token.start..(token.start + token.length)]
     }
 
-    pub fn get_string_literal(&self, token: &Token) -> String {
-        self.chars[(token.start + 1)..(token.start + token.length - 1)]
-            .iter()
-            .collect()
+    pub fn get_string_literal(&self, token: &Token) -> &'a str {
+        &self.source[(token.start + 1)..(token.start + token.length - 1)]
     }
 }
