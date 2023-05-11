@@ -1,0 +1,6 @@
+print 2 + 2;
+print 456 - 123;
+print [true, 123];
+print [123, 456] + [-321, -654];
+print !false;
+print {123: true, false: 456};

@@ -225,7 +225,7 @@ impl Parser {
             Err(_) => {
                 self.synchronize();
                 Ok(None)
-            }
+            },
         }
     }
 
@@ -382,20 +382,20 @@ impl Parser {
                         name,
                         expression: Box::new(value),
                     })
-                }
+                },
                 Expression::Get { name, object } => {
                     return Ok(Expression::Set {
                         name,
                         object,
                         value: Box::new(value),
                     })
-                }
+                },
                 Expression::Index { item, index, slice } => {
                     return Ok(Expression::IndexedAssignment {
                         indexed_item: Box::new(Expression::Index { item, index, slice }),
                         expression: Box::new(value),
                     });
-                }
+                },
                 _ => return Err(self.error(&equals, "invalid assignment target".to_string())),
             }
         } else if self.token_type_matches(&[TokenType::MinusEqual, TokenType::PlusEqual]) {
@@ -418,7 +418,7 @@ impl Parser {
                             right: Box::new(value),
                         }),
                     });
-                }
+                },
                 Expression::Get { name, object } => {
                     return Ok(Expression::Set {
                         name: name.clone(),
@@ -429,7 +429,7 @@ impl Parser {
                             right: Box::new(value),
                         }),
                     })
-                }
+                },
                 Expression::Index { item, index, slice } => {
                     return Ok(Expression::IndexedAssignment {
                         indexed_item: Box::new(Expression::Index {
@@ -443,7 +443,7 @@ impl Parser {
                             right: Box::new(value),
                         }),
                     });
-                }
+                },
                 _ => return Err(self.error(&token, "invalid assignment target".to_string())),
             }
         }
@@ -618,7 +618,7 @@ impl Parser {
         Ok(Expression::Call {
             callee: Box::new(callee),
             paren,
-            arguments,
+            arguments: Box::new(arguments),
         })
     }
 
@@ -640,15 +640,18 @@ impl Parser {
             "expect ']' after list items".to_string(),
         )?;
 
-        Ok(Expression::List { expressions: list })
+        Ok(Expression::List {
+            expressions: Box::new(list),
+        })
     }
 
     fn finish_map(&mut self) -> Result<Expression, LoxError> {
-        let mut map: BTreeMap<Expression, Expression> = BTreeMap::new();
+        let mut items: Vec<Expression> = Vec::new();
 
         if !self.check_current_token(&TokenType::RightBrace) {
             loop {
                 let key = self.expression()?;
+                items.push(key);
 
                 self.consume(
                     &TokenType::Colon,
@@ -656,8 +659,7 @@ impl Parser {
                 )?;
 
                 let value = self.expression()?;
-
-                map.insert(key, value);
+                items.push(value);
 
                 if !self.token_type_matches(&[TokenType::Comma]) {
                     break;
@@ -671,7 +673,7 @@ impl Parser {
         )?;
 
         Ok(Expression::Map {
-            expression_map: map,
+            expressions: Box::new(items),
         })
     }
 
@@ -806,8 +808,8 @@ impl Parser {
                 | TokenType::Print
                 | TokenType::Return => {
                     return;
-                }
-                _ => {}
+                },
+                _ => {},
             };
 
             self.advance();

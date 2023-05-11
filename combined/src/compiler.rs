@@ -4,7 +4,7 @@ use crate::{
     chunk::{Chunk, OpCode},
     errors::{LoxError, LoxResult},
     expressions::{Expression, ExpressionVisitor},
-    object::{Function, FunctionType, Object, UpValue},
+    object::{Function, FunctionType, Object, UpValue, ValueMap},
     statements::{Statement, StatementVisitor},
     tokens::{Literal, TokenType},
     value::Value,
@@ -475,16 +475,21 @@ impl ExpressionVisitor<()> for Compiler {
             return Err(LoxError::AstError);
         };
 
+        for expression in expressions.iter() {
+            self.evaluate(expression)?;
+        }
+
+        match expressions.is_empty() {
+            true => {
+                let constant = self.make_constant(Value::Object(Object::List(Box::new(
+                    Vec::with_capacity(16),
+                ))))?;
+                self.emit_byte(OpCode::Constant(constant))?;
+            },
+            false => self.emit_byte(OpCode::BuildList(expressions.len()))?,
+        };
+
         Ok(())
-
-        // let mut list: Vec<LoxEntity> = vec![];
-
-        // for expression in expressions.iter() {
-        //     let value = self.evaluate(expression)?;
-        //     list.push(value);
-        // }
-
-        // Ok(LoxEntity::List(list))
     }
 
     fn visit_literal(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -534,25 +539,26 @@ impl ExpressionVisitor<()> for Compiler {
     }
 
     fn visit_map(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Map { expression_map } = expr else {
+        let Expression::Map { expressions } = expr else {
             return Err(LoxError::AstError);
         };
 
+        for expression in expressions.iter() {
+            self.evaluate(expression)?;
+        }
+
+        match expressions.is_empty() {
+            true => {
+                let constant =
+                    self.make_constant(Value::Object(Object::Map(Box::new(ValueMap {
+                        map: HashMap::with_capacity(16),
+                    }))))?;
+                self.emit_byte(OpCode::Constant(constant))?;
+            },
+            false => self.emit_byte(OpCode::BuildMap(expressions.len()))?,
+        };
+
         Ok(())
-
-        // let mut map: HashMap<Literal, LoxEntity> = HashMap::new();
-
-        // for (key, value) in expression_map.iter() {
-        //     let key = match self.evaluate(key)? {
-        //         LoxEntity::Literal(literal) => literal,
-        //         _ => return Err(LoxError::AstError),
-        //     };
-        //     let value = self.evaluate(value)?;
-
-        //     map.insert(key, value);
-        // }
-
-        // Ok(LoxEntity::Map(map))
     }
 
     fn visit_set(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -592,31 +598,13 @@ impl ExpressionVisitor<()> for Compiler {
             return Err(LoxError::AstError);
         };
 
-        Ok(())
+        self.evaluate(right)?;
 
-        // match operator.token_type {
-        //     TokenType::Minus => match self.evaluate(right)? {
-        //         LoxEntity::Literal(outer_right) => match outer_right {
-        //             Literal::Number(number) => Ok(LoxEntity::Literal(Literal::Number(-number))),
-        //             _ => Err(LoxError::TypeError(format!(
-        //                 "expected number, got {}",
-        //                 outer_right
-        //             ))),
-        //         },
-        //         _ => Err(LoxError::TypeError(
-        //             "expected number, got something else".into(),
-        //         )),
-        //     },
-        //     TokenType::Bang => match self.evaluate(right)? {
-        //         LoxEntity::Literal(right) => Ok(LoxEntity::Literal(Literal::Boolean(
-        //             !self._is_truthy(&right)?,
-        //         ))),
-        //         _ => Err(LoxError::TypeError(
-        //             "expected value, got something else".to_string(),
-        //         )),
-        //     },
-        //     _ => Err(LoxError::AstError),
-        // }
+        match operator.token_type {
+            TokenType::Minus => self.emit_byte(OpCode::Negate),
+            TokenType::Bang => self.emit_byte(OpCode::Not),
+            _ => unreachable!(),
+        }
     }
 
     fn visit_variable(&mut self, expr: &Expression) -> LoxResult<()> {

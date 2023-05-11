@@ -1,10 +1,6 @@
 use std::boxed::Box;
-use std::collections::BTreeMap;
 
-use crate::{
-    errors::LoxError,
-    tokens,
-};
+use crate::{errors::LoxError, tokens};
 
 pub trait ExpressionVisitor<T> {
     fn accept_expression(&mut self, expr: &Expression) -> Result<T, LoxError> {
@@ -56,7 +52,7 @@ pub enum Expression {
     Call {
         callee: Box<Expression>,
         paren: tokens::Token,
-        arguments: Vec<Expression>,
+        arguments: Box<Vec<Expression>>,
     },
     Get {
         name: tokens::Token,
@@ -75,7 +71,7 @@ pub enum Expression {
         expression: Box<Expression>,
     },
     List {
-        expressions: Vec<Expression>,
+        expressions: Box<Vec<Expression>>,
     },
     Literal {
         value: tokens::Literal,
@@ -86,7 +82,7 @@ pub enum Expression {
         right: Box<Expression>,
     },
     Map {
-        expression_map: BTreeMap<Expression, Expression>,
+        expressions: Box<Vec<Expression>>,
     },
     Set {
         name: tokens::Token,
