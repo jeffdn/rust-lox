@@ -12,6 +12,8 @@ pub enum LoxError {
     SyntaxError(usize, String),
 }
 
+pub type LoxResult<T> = Result<T, LoxError>;
+
 impl fmt::Display for LoxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {

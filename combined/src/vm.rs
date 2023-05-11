@@ -9,6 +9,8 @@ use crate::{
         BoundMethod, Class, Closure, Instance, Module, NativeFn, NativeFunction, Object, UpValue,
         UpValuePtr, ValueIter, ValueMap,
     },
+    parser::Parser,
+    scanner::Scanner,
     value::{Value, ValuePtr},
 };
 
@@ -83,31 +85,54 @@ impl VirtualMachine {
     }
 
     pub fn interpret(&mut self, input: &str) -> LoxResult<()> {
-        let mut compiler = Compiler::new(input);
-        let function = compiler.compile()?;
+        let mut scanner = Scanner::new(input.into());
+        let (tokens, errors) = scanner.scan_tokens();
+        let mut parser = Parser::new(tokens);
+        let parse_output = parser.parse();
 
-        let closure = ValuePtr::new(obj!(
-            Closure,
-            Closure {
-                upvalues: Vec::with_capacity(STACK_MAX),
-                function,
-                obj: None,
+        match parse_output {
+            Ok(output) => {
+                let mut compiler = Compiler::new();
+
+                let function = compiler.compile(output)?;
+
+                let closure = ValuePtr::new(obj!(
+                    Closure,
+                    Closure {
+                        upvalues: Vec::with_capacity(STACK_MAX),
+                        function,
+                        obj: None,
+                    }
+                ));
+
+                self.stack.push(closure.clone());
+                self.call(closure, 0)?;
+
+                self.define_native("len", builtin::_len, 1);
+                self.define_native("range", builtin::_range, 2);
+                self.define_native("sqrt", builtin::_sqrt, 1);
+                self.define_native("str", builtin::_str, 1);
+                self.define_native("time", builtin::_time, 0);
+                self.define_native("type", builtin::_type, 1);
+
+                self.globals.insert("colors".into(), self.build_colors());
+
+                self.run()?;
+            },
+            Err(e) => {
+                println!("parse errors:");
+                println!(" - {}", e);
+            },
+        };
+
+        if !errors.is_empty() {
+            println!("syntax errors:");
+            for error in errors.iter() {
+                println!(" - {}", error);
             }
-        ));
+        }
 
-        self.stack.push(closure.clone());
-        self.call(closure, 0)?;
-
-        self.define_native("len", builtin::_len, 1);
-        self.define_native("range", builtin::_range, 2);
-        self.define_native("sqrt", builtin::_sqrt, 1);
-        self.define_native("str", builtin::_str, 1);
-        self.define_native("time", builtin::_time, 0);
-        self.define_native("type", builtin::_type, 1);
-
-        self.globals.insert("colors".into(), self.build_colors());
-
-        self.run()
+        Ok(())
     }
 
     fn build_colors(&self) -> ValuePtr {

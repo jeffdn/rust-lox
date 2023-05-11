@@ -1,50 +1,26 @@
+pub mod builtin;
+pub mod chunk;
+pub mod compiler;
 pub mod errors;
 pub mod expressions;
+pub mod object;
 pub mod parser;
-pub mod resolver;
 pub mod scanner;
 pub mod statements;
 pub mod tokens;
+pub mod value;
+pub mod vm;
 
 use std::{
     env, fs,
     io::{self, Write},
 };
 
-use crate::{errors::LoxError, parser::Parser, resolver::Resolver, scanner::Scanner};
+use crate::{errors::LoxError, vm::VirtualMachine};
 
 fn eval(source: String) -> Result<(), LoxError> {
-    let mut scanner = Scanner::new(source);
-    let (tokens, errors) = scanner.scan_tokens();
-    let mut parser = Parser::new(tokens);
-    let parse_output = parser.parse();
-
-    match parse_output {
-        Ok(output) => {
-            let mut resolver = Resolver::new();
-            resolver.resolve(&output)?;
-
-            let mut interpreter = resolver.interpreter;
-
-            match interpreter.interpret(output) {
-                Ok(_) => {}
-                Err(e) => println!("{}", e),
-            };
-        }
-        Err(e) => {
-            println!("parse errors:");
-            println!(" - {}", e);
-        }
-    };
-
-    if !errors.is_empty() {
-        println!("syntax errors:");
-        for error in errors.iter() {
-            println!(" - {}", error);
-        }
-    }
-
-    Ok(())
+    let mut vm = VirtualMachine::new();
+    vm.interpret(&source)
 }
 
 fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
@@ -84,6 +60,6 @@ fn main() -> Result<(), LoxError> {
         _ => {
             println!("usage: lox [script]");
             Err(LoxError::UsageError)
-        }
+        },
     }
 }
