@@ -1,6 +1,25 @@
-print 2 + 2;
-print 456 - 123;
-print [true, 123];
-print [123, 456] + [-321, -654];
-print !false;
-print {123: true, false: 456};
+// print 2 + 2;
+// print 456 - 123;
+// print [true, 123];
+// print [123, 456, "abc"] + [-321, -654];
+// print !false;
+// print {123: true, false: 456};
+// print 123 in [234, 123, 456];
+// print "123" in [234, 123, 456];
+// print 123 in {false: 456, 123: true};
+
+if (3 < 4 and true) {
+    print "hi";
+} else {
+    print "bye";
+};
+
+// var i = 4;
+// while (i > 0) {
+//     i = i - 1;
+//     print "ruh roh";
+// }
+
+var foo = "shenanigans";
+
+print foo;

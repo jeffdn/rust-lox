@@ -1,20 +1,20 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    chunk::{Chunk, OpCode},
+    chunk::{Chunk, OpCode, UpValue},
     errors::{LoxError, LoxResult},
     expressions::{Expression, ExpressionVisitor},
-    object::{Function, FunctionType, Object, UpValue, ValueMap},
+    object::{Function, FunctionType, Object, ValueMap},
     statements::{Statement, StatementVisitor},
-    tokens::{Literal, TokenType},
+    tokens::{Literal, Token, TokenType},
     value::Value,
 };
 
-// struct Local {
-//     name: Token,
-//     depth: Option<usize>,
-//     is_captured: bool,
-// }
+struct Local {
+    name: Token,
+    depth: Option<usize>,
+    is_captured: bool,
+}
 
 #[derive(Default)]
 struct ClassCompiler {
@@ -29,8 +29,8 @@ pub struct Compiler {
 }
 
 struct CompilerNode {
-    // locals: Vec<Local>,
-    // local_count: usize,
+    locals: Vec<Local>,
+    local_count: usize,
     upvalues: Vec<UpValue>,
     scope_depth: usize,
     function: Function,
@@ -39,8 +39,8 @@ struct CompilerNode {
 impl CompilerNode {
     pub fn new(function_type: FunctionType) -> CompilerNode {
         let mut node = CompilerNode {
-            // locals: Vec::with_capacity(256),
-            // local_count: 1,
+            locals: Vec::with_capacity(256),
+            local_count: 1,
             upvalues: Vec::with_capacity(256),
             scope_depth: 0,
             function: Function {
@@ -58,16 +58,16 @@ impl CompilerNode {
             _ => (TokenType::Skip, 0),
         };
 
-        // node.locals.push(Local {
-        //     name: Token {
-        //         token_type,
-        //         length,
-        //         start: 0,
-        //         line: 0,
-        //     },
-        //     depth: Some(0),
-        //     is_captured: false,
-        // });
+        node.locals.push(Local {
+            name: Token {
+                token_type,
+                lexeme: "".into(),
+                literal: None,
+                line: 0,
+            },
+            depth: Some(0),
+            is_captured: false,
+        });
 
         node
     }
@@ -203,6 +203,38 @@ impl Compiler {
         Ok(())
     }
 
+    fn emit_loop(&mut self, loop_start: usize) -> LoxResult<()> {
+        let last_code = self.chunk().len();
+
+        self.emit_byte(OpCode::Loop(last_code - loop_start + 1))?;
+
+        // Now, look through all instructions emitted between the start of the loop and
+        // the loop instructions. Any that take the shape of either:
+        //
+        //     OpCode::Break(position)
+        //     OpCode::Continue(position)
+        //
+        //  Will be replaced with, respectively:
+        //
+        //     OpCode::Jump(end_of_loop)
+        //     OpCode::Loop(start_of_loop)
+        for code in self.chunk().code[loop_start..last_code].iter_mut() {
+            match code {
+                OpCode::Break(initial) => *code = OpCode::Jump(last_code - *initial + 1),
+                OpCode::Continue(initial) => *code = OpCode::Loop(*initial - loop_start + 1),
+                _ => {},
+            };
+        }
+
+        Ok(())
+    }
+
+    fn emit_jump(&mut self, byte: OpCode) -> LoxResult<usize> {
+        self.chunk().write(byte, 0);
+
+        Ok(self.chunk().len())
+    }
+
     fn emit_return(&mut self) -> LoxResult<()> {
         match self.current_function().function_type {
             FunctionType::Initializer => self.emit_byte(OpCode::GetLocal(0))?,
@@ -212,6 +244,19 @@ impl Compiler {
         self.emit_byte(OpCode::Return)
     }
 
+    fn patch_jump(&mut self, offset: usize) -> LoxResult<()> {
+        let jump = self.chunk().len() - offset;
+
+        self.chunk().code[offset - 1] = match self.chunk().code[offset - 1] {
+            OpCode::Jump(_) => OpCode::Jump(jump),
+            OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump),
+            OpCode::IteratorNext(index, _) => OpCode::IteratorNext(index, jump),
+            _ => return Err(LoxError::RuntimeError("unreachable".into())),
+        };
+
+        Ok(())
+    }
+
     fn execute(&mut self, stmt: &Statement) -> LoxResult<()> {
         self.accept_statement(stmt)
     }
@@ -219,35 +264,192 @@ impl Compiler {
     fn evaluate(&mut self, expr: &Expression) -> LoxResult<()> {
         self.accept_expression(expr)
     }
+
+    fn identifier_constant(&mut self, token: &Token) -> LoxResult<usize> {
+        let constant = match token.token_type {
+            TokenType::This => "this".into(),
+            TokenType::Super => "super".into(),
+            _ => token.lexeme.clone(),
+        };
+
+        self.make_constant(Value::Object(Object::String(Box::new(constant))))
+    }
+
+    fn parse_variable(&mut self, name: &Token) -> LoxResult<usize> {
+        self.declare_variable(name)?;
+
+        if self.compiler().scope_depth > 0 {
+            return Ok(0);
+        }
+
+        self.identifier_constant(name)
+    }
+
+    fn add_local(&mut self, name: &Token) -> LoxResult<()> {
+        self.compiler_mut().local_count += 1;
+        self.compiler_mut().locals.push(Local {
+            name: name.clone(),
+            depth: None,
+            is_captured: false,
+        });
+
+        Ok(())
+    }
+
+    fn declare_variable(&mut self, name: &Token) -> LoxResult<()> {
+        if self.compiler().scope_depth == 0 {
+            return Ok(());
+        }
+
+        let local = self
+            .compiler()
+            .locals
+            .iter()
+            .find(|local| &local.name == name);
+
+        if local.is_some() {
+            self.error("already a variable with this name in this scope")?;
+        }
+
+        self.add_local(name)?;
+
+        Ok(())
+    }
+
+    fn error(&self, message: &str) -> LoxResult<()> {
+        Err(LoxError::ResolutionError(message.into()))
+    }
+
+    fn mark_initialized(&mut self) -> LoxResult<()> {
+        match self.compiler().scope_depth {
+            0 => Ok(()),
+            _ => {
+                let scope_depth = self.compiler().scope_depth;
+                match self.compiler_mut().locals.last_mut() {
+                    Some(mut local) => local.depth = Some(scope_depth),
+                    None => self.error("this should never happen")?,
+                };
+
+                Ok(())
+            },
+        }
+    }
+
+    fn define_variable(&mut self, global: usize) -> LoxResult<()> {
+        if self.compiler().scope_depth > 0 {
+            self.mark_initialized()?;
+            return Ok(());
+        }
+
+        self.emit_byte(OpCode::DefineGlobal(global))
+    }
+
+    fn resolve_local(&mut self, token: &Token, depth: usize) -> LoxResult<usize> {
+        match self
+            .compiler_at(depth)
+            .locals
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, x)| &x.name == token)
+        {
+            Some((idx, local)) => {
+                if local.depth.is_none() {
+                    return Err(self
+                        .error("can't read a local variable in its own initializer")
+                        .expect_err(""));
+                }
+
+                Ok(idx)
+            },
+            None => Err(LoxError::ResolutionError(format!(
+                "unable to find local variable named {}",
+                token.lexeme
+            ))),
+        }
+    }
+
+    fn named_variable(
+        &mut self,
+        token: &Token,
+        can_assign: bool,
+        expr: Option<&Expression>,
+    ) -> LoxResult<()> {
+        let (get_op, set_op) = match self.resolve_local(token, 0) {
+            Ok(index) => (OpCode::GetLocal(index), OpCode::SetLocal(index)),
+            Err(_) => match self.resolve_upvalue(token, 0) {
+                Ok(index) => (OpCode::GetUpValue(index), OpCode::SetUpValue(index)),
+                Err(_) => {
+                    let index = self.identifier_constant(token)?;
+                    (OpCode::GetGlobal(index), OpCode::SetGlobal(index))
+                },
+            },
+        };
+
+        self.identifier_constant(token)?;
+
+        match (can_assign, expr) {
+            (true, Some(expr)) => {
+                self.evaluate(expr)?;
+                self.emit_byte(set_op)
+            },
+            _ => self.emit_byte(get_op),
+        }
+    }
+
+    fn add_upvalue(&mut self, index: usize, is_local: bool, depth: usize) -> LoxResult<usize> {
+        if let Some(uv) = self
+            .compiler_at_mut(depth)
+            .upvalues
+            .iter()
+            .find(|uv| uv.is_local == is_local && uv.index == index)
+        {
+            return Ok(uv.index);
+        }
+
+        self.compiler_at_mut(depth)
+            .upvalues
+            .push(UpValue { is_local, index });
+
+        self.compiler_at_mut(depth).function.upvalue_count += 1;
+
+        Ok(index)
+    }
+
+    fn resolve_upvalue(&mut self, token: &Token, depth: usize) -> LoxResult<usize> {
+        if depth + 2 >= self.compilers.len() {
+            return Err(LoxError::ResolutionError(
+                "unable to resolve upvalue: too shallow".into(),
+            ));
+        }
+
+        if let Ok(index) = self.resolve_local(token, depth + 1) {
+            self.compiler_at_mut(depth + 1).locals[index].is_captured = true;
+            return self.add_upvalue(index, true, depth);
+        }
+
+        if let Ok(index) = self.resolve_upvalue(token, depth + 1) {
+            return self.add_upvalue(index, false, depth);
+        }
+
+        Err(LoxError::ResolutionError(
+            "unable to resolve upvalue".into(),
+        ))
+    }
 }
 
 impl ExpressionVisitor<()> for Compiler {
     fn visit_assignment(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Assignment { name, expression } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        Ok(())
-        // let value = self.evaluate(expression)?;
-        // let distance = self.locals.borrow().get(expr);
-
-        // match distance {
-        //     Ok(_) => self
-        //         .environment
-        //         .borrow_mut()
-        //         .assign(name.lexeme.clone(), value.clone())?,
-        //     Err(_) => self
-        //         .globals
-        //         .borrow_mut()
-        //         .assign(name.lexeme.clone(), value.clone())?,
-        // };
-
-        // Ok(value)
+        self.named_variable(name, true, Some(expression))
     }
 
     fn visit_binary(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Binary { left, operator, right } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         self.evaluate(left)?;
@@ -285,7 +487,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_call(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Call { callee, paren: _, arguments } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         Ok(())
@@ -327,7 +529,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_get(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Get { name, object } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         Ok(())
@@ -351,7 +553,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_index(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Index { item, index, slice } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         Ok(())
@@ -408,7 +610,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_indexed_assignment(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::IndexedAssignment { indexed_item, expression } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         Ok(())
@@ -472,7 +674,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_list(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::List { expressions } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         for expression in expressions.iter() {
@@ -516,31 +718,35 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_logical(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Logical { left, operator, right } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        Ok(())
+        self.evaluate(left)?;
 
-        // match self.evaluate(left)? {
-        //     LoxEntity::Literal(inner) => {
-        //         let truthy_left = self.is_truthy(&Expression::Literal {
-        //             value: inner.clone(),
-        //         })?;
+        match operator.token_type {
+            TokenType::And => {
+                let end_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+                self.emit_byte(OpCode::Pop)?;
+                self.evaluate(right)?;
+                self.patch_jump(end_jump)
+            },
+            TokenType::Or => {
+                let else_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+                let and_jump = self.emit_jump(OpCode::Jump(0))?;
 
-        //         match (truthy_left, &operator.token_type) {
-        //             (true, TokenType::Or) | (false, TokenType::And) => {
-        //                 Ok(LoxEntity::Literal(inner))
-        //             }
-        //             _ => Ok(self.evaluate(right)?),
-        //         }
-        //     }
-        //     _ => Err(LoxError::AstError),
-        // }
+                self.patch_jump(else_jump)?;
+                self.emit_byte(OpCode::Pop)?;
+
+                self.evaluate(right)?;
+                self.patch_jump(and_jump)
+            },
+            _ => unreachable!(),
+        }
     }
 
     fn visit_map(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Map { expressions } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         for expression in expressions.iter() {
@@ -563,7 +769,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_set(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Set { name, object, value } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         Ok(())
@@ -595,7 +801,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_unary(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Unary { operator, right } = expr else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         self.evaluate(right)?;
@@ -608,32 +814,31 @@ impl ExpressionVisitor<()> for Compiler {
     }
 
     fn visit_variable(&mut self, expr: &Expression) -> LoxResult<()> {
-        Ok(())
-        // match expr {
-        //     Expression::Variable { name } => self.look_up_variable(name, expr),
-        //     _ => Err(LoxError::AstError),
-        // }
+        match expr {
+            Expression::Variable { name } => self.named_variable(&name, false, None),
+            _ => unreachable!(),
+        }
     }
 }
 
 impl StatementVisitor for Compiler {
     fn visit_block(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Block { statements } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        Ok(())
+        self.begin_scope()?;
 
-        // let new_env = Rc::new(RefCell::new(Environment::new(Some(
-        //     self.environment.clone(),
-        // ))));
+        for statement in statements.iter() {
+            self.execute(statement)?;
+        }
 
-        // self.execute_block(statements, new_env)
+        self.end_scope()
     }
 
     fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Class { name, methods } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         // self.environment
@@ -672,16 +877,16 @@ impl StatementVisitor for Compiler {
 
     fn visit_expression(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Expression { expression } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        // let _ = self.evaluate(expression)?;
-        Ok(())
+        self.evaluate(expression)?;
+        self.emit_byte(OpCode::Pop)
     }
 
     fn visit_foreach(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Foreach { iterator, iterable, body } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         Ok(())
@@ -739,7 +944,7 @@ impl StatementVisitor for Compiler {
 
     fn visit_function(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Function { name, .. } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         // let callable = LoxCallable::Function {
@@ -758,23 +963,33 @@ impl StatementVisitor for Compiler {
 
     fn visit_if(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::If { condition, then_branch, else_branch } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        // match self.is_truthy(condition)? {
-        //     true => self.execute(then_branch)?,
-        //     false => match else_branch {
-        //         Some(eb) => self.execute(eb)?,
-        //         None => {}
-        //     },
-        // };
+        self.evaluate(condition)?;
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+        self.emit_byte(OpCode::Pop)?;
+
+        self.execute(then_branch)?;
+
+        let else_jump = self.emit_jump(OpCode::Jump(0))?;
+
+        self.patch_jump(then_jump)?;
+        self.emit_byte(OpCode::Pop)?;
+
+        if let Some(else_stmt) = else_branch {
+            self.execute(else_stmt)?;
+        }
+
+        self.patch_jump(else_jump)?;
 
         Ok(())
     }
 
     fn visit_print(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Print { expression } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
         self.evaluate(expression)?;
@@ -783,73 +998,47 @@ impl StatementVisitor for Compiler {
 
     fn visit_return(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Return { keyword: _, value } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        self.emit_return()
+        if self.current_function().function_type == FunctionType::Initializer {
+            return Err(LoxError::ParseError(
+                0,
+                "can't return from a class initializer".into(),
+            ));
+        }
 
-        // Err(LoxError::FunctionReturn(Box::new(self.evaluate(value)?)))
+        self.evaluate(value)?;
+        self.emit_return()
     }
 
     fn visit_while(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::While { condition, body } = stmt else {
-            return Err(LoxError::AstError);
+            unreachable!();
         };
 
-        // while self.is_truthy(condition)? {
-        //     self.execute(body)?;
-        // }
-
-        Ok(())
+        let loop_start = self.chunk().len();
+        self.evaluate(condition)?;
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+        self.emit_byte(OpCode::Pop)?;
+        self.execute(body)?;
+        self.emit_loop(loop_start)?;
+        self.patch_jump(exit_jump)?;
+        self.emit_byte(OpCode::Pop)
     }
 
     fn visit_var(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Var { name, initializer } = stmt else {
-            return Err(LoxError::AstError)
+            unreachable!()
         };
 
-        // let value = match initializer {
-        //     Some(init) => self.evaluate(init)?,
-        //     None => LoxEntity::Literal(Literal::Nil),
-        // };
+        let global = self.parse_variable(name)?;
 
-        // self.environment
-        //     .borrow_mut()
-        //     .define(name.lexeme.clone(), value);
+        match initializer {
+            Some(init) => self.evaluate(init)?,
+            None => self.emit_byte(OpCode::Nil)?,
+        };
 
-        Ok(())
+        self.define_variable(global)
     }
 }
-
-// impl Interpreter {
-//     pub fn execute_block(
-//         &mut self,
-//         statements: &[Statement],
-//         working_env: Rc<RefCell<Environment<String, LoxEntity>>>,
-//     ) -> LoxResult<()> {
-//         let previous = self.environment.clone();
-//         self.environment = working_env;
-//
-//         let mut statement_iter = statements.iter();
-//         let mut output: LoxResult<()> = Ok(());
-//
-//         loop {
-//             let next_statement = statement_iter.next();
-//
-//             match next_statement {
-//                 None => break,
-//                 Some(statement) => match self.execute(statement) {
-//                     Ok(_) => continue,
-//                     Err(e) => {
-//                         output = Err(e);
-//                         break;
-//                     }
-//                 },
-//             };
-//         }
-//
-//         self.environment = previous;
-//
-//         output
-//     }
-// }

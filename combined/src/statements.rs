@@ -1,11 +1,11 @@
 use crate::{
-    errors::LoxError,
+    errors::{LoxError, LoxResult},
     expressions::Expression,
     tokens::Token,
 };
 
 pub trait StatementVisitor {
-    fn accept_statement(&mut self, stmt: &Statement) -> Result<(), LoxError> {
+    fn accept_statement(&mut self, stmt: &Statement) -> LoxResult<()> {
         match stmt {
             Statement::Block { .. } => self.visit_block(stmt),
             Statement::Class { .. } => self.visit_class(stmt),
@@ -20,26 +20,26 @@ pub trait StatementVisitor {
         }
     }
 
-    fn visit_block(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_class(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_expression(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_foreach(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_function(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_if(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_print(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_return(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_var(&mut self, stmt: &Statement) -> Result<(), LoxError>;
-    fn visit_while(&mut self, stmt: &Statement) -> Result<(), LoxError>;
+    fn visit_block(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_expression(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_foreach(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_function(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_if(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_print(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_return(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_var(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_while(&mut self, stmt: &Statement) -> LoxResult<()>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Statement {
     Block {
-        statements: Vec<Statement>,
+        statements: Box<Vec<Statement>>,
     },
     Class {
         name: Token,
-        methods: Vec<Statement>,
+        methods: Box<Vec<Statement>>,
     },
     Expression {
         expression: Box<Expression>,
@@ -51,8 +51,8 @@ pub enum Statement {
     },
     Function {
         name: Token,
-        params: Vec<Token>,
-        body: Vec<Statement>,
+        params: Box<Vec<Token>>,
+        body: Box<Vec<Statement>>,
     },
     If {
         condition: Box<Expression>,

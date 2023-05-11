@@ -20,7 +20,7 @@ impl fmt::Display for LoxError {
             LoxError::UsageError => "usage: lox [script]".to_string(),
             LoxError::AstError => "internal error in parsing AST".to_string(),
             LoxError::ResolutionError(msg) => format!("resolution error: {}", msg),
-            LoxError::ParseError(line, msg) => format!("parse error on line {}: {}", line, msg),
+            LoxError::ParseError(_, msg) => format!("parse error: {}", msg),
             LoxError::TypeError(msg) => format!("type error: {}", msg),
             LoxError::InputError(msg) => msg.clone(),
             LoxError::SyntaxError(line, msg) => format!("error on line {}: {}", line, msg),
