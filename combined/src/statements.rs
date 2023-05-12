@@ -1,8 +1,4 @@
-use crate::{
-    errors::{LoxError, LoxResult},
-    expressions::Expression,
-    tokens::Token,
-};
+use crate::{errors::LoxResult, expressions::Expression, tokens::Token};
 
 pub trait StatementVisitor {
     fn accept_statement(&mut self, stmt: &Statement) -> LoxResult<()> {
@@ -39,6 +35,7 @@ pub enum Statement {
     },
     Class {
         name: Token,
+        superclass: Option<Token>,
         methods: Box<Vec<Statement>>,
     },
     Expression {

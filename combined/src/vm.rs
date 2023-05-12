@@ -289,9 +289,6 @@ impl VirtualMachine {
             let code = {
                 let frame = self.frames.last().unwrap();
 
-                #[cfg(feature = "debug")]
-                self.dump(&self.function().chunk, frame.pos);
-
                 let Value::Object(Object::Closure(closure)) = &*frame.closure.borrow() else {
                     unreachable!();
                 };
@@ -299,6 +296,9 @@ impl VirtualMachine {
                 if frame.pos >= closure.function.chunk.code.len() {
                     break;
                 }
+
+                #[cfg(feature = "debug")]
+                self.dump(&self.function().chunk, frame.pos);
 
                 closure.function.chunk.code[frame.pos].clone()
             };

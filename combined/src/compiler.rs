@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 use crate::{
     chunk::{Chunk, OpCode, UpValue},
@@ -53,15 +53,15 @@ impl CompilerNode {
             },
         };
 
-        let (token_type, length) = match function_type {
-            FunctionType::Method | FunctionType::Initializer => (TokenType::This, 4),
-            _ => (TokenType::Skip, 0),
+        let (token_type, lexeme) = match function_type {
+            FunctionType::Method | FunctionType::Initializer => (TokenType::This, "this".into()),
+            _ => (TokenType::Skip, "".into()),
         };
 
         node.locals.push(Local {
             name: Token {
                 token_type,
-                lexeme: "".into(),
+                lexeme,
                 literal: None,
                 line: 0,
             },
@@ -142,6 +142,8 @@ impl Compiler {
     }
 
     fn end_compiler(&mut self) -> LoxResult<CompilerNode> {
+        self.emit_return()?;
+
         #[cfg(feature = "debug")]
         if self.panic_mode {
             self.chunk().disassemble("code");
@@ -303,7 +305,7 @@ impl Compiler {
             .compiler()
             .locals
             .iter()
-            .find(|local| &local.name == name);
+            .find(|local| local.name.lexeme == name.lexeme);
 
         if local.is_some() {
             self.error("already a variable with this name in this scope")?;
@@ -434,6 +436,56 @@ impl Compiler {
             "unable to resolve upvalue".into(),
         ))
     }
+
+    fn function(
+        &mut self,
+        function_type: FunctionType,
+        name: &Token,
+        params: &[Token],
+        body: &[Statement],
+    ) -> LoxResult<()> {
+        self.init_compiler(name, function_type.clone());
+        self.begin_scope()?;
+
+        if function_type == FunctionType::Method || function_type == FunctionType::Initializer {
+            self.named_variable(
+                &self.synthetic_token(TokenType::This, name.line),
+                false,
+                None,
+            )?;
+        }
+
+        for param in params.iter() {
+            self.current_function().arity += 1;
+            let constant = self.parse_variable(param)?;
+            self.define_variable(constant)?;
+        }
+
+        for statement in body.iter() {
+            self.execute(statement)?;
+        }
+
+        let compiler = self.end_compiler()?;
+        let constant =
+            self.make_constant(Value::Object(Object::Function(Box::new(compiler.function))))?;
+
+        self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
+    }
+
+    fn synthetic_token(&self, token_type: TokenType, line: usize) -> Token {
+        let lexeme = match token_type {
+            TokenType::Super => "super".into(),
+            TokenType::This => "this".into(),
+            _ => unreachable!(),
+        };
+
+        Token {
+            token_type,
+            lexeme,
+            literal: None,
+            line,
+        }
+    }
 }
 
 impl ExpressionVisitor<()> for Compiler {
@@ -501,15 +553,9 @@ impl ExpressionVisitor<()> for Compiler {
             unreachable!();
         };
 
-        Ok(())
-
-        // match self.evaluate(object)? {
-        //     LoxEntity::Callable(callable) => match *callable {
-        //         LoxCallable::Class { class } => class.get(&name.lexeme),
-        //         _ => Err(LoxError::AstError),
-        //     },
-        //     _ => Err(LoxError::AstError),
-        // }
+        self.evaluate(object)?;
+        let name = self.identifier_constant(name)?;
+        self.emit_byte(OpCode::GetProperty(name))
     }
 
     fn visit_grouping(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -740,31 +786,53 @@ impl ExpressionVisitor<()> for Compiler {
             unreachable!();
         };
 
-        Ok(())
+        self.evaluate(object)?;
+        self.evaluate(value)?;
+        let name = self.identifier_constant(name)?;
+        self.emit_byte(OpCode::SetProperty(name))
+    }
 
-        // match (self.evaluate(object)?, &**object) {
-        //     (
-        //         LoxEntity::Callable(callable),
-        //         Expression::Variable {
-        //             name: instance_name,
-        //         },
-        //     ) => match *callable {
-        //         LoxCallable::Class { mut class } => {
-        //             let value = self.evaluate(value)?;
-        //             class.set(name.lexeme.clone(), value.clone())?;
+    fn visit_super(&mut self, expr: &Expression) -> LoxResult<()> {
+        let Expression::Super { token, name } = expr else {
+            unreachable!();
+        };
 
-        //             // We must reassign this to update its internal state permanently.
-        //             self.environment.borrow_mut().assign(
-        //                 instance_name.lexeme.clone(),
-        //                 LoxEntity::Callable(Box::new(LoxCallable::Class { class })),
-        //             )?;
+        match self.classes.last() {
+            Some(class) => {
+                if !class.has_superclass {
+                    self.error("can't use 'super' outside of a class")?;
+                }
+            },
+            None => self.error("can't user 'super' inside a class without a superclass")?,
+        };
 
-        //             Ok(value)
-        //         }
-        //         _ => Err(LoxError::AstError),
-        //     },
-        //     _ => Err(LoxError::AstError),
-        // }
+        let name_constant = self.identifier_constant(name)?;
+        self.named_variable(
+            &self.synthetic_token(TokenType::This, token.line),
+            false,
+            None,
+        )?;
+
+        self.emit_byte(OpCode::GetSuper(name_constant))
+    }
+
+    fn visit_this(&mut self, expr: &Expression) -> LoxResult<()> {
+        let Expression::This { token } = expr else {
+            unreachable!();
+        };
+
+        if self.classes.is_empty() {
+            return Err(LoxError::ParseError(
+                token.line,
+                "can't use 'this' outside of classes".into(),
+            ));
+        }
+
+        self.named_variable(
+            &self.synthetic_token(TokenType::This, token.line),
+            false,
+            None,
+        )
     }
 
     fn visit_unary(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -805,40 +873,56 @@ impl StatementVisitor for Compiler {
     }
 
     fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Class { name, methods } = stmt else {
+        let Statement::Class { name, superclass, methods } = stmt else {
             unreachable!();
         };
 
-        // self.environment
-        //     .borrow_mut()
-        //     .define(name.lexeme.clone(), LoxEntity::Literal(Literal::Nil));
+        let name_constant = self.identifier_constant(name)?;
+        self.declare_variable(name)?;
 
-        // let mut class_methods: HashMap<String, LoxCallable> = HashMap::new();
+        self.emit_byte(OpCode::Class(name_constant))?;
+        self.define_variable(name_constant)?;
 
-        // for method in methods.iter() {
-        //     match method {
-        //         Statement::Function {
-        //             name: method_name, ..
-        //         } => {
-        //             class_methods.insert(
-        //                 method_name.lexeme.clone(),
-        //                 LoxCallable::Function {
-        //                     statement: method.clone(),
-        //                     environment: self.environment.clone(),
-        //                 },
-        //             );
-        //         }
-        //         _ => return Err(LoxError::AstError),
-        //     };
-        // }
+        self.classes.push(ClassCompiler::default());
 
-        // let class = LoxEntity::Callable(Box::new(LoxCallable::Class {
-        //     class: LoxInstance::new(name.clone(), stmt.clone(), class_methods),
-        // }));
+        if let Some(superclass) = superclass {
+            self.named_variable(superclass, false, None)?;
 
-        // self.environment
-        //     .borrow_mut()
-        //     .assign(name.lexeme.clone(), class)?;
+            self.begin_scope()?;
+            self.add_local(&self.synthetic_token(TokenType::Super, superclass.line))?;
+            self.define_variable(0)?;
+
+            self.named_variable(&name, false, None)?;
+            self.emit_byte(OpCode::Inherit)?;
+            self.classes.last_mut().unwrap().has_superclass = true;
+        }
+
+        self.named_variable(&name, false, None)?;
+
+        for method in methods.iter() {
+            let Statement::Function { name, params, body } = method else {
+                unreachable!();
+            };
+
+            let name_constant = self.identifier_constant(name)?;
+            let function_type = match name.lexeme.as_str() {
+                "init" => FunctionType::Initializer,
+                _ => FunctionType::Method,
+            };
+
+            println!("{:?}", function_type);
+
+            self.function(function_type, name, &params, &body)?;
+            self.emit_byte(OpCode::Method(name_constant))?;
+        }
+
+        self.emit_byte(OpCode::Pop)?;
+
+        if self.classes.last().unwrap().has_superclass {
+            self.end_scope()?;
+        }
+
+        self.classes.pop();
 
         Ok(())
     }
@@ -918,24 +1002,7 @@ impl StatementVisitor for Compiler {
         let global = self.parse_variable(name)?;
         self.mark_initialized()?;
 
-        self.init_compiler(name, FunctionType::Function);
-        self.begin_scope()?;
-
-        for param in params.iter() {
-            self.current_function().arity += 1;
-            let constant = self.parse_variable(param)?;
-            self.define_variable(constant)?;
-        }
-
-        for statement in body.iter() {
-            self.execute(statement)?;
-        }
-
-        let compiler = self.end_compiler()?;
-        let constant =
-            self.make_constant(Value::Object(Object::Function(Box::new(compiler.function))))?;
-
-        self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))?;
+        self.function(FunctionType::Function, name, &params, &body)?;
         self.define_variable(global)
     }
 

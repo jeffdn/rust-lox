@@ -1,9 +1,6 @@
 use std::boxed::Box;
 
-use crate::{
-    errors::{LoxError, LoxResult},
-    tokens,
-};
+use crate::{errors::LoxResult, tokens};
 
 pub trait ExpressionVisitor<T> {
     fn accept_expression(&mut self, expr: &Expression) -> LoxResult<T> {
@@ -20,6 +17,8 @@ pub trait ExpressionVisitor<T> {
             Expression::Logical { .. } => self.visit_logical(expr),
             Expression::Map { .. } => self.visit_map(expr),
             Expression::Set { .. } => self.visit_set(expr),
+            Expression::Super { .. } => self.visit_super(expr),
+            Expression::This { .. } => self.visit_this(expr),
             Expression::Unary { .. } => self.visit_unary(expr),
             Expression::Variable { .. } => self.visit_variable(expr),
         }
@@ -37,6 +36,8 @@ pub trait ExpressionVisitor<T> {
     fn visit_logical(&mut self, expr: &Expression) -> LoxResult<T>;
     fn visit_map(&mut self, expr: &Expression) -> LoxResult<T>;
     fn visit_set(&mut self, expr: &Expression) -> LoxResult<T>;
+    fn visit_super(&mut self, expr: &Expression) -> LoxResult<T>;
+    fn visit_this(&mut self, expr: &Expression) -> LoxResult<T>;
     fn visit_unary(&mut self, expr: &Expression) -> LoxResult<T>;
     fn visit_variable(&mut self, expr: &Expression) -> LoxResult<T>;
 }
@@ -91,6 +92,13 @@ pub enum Expression {
         name: tokens::Token,
         object: Box<Expression>,
         value: Box<Expression>,
+    },
+    Super {
+        token: tokens::Token,
+        name: tokens::Token,
+    },
+    This {
+        token: tokens::Token,
     },
     Unary {
         operator: tokens::Token,
