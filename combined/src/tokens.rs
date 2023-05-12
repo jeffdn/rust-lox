@@ -43,7 +43,10 @@ pub enum TokenType {
     // keywords.
     And,
     Assert,
+    Break,
     Class,
+    Continue,
+    Delete,
     Else,
     Eof,
     False,

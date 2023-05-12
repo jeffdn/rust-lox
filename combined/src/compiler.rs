@@ -813,6 +813,13 @@ impl StatementVisitor for Compiler {
         self.end_scope()
     }
 
+    fn visit_break(&mut self, stmt: &Statement) -> LoxResult<()> {
+        let Statement::Break = stmt else { unreachable!(); };
+
+        let current_len = self.chunk().len();
+        self.emit_byte(OpCode::Break(current_len))
+    }
+
     fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Class { name, superclass, methods } = stmt else {
             unreachable!();
@@ -866,6 +873,28 @@ impl StatementVisitor for Compiler {
         Ok(())
     }
 
+    fn visit_continue(&mut self, stmt: &Statement) -> LoxResult<()> {
+        let Statement::Continue = stmt else { unreachable!(); };
+
+        let current_len = self.chunk().len();
+        self.emit_byte(OpCode::Continue(current_len))
+    }
+
+    fn visit_delete(&mut self, stmt: &Statement) -> LoxResult<()> {
+        let Statement::Delete { expression } = stmt else {
+            unreachable!();
+        };
+
+        let Expression::Index { item, is_slice: _, left, right: _ } = &**expression else {
+            unreachable!();
+        };
+
+        self.evaluate(item)?;
+        self.evaluate(left.as_ref().unwrap())?;
+
+        self.emit_byte(OpCode::DeleteIndex)
+    }
+
     fn visit_expression(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Expression { expression } = stmt else {
             unreachable!();
@@ -873,6 +902,49 @@ impl StatementVisitor for Compiler {
 
         self.evaluate(expression)?;
         self.emit_byte(OpCode::Pop)
+    }
+
+    fn visit_for(&mut self, stmt: &Statement) -> LoxResult<()> {
+        let Statement::For { initializer, condition, increment, body } = stmt else {
+            unreachable!();
+        };
+
+        self.begin_scope()?;
+
+        if let Some(initializer) = initializer {
+            self.execute(initializer)?;
+        }
+
+        let mut loop_start = self.chunk().len();
+        let mut exit_jump: Option<usize> = None;
+
+        if let Some(condition) = condition {
+            self.evaluate(condition)?;
+            exit_jump = Some(self.emit_jump(OpCode::JumpIfFalse(0))?);
+            self.emit_byte(OpCode::Pop)?;
+        }
+
+        if let Some(increment) = increment {
+            let body_jump = self.emit_jump(OpCode::Jump(0))?;
+            let increment_start = self.chunk().len();
+
+            self.evaluate(increment)?;
+            self.emit_byte(OpCode::Pop)?;
+
+            self.emit_loop(loop_start)?;
+            loop_start = increment_start;
+            self.patch_jump(body_jump)?;
+        }
+
+        self.execute(body)?;
+        self.emit_loop(loop_start)?;
+
+        if let Some(exit_jump) = exit_jump {
+            self.patch_jump(exit_jump)?;
+            self.emit_byte(OpCode::Pop)?;
+        }
+
+        self.end_scope()
     }
 
     fn visit_foreach(&mut self, stmt: &Statement) -> LoxResult<()> {

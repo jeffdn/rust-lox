@@ -48,8 +48,16 @@ impl Parser {
             return self.return_statement();
         } else if self.token_type_matches(&[TokenType::While]) {
             return self.while_statement();
+        } else if self.token_type_matches(&[TokenType::Break]) {
+            self.consume(&TokenType::Semicolon, "expect ';' after 'break'".into())?;
+            return Ok(Statement::Break);
+        } else if self.token_type_matches(&[TokenType::Continue]) {
+            self.consume(&TokenType::Semicolon, "expect ';' after 'continue'".into())?;
+            return Ok(Statement::Continue);
         } else if self.token_type_matches(&[TokenType::Assert]) {
             return self.assert_statement();
+        } else if self.token_type_matches(&[TokenType::Delete]) {
+            return self.delete_statement();
         } else if self.token_type_matches(&[TokenType::LeftBrace]) {
             return Ok(Statement::Block {
                 statements: self.block()?,
@@ -87,65 +95,54 @@ impl Parser {
         })
     }
 
+    fn delete_statement(&mut self) -> LoxResult<Statement> {
+        let expression = Box::new(self.call()?);
+
+        Ok(Statement::Delete { expression })
+    }
+
     fn for_statement(&mut self) -> LoxResult<Statement> {
         self.consume(&TokenType::LeftParen, "expect '(' after 'for'".into())?;
 
-        let initializer: Option<Statement> = match self.token_type_matches(&[TokenType::Semicolon])
-        {
-            true => None,
-            false => match self.token_type_matches(&[TokenType::Var]) {
-                true => Some(self.var_declaration()?),
-                false => Some(self.expression_statement()?),
-            },
-        };
+        let initializer: Option<Box<Statement>> =
+            match self.token_type_matches(&[TokenType::Semicolon]) {
+                true => None,
+                false => match self.token_type_matches(&[TokenType::Var]) {
+                    true => Some(Box::new(self.var_declaration()?)),
+                    false => Some(Box::new(self.expression_statement()?)),
+                },
+            };
 
-        let condition: Expression = match self.check_current_token(&TokenType::Semicolon) {
-            true => Expression::Literal {
-                value: Literal::Boolean(true),
-            },
-            false => self.expression()?,
-        };
+        let condition: Option<Box<Expression>> =
+            match self.check_current_token(&TokenType::Semicolon) {
+                true => None,
+                false => Some(Box::new(self.expression()?)),
+            };
 
         self.consume(
             &TokenType::Semicolon,
             "expect ';' after loop condition".into(),
         )?;
 
-        let increment: Option<Expression> = match self.check_current_token(&TokenType::RightParen) {
-            true => None,
-            false => Some(self.expression()?),
-        };
+        let increment: Option<Box<Expression>> =
+            match self.check_current_token(&TokenType::RightParen) {
+                true => None,
+                false => Some(Box::new(self.expression()?)),
+            };
 
         self.consume(
             &TokenType::RightParen,
             "expect ')' after 'for' setup".into(),
         )?;
 
-        let mut body = self.statement()?;
+        let body = Box::new(self.statement()?);
 
-        body = match increment {
-            Some(increment) => Statement::Block {
-                statements: Box::new(vec![
-                    body,
-                    Statement::Expression {
-                        expression: Box::new(increment),
-                    },
-                ]),
-            },
-            None => body,
-        };
-
-        body = Statement::While {
-            condition: Box::new(condition),
-            body: Box::new(body),
-        };
-
-        match initializer {
-            None => Ok(body),
-            Some(initializer) => Ok(Statement::Block {
-                statements: Box::new(vec![initializer, body]),
-            }),
-        }
+        Ok(Statement::For {
+            initializer,
+            condition,
+            increment,
+            body,
+        })
     }
 
     fn foreach_statement(&mut self) -> LoxResult<Statement> {
@@ -852,6 +849,8 @@ impl Parser {
 
             match self.peek().token_type {
                 TokenType::Class
+                | TokenType::Continue
+                | TokenType::Break
                 | TokenType::Function
                 | TokenType::Var
                 | TokenType::For

@@ -141,7 +141,10 @@ impl Scanner {
         match input_lexeme {
             "and" => TokenType::And,
             "assert" => TokenType::Assert,
+            "break" => TokenType::Break,
             "class" => TokenType::Class,
+            "continue" => TokenType::Continue,
+            "delete" => TokenType::Delete,
             "else" => TokenType::Else,
             "false" => TokenType::False,
             "for" => TokenType::For,

@@ -5,8 +5,12 @@ pub trait StatementVisitor {
         match stmt {
             Statement::Assert { .. } => self.visit_assert(stmt),
             Statement::Block { .. } => self.visit_block(stmt),
+            Statement::Break => self.visit_break(stmt),
             Statement::Class { .. } => self.visit_class(stmt),
+            Statement::Continue => self.visit_continue(stmt),
+            Statement::Delete { .. } => self.visit_delete(stmt),
             Statement::Expression { .. } => self.visit_expression(stmt),
+            Statement::For { .. } => self.visit_for(stmt),
             Statement::Foreach { .. } => self.visit_foreach(stmt),
             Statement::Function { .. } => self.visit_function(stmt),
             Statement::If { .. } => self.visit_if(stmt),
@@ -19,8 +23,12 @@ pub trait StatementVisitor {
 
     fn visit_assert(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_block(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_break(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_continue(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_delete(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_expression(&mut self, stmt: &Statement) -> LoxResult<()>;
+    fn visit_for(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_foreach(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_function(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_if(&mut self, stmt: &Statement) -> LoxResult<()>;
@@ -39,13 +47,24 @@ pub enum Statement {
     Block {
         statements: Box<Vec<Statement>>,
     },
+    Break,
     Class {
         name: Token,
         superclass: Option<Token>,
         methods: Box<Vec<Statement>>,
     },
+    Continue,
+    Delete {
+        expression: Box<Expression>,
+    },
     Expression {
         expression: Box<Expression>,
+    },
+    For {
+        initializer: Option<Box<Statement>>,
+        condition: Option<Box<Expression>>,
+        increment: Option<Box<Expression>>,
+        body: Box<Statement>,
     },
     Foreach {
         iterator: Token,
