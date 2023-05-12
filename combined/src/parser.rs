@@ -43,7 +43,9 @@ impl Parser {
         } else if self.token_type_matches(&[TokenType::If]) {
             return self.if_statement();
         } else if self.token_type_matches(&[TokenType::Print]) {
-            return self.print_statement();
+            return self.print_statement(false);
+        } else if self.token_type_matches(&[TokenType::Println]) {
+            return self.print_statement(true);
         } else if self.token_type_matches(&[TokenType::Return]) {
             return self.return_statement();
         } else if self.token_type_matches(&[TokenType::While]) {
@@ -338,7 +340,7 @@ impl Parser {
         })
     }
 
-    fn print_statement(&mut self) -> LoxResult<Statement> {
+    fn print_statement(&mut self, newline: bool) -> LoxResult<Statement> {
         let expr = self.expression()?;
 
         self.consume(
@@ -347,6 +349,7 @@ impl Parser {
         )?;
 
         Ok(Statement::Print {
+            newline,
             expression: Box::new(expr),
         })
     }
@@ -354,11 +357,9 @@ impl Parser {
     fn return_statement(&mut self) -> LoxResult<Statement> {
         let keyword = self.previous();
 
-        let value: Expression = match self.check_current_token(&TokenType::Semicolon) {
-            false => self.expression()?,
-            true => Expression::Literal {
-                value: Literal::Nil,
-            },
+        let value = match self.check_current_token(&TokenType::Semicolon) {
+            false => Some(Box::new(self.expression()?)),
+            true => None,
         };
 
         self.consume(
@@ -366,10 +367,7 @@ impl Parser {
             "expected ';' after return value".to_string(),
         )?;
 
-        Ok(Statement::Return {
-            keyword,
-            value: Box::new(value),
-        })
+        Ok(Statement::Return { keyword, value })
     }
 
     fn assignment(&mut self) -> LoxResult<Expression> {

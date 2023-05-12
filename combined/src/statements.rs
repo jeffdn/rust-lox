@@ -60,11 +60,12 @@ pub enum Statement {
         else_branch: Option<Box<Statement>>,
     },
     Print {
+        newline: bool,
         expression: Box<Expression>,
     },
     Return {
         keyword: Token,
-        value: Box<Expression>,
+        value: Option<Box<Expression>>,
     },
     Var {
         name: Token,

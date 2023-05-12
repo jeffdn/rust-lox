@@ -35,7 +35,7 @@ impl Scanner {
 
             match possible_token {
                 Ok(token_type) => match token_type {
-                    TokenType::Skip => {}
+                    TokenType::Skip => {},
                     _ => self.add_token(token_type),
                 },
                 Err(e) => self
@@ -115,14 +115,14 @@ impl Scanner {
                     }
 
                     Ok(TokenType::Skip)
-                }
+                },
                 false => Ok(TokenType::Slash),
             },
             ' ' | '\r' | '\t' => Ok(TokenType::Skip),
             '\n' => {
                 self.line += 1;
                 Ok(TokenType::Skip)
-            }
+            },
             '"' => self.add_string(),
             _ => {
                 if c.is_ascii_digit() {
@@ -132,7 +132,7 @@ impl Scanner {
                 }
 
                 Err(LoxError::InputError("no matching token".to_string()))
-            }
+            },
         }
     }
 
@@ -151,6 +151,7 @@ impl Scanner {
             "not" => TokenType::NotIn,
             "or" => TokenType::Or,
             "print" => TokenType::Print,
+            "println" => TokenType::Println,
             "return" => TokenType::Return,
             "super" => TokenType::Super,
             "this" => TokenType::This,

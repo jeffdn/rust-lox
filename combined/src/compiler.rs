@@ -82,13 +82,13 @@ impl Compiler {
         }
     }
 
-    // fn init_compiler(&mut self, function_type: FunctionType) {
-    //     let mut compiler = CompilerNode::new(function_type);
+    fn init_compiler(&mut self, name: &Token, function_type: FunctionType) {
+        let mut compiler = CompilerNode::new(function_type);
 
-    //     compiler.function.name = self.scanner.get_string(&self.previous).into();
+        compiler.function.name = name.lexeme.clone();
 
-    //     self.compilers.push(compiler);
-    // }
+        self.compilers.push(compiler);
+    }
 
     fn compiler_at(&self, depth: usize) -> &CompilerNode {
         let at_index = self.compilers.len() - (1 + depth);
@@ -142,8 +142,6 @@ impl Compiler {
     }
 
     fn end_compiler(&mut self) -> LoxResult<CompilerNode> {
-        self.emit_return()?;
-
         #[cfg(feature = "debug")]
         if self.panic_mode {
             self.chunk().disassemble("code");
@@ -160,38 +158,38 @@ impl Compiler {
     fn end_scope(&mut self) -> LoxResult<()> {
         self.compiler_mut().scope_depth -= 1;
 
-        // loop {
-        //     if self.compiler().local_count == 0 {
-        //         break;
-        //     }
+        loop {
+            if self.compiler().local_count == 0 {
+                break;
+            }
 
-        //     let idx = self.compiler().local_count - 1;
-        //     if self.compiler().locals[idx].depth.is_some()
-        //         && self.compiler().locals[idx].depth.unwrap() <= self.compiler().scope_depth
-        //     {
-        //         break;
-        //     }
+            let idx = self.compiler().local_count - 1;
+            if self.compiler().locals[idx].depth.is_some()
+                && self.compiler().locals[idx].depth.unwrap() <= self.compiler().scope_depth
+            {
+                break;
+            }
 
-        //     let local = self.compiler_mut().locals.pop().unwrap();
+            let local = self.compiler_mut().locals.pop().unwrap();
 
-        //     if local.is_captured {
-        //         self.emit_byte(OpCode::CloseUpValue)?;
-        //     } else {
-        //         self.emit_byte(OpCode::Pop)?;
-        //     }
+            if local.is_captured {
+                self.emit_byte(OpCode::CloseUpValue)?;
+            } else {
+                self.emit_byte(OpCode::Pop)?;
+            }
 
-        //     self.compiler_mut().local_count -= 1;
-        // }
+            self.compiler_mut().local_count -= 1;
+        }
 
-        // if self.compiler().scope_depth == 0
-        //     && self
-        //         .chunk()
-        //         .code
-        //         .iter()
-        //         .any(|code| matches!(code, OpCode::Break(_) | OpCode::Continue(_)))
-        // {
-        //     self.error_at_current("ending scope without correcting a break or continue")?;
-        // }
+        if self.compiler().scope_depth == 0
+            && self
+                .chunk()
+                .code
+                .iter()
+                .any(|code| matches!(code, OpCode::Break(_) | OpCode::Continue(_)))
+        {
+            self.error("ending scope without correcting a break or continue")?;
+        }
 
         Ok(())
     }
@@ -351,7 +349,7 @@ impl Compiler {
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, x)| &x.name == token)
+            .find(|(_, x)| x.name.lexeme == token.lexeme)
         {
             Some((idx, local)) => {
                 if local.depth.is_none() {
@@ -490,41 +488,12 @@ impl ExpressionVisitor<()> for Compiler {
             unreachable!();
         };
 
-        Ok(())
+        self.evaluate(callee)?;
+        for arg in arguments.iter() {
+            self.evaluate(arg)?;
+        }
 
-        // let mut real_arguments: Vec<LoxEntity> = Vec::new();
-        // for arg in arguments.iter() {
-        //     let evaluated = self.evaluate(arg)?;
-        //     real_arguments.push(evaluated);
-        // }
-
-        // let mut callable = match **callee {
-        //     Expression::Variable { ref name } => {
-        //         match self.environment.borrow().get(&name.lexeme)? {
-        //             LoxEntity::Callable(callable) => callable,
-        //             _ => return Err(LoxError::AstError),
-        //         }
-        //     }
-        //     Expression::Get { .. } => match self.evaluate(callee)? {
-        //         LoxEntity::Callable(callable) => callable,
-        //         _ => return Err(LoxError::AstError),
-        //     },
-        //     Expression::Index { .. } => match self.evaluate(callee)? {
-        //         LoxEntity::Callable(callable) => callable,
-        //         _ => return Err(LoxError::AstError),
-        //     },
-        //     _ => return Err(LoxError::AstError),
-        // };
-
-        // if real_arguments.len() != callable.arity()? {
-        //     return Err(LoxError::RuntimeError(format!(
-        //         "expected {} arguments but got {}",
-        //         callable.arity()?,
-        //         real_arguments.len(),
-        //     )));
-        // }
-
-        // callable.call(self, real_arguments)
+        self.emit_byte(OpCode::Call(arguments.len()))
     }
 
     fn visit_get(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -544,11 +513,10 @@ impl ExpressionVisitor<()> for Compiler {
     }
 
     fn visit_grouping(&mut self, expr: &Expression) -> LoxResult<()> {
-        Ok(())
-        // match expr {
-        //     Expression::Grouping { expression } => self.evaluate(expression),
-        //     _ => Err(LoxError::AstError),
-        // }
+        match expr {
+            Expression::Grouping { expression } => self.evaluate(expression),
+            _ => unreachable!(),
+        }
     }
 
     fn visit_index(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -943,22 +911,32 @@ impl StatementVisitor for Compiler {
     }
 
     fn visit_function(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Function { name, .. } = stmt else {
+        let Statement::Function { name, params, body } = stmt else {
             unreachable!();
         };
 
-        // let callable = LoxCallable::Function {
-        //     statement: stmt.clone(),
-        //     environment: Rc::new(RefCell::new(Environment::new(Some(
-        //         self.environment.clone(),
-        //     )))),
-        // };
+        let global = self.parse_variable(name)?;
+        self.mark_initialized()?;
 
-        // self.environment
-        //     .borrow_mut()
-        //     .define(name.lexeme.clone(), LoxEntity::Callable(Box::new(callable)));
+        self.init_compiler(name, FunctionType::Function);
+        self.begin_scope()?;
 
-        Ok(())
+        for param in params.iter() {
+            self.current_function().arity += 1;
+            let constant = self.parse_variable(param)?;
+            self.define_variable(constant)?;
+        }
+
+        for statement in body.iter() {
+            self.execute(statement)?;
+        }
+
+        let compiler = self.end_compiler()?;
+        let constant =
+            self.make_constant(Value::Object(Object::Function(Box::new(compiler.function))))?;
+
+        self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))?;
+        self.define_variable(global)
     }
 
     fn visit_if(&mut self, stmt: &Statement) -> LoxResult<()> {
@@ -988,12 +966,12 @@ impl StatementVisitor for Compiler {
     }
 
     fn visit_print(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Print { expression } = stmt else {
+        let Statement::Print { newline, expression } = stmt else {
             unreachable!();
         };
 
         self.evaluate(expression)?;
-        self.emit_byte(OpCode::Print(true))
+        self.emit_byte(OpCode::Print(*newline))
     }
 
     fn visit_return(&mut self, stmt: &Statement) -> LoxResult<()> {
@@ -1001,15 +979,20 @@ impl StatementVisitor for Compiler {
             unreachable!();
         };
 
-        if self.current_function().function_type == FunctionType::Initializer {
-            return Err(LoxError::ParseError(
-                0,
-                "can't return from a class initializer".into(),
-            ));
-        }
+        match value {
+            Some(expression) => {
+                if self.current_function().function_type == FunctionType::Initializer {
+                    return Err(LoxError::ParseError(
+                        0,
+                        "can't return from a class initializer".into(),
+                    ));
+                }
 
-        self.evaluate(value)?;
-        self.emit_return()
+                self.evaluate(expression)?;
+                self.emit_byte(OpCode::Return)
+            },
+            None => self.emit_return(),
+        }
     }
 
     fn visit_while(&mut self, stmt: &Statement) -> LoxResult<()> {

@@ -55,6 +55,7 @@ pub enum TokenType {
     NotIn,
     Or,
     Print,
+    Println,
     Return,
     Super,
     This,
@@ -111,7 +112,7 @@ impl Hash for Literal {
                 mantissa.hash(state);
                 exponent.hash(state);
                 sign.hash(state);
-            }
+            },
         };
     }
 }

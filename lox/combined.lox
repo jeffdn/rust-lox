@@ -1,25 +1,38 @@
-// print 2 + 2;
-// print 456 - 123;
-// print [true, 123];
-// print [123, 456, "abc"] + [-321, -654];
-// print !false;
-// print {123: true, false: 456};
-// print 123 in [234, 123, 456];
-// print "123" in [234, 123, 456];
-// print 123 in {false: 456, 123: true};
+// println 2 + 2;
+// println 456 - 123;
+// println [true, 123];
+// println [123, 456, "abc"] + [-321, -654];
+// println !false;
+// println {123: true, false: 456};
+// println 123 in [234, 123, 456];
+// println "123" in [234, 123, 456];
+// println 123 in {false: 456, 123: true};
 
 if (3 < 4 and true) {
-    print "hi";
+    println "hi";
 } else {
-    print "bye";
+    println "bye";
 };
+
+var i;
+for (i = 0; i < 5; i = i + 1) {
+    println "loop iteration: " + i;
+}
 
 // var i = 4;
 // while (i > 0) {
 //     i = i - 1;
-//     print "ruh roh";
+//     println "ruh roh";
 // }
 
 var foo = "shenanigans";
 
-print foo;
+println foo;
+
+fn bar(arg) {
+    println arg;
+    return arg;
+}
+
+var baz = bar("hello");
+println baz;

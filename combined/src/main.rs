@@ -18,6 +18,11 @@ use std::{
 
 use crate::{errors::LoxError, vm::VirtualMachine};
 
+use tikv_jemallocator::Jemalloc;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 fn eval(source: String) -> Result<(), LoxError> {
     let mut vm = VirtualMachine::new();
     vm.interpret(&source)
