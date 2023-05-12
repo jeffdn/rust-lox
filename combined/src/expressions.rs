@@ -67,8 +67,9 @@ pub enum Expression {
     },
     Index {
         item: Box<Expression>,
-        index: Box<Expression>,
-        slice: Option<Box<Expression>>,
+        is_slice: bool,
+        left: Option<Box<Expression>>,
+        right: Option<Box<Expression>>,
     },
     IndexedAssignment {
         indexed_item: Box<Expression>,

@@ -42,6 +42,7 @@ pub enum TokenType {
 
     // keywords.
     And,
+    Assert,
     Class,
     Else,
     Eof,

@@ -476,6 +476,7 @@ impl Compiler {
         let lexeme = match token_type {
             TokenType::Super => "super".into(),
             TokenType::This => "this".into(),
+            TokenType::Skip => "".into(),
             _ => unreachable!(),
         };
 
@@ -566,60 +567,33 @@ impl ExpressionVisitor<()> for Compiler {
     }
 
     fn visit_index(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Index { item, index, slice } = expr else {
+        let Expression::Index { item, is_slice, left, right } = expr else {
             unreachable!();
         };
 
-        Ok(())
+        self.evaluate(item)?;
 
-        // let item = self.evaluate(item)?;
-        // let index = self.evaluate(index)?;
-
-        // match (item, index, slice) {
-        //     (LoxEntity::List(list), LoxEntity::Literal(Literal::Number(index)), None) => {
-        //         let list_index = self._convert_index(list.len(), index);
-
-        //         if list_index > list.len() - 1 {
-        //             return Err(LoxError::AstError);
-        //         }
-
-        //         Ok(list[list_index].clone())
-        //     }
-        //     (LoxEntity::List(list), LoxEntity::Literal(Literal::Number(index)), Some(slice)) => {
-        //         let slice = match self.evaluate(slice)? {
-        //             LoxEntity::Literal(Literal::Number(slice)) => slice,
-        //             _ => return Err(LoxError::AstError),
-        //         };
-
-        //         let list_len = list.len();
-        //         let mut slice_start = self._convert_index(list_len, index);
-        //         let mut slice_end = self._convert_index(list_len, slice);
-
-        //         if slice_start > list_len - 1 {
-        //             slice_start = list_len - 1;
-        //         }
-
-        //         if slice_end > list_len - 1 {
-        //             slice_end = list_len - 1;
-        //         }
-
-        //         if slice_start >= slice_end {
-        //             return Ok(LoxEntity::List(vec![]));
-        //         }
-
-        //         let output: Vec<LoxEntity> = list[slice_start..(slice_end + 1)].to_vec();
-
-        //         Ok(LoxEntity::List(output))
-        //     }
-        //     (LoxEntity::Map(map), LoxEntity::Literal(index), None) => {
-        //         if !map.contains_key(&index) {
-        //             return Err(LoxError::AstError);
-        //         }
-
-        //         Ok(map[&index].clone())
-        //     }
-        //     _ => Err(LoxError::AstError),
-        // }
+        if !is_slice {
+            self.evaluate(left.as_ref().unwrap())?;
+            self.emit_byte(OpCode::GetIndex)
+        } else {
+            match (left, right) {
+                (Some(left), Some(right)) => {
+                    self.evaluate(left)?;
+                    self.evaluate(right)?;
+                    self.emit_byte(OpCode::GetSlice(true, true))
+                },
+                (Some(left), None) => {
+                    self.evaluate(left)?;
+                    self.emit_byte(OpCode::GetSlice(true, false))
+                },
+                (None, Some(right)) => {
+                    self.evaluate(right)?;
+                    self.emit_byte(OpCode::GetSlice(false, true))
+                },
+                (None, None) => self.emit_byte(OpCode::GetSlice(false, false)),
+            }
+        }
     }
 
     fn visit_indexed_assignment(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -627,63 +601,15 @@ impl ExpressionVisitor<()> for Compiler {
             unreachable!();
         };
 
-        Ok(())
+        let Expression::Index { item, is_slice: _, left, right: _ } = &**indexed_item else {
+            unreachable!();
+        };
 
-        // let Expression::Index { item, index, slice } = &**indexed_item else {
-        //     return Err(LoxError::AstError);
-        // };
+        self.evaluate(item)?;
+        self.evaluate(left.as_ref().unwrap())?;
+        self.evaluate(expression)?;
 
-        // if slice.is_some() {
-        //     return Err(LoxError::AstError);
-        // }
-
-        // let name = match &**item {
-        //     Expression::Variable { name } => name.clone(),
-        //     _ => return Err(LoxError::AstError),
-        // };
-
-        // let distance = self.locals.borrow().get(expr);
-
-        // let item = self.evaluate(item)?;
-        // let index = self.evaluate(index)?;
-
-        // match (item, index) {
-        //     (LoxEntity::List(mut list), LoxEntity::Literal(Literal::Number(index))) => {
-        //         let list_index = self._convert_index(list.len(), index);
-
-        //         list[list_index] = self.evaluate(expression)?;
-
-        //         match distance {
-        //             Ok(_) => self
-        //                 .environment
-        //                 .borrow_mut()
-        //                 .assign(name.lexeme, LoxEntity::List(list))?,
-        //             Err(_) => self
-        //                 .globals
-        //                 .borrow_mut()
-        //                 .assign(name.lexeme, LoxEntity::List(list))?,
-        //         };
-        //     }
-        //     (LoxEntity::Map(mut map), LoxEntity::Literal(index)) => {
-        //         let value = self.evaluate(expression)?;
-
-        //         map.insert(index, value);
-
-        //         match distance {
-        //             Ok(_) => self
-        //                 .environment
-        //                 .borrow_mut()
-        //                 .assign(name.lexeme, LoxEntity::Map(map))?,
-        //             Err(_) => self
-        //                 .globals
-        //                 .borrow_mut()
-        //                 .assign(name.lexeme, LoxEntity::Map(map))?,
-        //         };
-        //     }
-        //     _ => return Err(LoxError::AstError),
-        // };
-
-        // Ok(LoxEntity::Literal(Literal::Nil))
+        self.emit_byte(OpCode::SetIndex)
     }
 
     fn visit_list(&mut self, expr: &Expression) -> LoxResult<()> {
@@ -858,6 +784,21 @@ impl ExpressionVisitor<()> for Compiler {
 }
 
 impl StatementVisitor for Compiler {
+    fn visit_assert(&mut self, stmt: &Statement) -> LoxResult<()> {
+        let Statement::Assert { expression, message } = stmt else {
+            unreachable!();
+        };
+
+        self.evaluate(expression)?;
+
+        if let Some(message) = message {
+            self.evaluate(message)?;
+            self.emit_byte(OpCode::Assert(true))
+        } else {
+            self.emit_byte(OpCode::Assert(false))
+        }
+    }
+
     fn visit_block(&mut self, stmt: &Statement) -> LoxResult<()> {
         let Statement::Block { statements } = stmt else {
             unreachable!();
@@ -910,8 +851,6 @@ impl StatementVisitor for Compiler {
                 _ => FunctionType::Method,
             };
 
-            println!("{:?}", function_type);
-
             self.function(function_type, name, &params, &body)?;
             self.emit_byte(OpCode::Method(name_constant))?;
         }
@@ -941,57 +880,27 @@ impl StatementVisitor for Compiler {
             unreachable!();
         };
 
-        Ok(())
+        self.begin_scope()?;
+        self.add_local(&self.synthetic_token(TokenType::Skip, iterator.line))?;
 
-        // match (&**body, self.evaluate(iterable)?) {
-        //     (Statement::Block { statements }, LoxEntity::Literal(Literal::String(string))) => {
-        //         for item in string.chars() {
-        //             let new_env = Rc::new(RefCell::new(Environment::new(Some(
-        //                 self.environment.clone(),
-        //             ))));
+        let global = self.parse_variable(iterator)?;
+        self.define_variable(global)?;
+        let offset = self.compiler().locals.len() - 1;
 
-        //             new_env.borrow_mut().define(
-        //                 iterator.lexeme.clone(),
-        //                 LoxEntity::Literal(Literal::String(item.to_string())),
-        //             );
+        self.evaluate(iterable)?;
+        self.emit_byte(OpCode::DefineIterator)?;
 
-        //             self.execute_block(statements, new_env)?;
-        //         }
+        let loop_start = self.chunk().len();
 
-        //         Ok(())
-        //     }
-        //     (Statement::Block { statements }, LoxEntity::List(list)) => {
-        //         for item in list.iter() {
-        //             let new_env = Rc::new(RefCell::new(Environment::new(Some(
-        //                 self.environment.clone(),
-        //             ))));
+        self.emit_byte(OpCode::IteratorNext(offset, 0))?;
 
-        //             new_env
-        //                 .borrow_mut()
-        //                 .define(iterator.lexeme.clone(), item.clone());
+        self.execute(body)?;
 
-        //             self.execute_block(statements, new_env)?;
-        //         }
+        self.emit_loop(loop_start)?;
+        self.patch_jump(loop_start + 1)?;
+        self.emit_byte(OpCode::Pop)?;
 
-        //         Ok(())
-        //     }
-        //     (Statement::Block { statements }, LoxEntity::Map(map)) => {
-        //         for item in map.keys() {
-        //             let new_env = Rc::new(RefCell::new(Environment::new(Some(
-        //                 self.environment.clone(),
-        //             ))));
-
-        //             new_env
-        //                 .borrow_mut()
-        //                 .define(iterator.lexeme.clone(), LoxEntity::Literal(item.clone()));
-
-        //             self.execute_block(statements, new_env)?;
-        //         }
-
-        //         Ok(())
-        //     }
-        //     _ => Err(LoxError::AstError),
-        // }
+        self.end_scope()
     }
 
     fn visit_function(&mut self, stmt: &Statement) -> LoxResult<()> {

@@ -3,6 +3,7 @@ use crate::{errors::LoxResult, expressions::Expression, tokens::Token};
 pub trait StatementVisitor {
     fn accept_statement(&mut self, stmt: &Statement) -> LoxResult<()> {
         match stmt {
+            Statement::Assert { .. } => self.visit_assert(stmt),
             Statement::Block { .. } => self.visit_block(stmt),
             Statement::Class { .. } => self.visit_class(stmt),
             Statement::Expression { .. } => self.visit_expression(stmt),
@@ -16,6 +17,7 @@ pub trait StatementVisitor {
         }
     }
 
+    fn visit_assert(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_block(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()>;
     fn visit_expression(&mut self, stmt: &Statement) -> LoxResult<()>;
@@ -30,6 +32,10 @@ pub trait StatementVisitor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Statement {
+    Assert {
+        expression: Box<Expression>,
+        message: Option<Box<Expression>>,
+    },
     Block {
         statements: Box<Vec<Statement>>,
     },

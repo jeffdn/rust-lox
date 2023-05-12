@@ -48,6 +48,8 @@ impl Parser {
             return self.return_statement();
         } else if self.token_type_matches(&[TokenType::While]) {
             return self.while_statement();
+        } else if self.token_type_matches(&[TokenType::Assert]) {
+            return self.assert_statement();
         } else if self.token_type_matches(&[TokenType::LeftBrace]) {
             return Ok(Statement::Block {
                 statements: self.block()?,
@@ -69,6 +71,20 @@ impl Parser {
         }
 
         Ok(Box::new(statements))
+    }
+
+    fn assert_statement(&mut self) -> LoxResult<Statement> {
+        let expression = Box::new(self.expression()?);
+        let mut message: Option<Box<Expression>> = None;
+
+        if self.token_type_matches(&[TokenType::Comma]) {
+            message = Some(Box::new(self.expression()?));
+        }
+
+        Ok(Statement::Assert {
+            expression,
+            message,
+        })
     }
 
     fn for_statement(&mut self) -> LoxResult<Statement> {
@@ -373,9 +389,19 @@ impl Parser {
                         value: Box::new(value),
                     })
                 },
-                Expression::Index { item, index, slice } => {
+                Expression::Index {
+                    item,
+                    is_slice,
+                    left,
+                    right,
+                } => {
                     return Ok(Expression::IndexedAssignment {
-                        indexed_item: Box::new(Expression::Index { item, index, slice }),
+                        indexed_item: Box::new(Expression::Index {
+                            item,
+                            is_slice,
+                            left,
+                            right,
+                        }),
                         expression: Box::new(value),
                     });
                 },
@@ -413,15 +439,26 @@ impl Parser {
                         }),
                     })
                 },
-                Expression::Index { item, index, slice } => {
+                Expression::Index {
+                    item,
+                    is_slice,
+                    left,
+                    right,
+                } => {
                     return Ok(Expression::IndexedAssignment {
                         indexed_item: Box::new(Expression::Index {
                             item: item.clone(),
-                            index: index.clone(),
-                            slice: slice.clone(),
+                            is_slice,
+                            left: left.clone(),
+                            right: right.clone(),
                         }),
                         expression: Box::new(Expression::Binary {
-                            left: Box::new(Expression::Index { item, index, slice }),
+                            left: Box::new(Expression::Index {
+                                item,
+                                is_slice,
+                                left,
+                                right,
+                            }),
                             operator: token,
                             right: Box::new(value),
                         }),
@@ -679,12 +716,35 @@ impl Parser {
                     object: Box::new(expr),
                 };
             } else if self.token_type_matches(&[TokenType::LeftBracket]) {
-                let index = self.expression()?;
+                let (is_slice, left, right) = if self.token_type_matches(&[TokenType::Colon]) {
+                    // this is a [:expr] slice
+                    let is_slice = true;
+                    let left = None;
 
-                let slice = if self.token_type_matches(&[TokenType::Colon]) {
-                    Some(Box::new(self.expression()?))
+                    let right = if self.check_current_token(&TokenType::RightBracket) {
+                        None
+                    } else {
+                        Some(Box::new(self.expression()?))
+                    };
+
+                    (is_slice, left, right)
                 } else {
-                    None
+                    let left = Some(Box::new(self.expression()?));
+                    let (is_slice, right) = if self.token_type_matches(&[TokenType::Colon]) {
+                        let is_slice = true;
+
+                        let right = if self.check_current_token(&TokenType::RightBracket) {
+                            None
+                        } else {
+                            Some(Box::new(self.expression()?))
+                        };
+
+                        (is_slice, right)
+                    } else {
+                        (false, None)
+                    };
+
+                    (is_slice, left, right)
                 };
 
                 self.consume(
@@ -694,8 +754,9 @@ impl Parser {
 
                 expr = Expression::Index {
                     item: Box::new(expr),
-                    index: Box::new(index),
-                    slice,
+                    is_slice,
+                    left,
+                    right,
                 };
             } else {
                 break;

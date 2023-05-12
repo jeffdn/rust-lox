@@ -123,7 +123,8 @@ impl Scanner {
                 self.line += 1;
                 Ok(TokenType::Skip)
             },
-            '"' => self.add_string(),
+            '"' => self.add_string('"'),
+            '\'' => self.add_string('\''),
             _ => {
                 if c.is_ascii_digit() {
                     return self.add_number();
@@ -139,6 +140,7 @@ impl Scanner {
     fn find_identifier(&self, input_lexeme: &str) -> TokenType {
         match input_lexeme {
             "and" => TokenType::And,
+            "assert" => TokenType::Assert,
             "class" => TokenType::Class,
             "else" => TokenType::Else,
             "false" => TokenType::False,
@@ -179,8 +181,8 @@ impl Scanner {
         Ok(self.find_identifier(&output))
     }
 
-    fn add_string(&mut self) -> Result<TokenType, LoxError> {
-        while self.peek() != '"' && !self.at_end() {
+    fn add_string(&mut self, until: char) -> Result<TokenType, LoxError> {
+        while self.peek() != until && !self.at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
             }
