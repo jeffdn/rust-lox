@@ -117,13 +117,25 @@ impl Compiler {
     }
 
     fn make_constant(&mut self, value: Value) -> LoxResult<usize> {
-        let constant = self.chunk().add_constant(value);
+        let maybe_idx = self
+            .chunk()
+            .constants
+            .iter()
+            .enumerate()
+            .find(|(_, v)| &*v.borrow() == &value);
 
-        if constant == usize::MAX {
-            panic!("too many constants in one chunk");
+        match maybe_idx {
+            Some((idx, _)) => Ok(idx),
+            None => {
+                let constant = self.chunk().add_constant(value);
+
+                if constant == usize::MAX {
+                    panic!("too many constants in one chunk");
+                }
+
+                Ok(constant)
+            },
         }
-
-        Ok(constant)
     }
 
     pub fn compile(&mut self, statements: Vec<Statement>) -> LoxResult<Function> {
