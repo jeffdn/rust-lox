@@ -579,7 +579,7 @@ impl Parser {
 
         if self.token_type_matches(&[TokenType::Percent, TokenType::Slash, TokenType::Star]) {
             let operator = self.previous();
-            let right = self.unary()?;
+            let right = self.factor()?;
 
             return Ok(Expression::Binary {
                 left: Box::new(expr),
