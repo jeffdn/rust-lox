@@ -57,6 +57,7 @@ pub enum Expression {
         callee: Box<Expression>,
         paren: tokens::Token,
         arguments: Box<Vec<Expression>>,
+        invocation: bool,
     },
     Get {
         name: tokens::Token,

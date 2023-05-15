@@ -24,8 +24,7 @@ struct ClassCompiler {
 pub struct Compiler {
     compilers: Vec<CompilerNode>,
     classes: Vec<ClassCompiler>,
-
-    panic_mode: bool,
+    // panic_mode: bool,
 }
 
 struct CompilerNode {
@@ -78,7 +77,7 @@ impl Compiler {
         Compiler {
             compilers: vec![CompilerNode::new(FunctionType::Script)],
             classes: Vec::new(),
-            panic_mode: false,
+            // panic_mode: false,
         }
     }
 
@@ -145,10 +144,10 @@ impl Compiler {
 
         self.emit_return()?;
 
-        #[cfg(feature = "debug")]
-        if self.panic_mode {
-            self.chunk().disassemble("code");
-        }
+        // #[cfg(feature = "debug")]
+        // if self.panic_mode {
+        //     self.chunk().disassemble("code");
+        // }
 
         Ok(self.compilers.pop().unwrap().function)
     }
@@ -156,10 +155,10 @@ impl Compiler {
     fn end_compiler(&mut self) -> LoxResult<CompilerNode> {
         self.emit_return()?;
 
-        #[cfg(feature = "debug")]
-        if self.panic_mode {
-            self.chunk().disassemble("code");
-        }
+        // #[cfg(feature = "debug")]
+        // if self.panic_mode {
+        //     self.chunk().disassemble("code");
+        // }
 
         Ok(self.compilers.pop().unwrap())
     }
@@ -549,16 +548,27 @@ impl ExpressionVisitor<()> for Compiler {
     }
 
     fn visit_call(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Call { callee, paren: _, arguments } = expr else {
+        let Expression::Call { callee, paren: _, arguments, invocation } = expr else {
             unreachable!();
         };
 
         self.evaluate(callee)?;
+
+        let pos = self.chunk().code.len() - 1;
+
         for arg in arguments.iter() {
             self.evaluate(arg)?;
         }
 
-        self.emit_byte(OpCode::Call(arguments.len()))
+        if *invocation {
+            let OpCode::GetProperty(name) = self.chunk().code.remove(pos) else {
+                unreachable!();
+            };
+
+            self.emit_byte(OpCode::Invoke(name, arguments.len()))
+        } else {
+            self.emit_byte(OpCode::Call(arguments.len()))
+        }
     }
 
     fn visit_get(&mut self, expr: &Expression) -> LoxResult<()> {

@@ -608,6 +608,7 @@ impl Parser {
 
     fn finish_call(&mut self, callee: Expression) -> LoxResult<Expression> {
         let mut arguments: Vec<Expression> = Vec::new();
+        let invocation = matches!(callee, Expression::Get { .. });
 
         if !self.check_current_token(&TokenType::RightParen) {
             loop {
@@ -630,6 +631,7 @@ impl Parser {
             callee: Box::new(callee),
             paren,
             arguments: Box::new(arguments),
+            invocation,
         })
     }
 
