@@ -121,7 +121,7 @@ impl Compiler {
             .constants
             .iter()
             .enumerate()
-            .find(|(_, v)| &*v.borrow() == &value);
+            .find(|(_, v)| *v.borrow() == value);
 
         match maybe_idx {
             Some((idx, _)) => Ok(idx),
@@ -500,6 +500,12 @@ impl Compiler {
     }
 }
 
+impl Default for Compiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExpressionVisitor<()> for Compiler {
     fn visit_assignment(&mut self, expr: &Expression) -> LoxResult<()> {
         let Expression::Assignment { name, expression } = expr else {
@@ -799,7 +805,7 @@ impl ExpressionVisitor<()> for Compiler {
 
     fn visit_variable(&mut self, expr: &Expression) -> LoxResult<()> {
         match expr {
-            Expression::Variable { name } => self.named_variable(&name, false, None),
+            Expression::Variable { name } => self.named_variable(name, false, None),
             _ => unreachable!(),
         }
     }
@@ -862,12 +868,12 @@ impl StatementVisitor for Compiler {
             self.add_local(&self.synthetic_token(TokenType::Super, superclass.line))?;
             self.define_variable(0)?;
 
-            self.named_variable(&name, false, None)?;
+            self.named_variable(name, false, None)?;
             self.emit_byte(OpCode::Inherit)?;
             self.classes.last_mut().unwrap().has_superclass = true;
         }
 
-        self.named_variable(&name, false, None)?;
+        self.named_variable(name, false, None)?;
 
         for method in methods.iter() {
             let Statement::Function { name, params, body } = method else {
@@ -880,7 +886,7 @@ impl StatementVisitor for Compiler {
                 _ => FunctionType::Method,
             };
 
-            self.function(function_type, name, &params, &body)?;
+            self.function(function_type, name, params, body)?;
             self.emit_byte(OpCode::Method(name_constant))?;
         }
 
@@ -1005,7 +1011,7 @@ impl StatementVisitor for Compiler {
         let global = self.parse_variable(name)?;
         self.mark_initialized()?;
 
-        self.function(FunctionType::Function, name, &params, &body)?;
+        self.function(FunctionType::Function, name, params, body)?;
         self.define_variable(global)
     }
 

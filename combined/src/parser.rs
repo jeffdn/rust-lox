@@ -60,14 +60,14 @@ impl Parser {
             return self.delete_statement();
         } else if self.token_type_matches(&[TokenType::LeftBrace]) {
             return Ok(Statement::Block {
-                statements: self.block()?,
+                statements: Box::new(self.block()?),
             });
         }
 
         self.expression_statement()
     }
 
-    fn block(&mut self) -> LoxResult<Box<Vec<Statement>>> {
+    fn block(&mut self) -> LoxResult<Vec<Statement>> {
         let mut statements: Vec<Statement> = Vec::new();
 
         while !self.token_type_matches(&[TokenType::RightBrace]) && !self.at_end() {
@@ -78,7 +78,7 @@ impl Parser {
             };
         }
 
-        Ok(Box::new(statements))
+        Ok(statements)
     }
 
     fn assert_statement(&mut self) -> LoxResult<Statement> {
@@ -334,7 +334,7 @@ impl Parser {
         Ok(Statement::Function {
             name,
             params: Box::new(parameters),
-            body: statements,
+            body: Box::new(statements),
         })
     }
 
@@ -695,7 +695,7 @@ impl Parser {
             "expect identifier after 'super.".into(),
         )?;
 
-        return Ok(Expression::Super { token, name });
+        Ok(Expression::Super { token, name })
     }
 
     fn call(&mut self) -> LoxResult<Expression> {
@@ -791,7 +791,7 @@ impl Parser {
                 name: self.previous(),
             });
         } else if self.token_type_matches(&[TokenType::Super]) {
-            return Ok(self.finish_super()?);
+            return self.finish_super();
         } else if self.token_type_matches(&[TokenType::This]) {
             return Ok(Expression::This {
                 token: self.previous(),
