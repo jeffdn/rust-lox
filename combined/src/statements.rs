@@ -6,17 +6,17 @@ pub trait StatementVisitor {
             Statement::Assert {
                 expression,
                 message,
-            } => self.visit_assert(&*expression, message.as_ref().map(|i| &**i)),
-            Statement::Block { statements } => self.visit_block(&*statements),
+            } => self.visit_assert(expression, message.as_ref().map(|i| &**i)),
+            Statement::Block { statements } => self.visit_block(statements),
             Statement::Break => self.visit_break(),
             Statement::Class {
                 name,
                 superclass,
                 methods,
-            } => self.visit_class(name, superclass.as_ref(), &*methods),
+            } => self.visit_class(name, superclass.as_ref(), methods),
             Statement::Continue => self.visit_continue(),
-            Statement::Delete { expression } => self.visit_delete(&*expression),
-            Statement::Expression { expression } => self.visit_expression(&*expression),
+            Statement::Delete { expression } => self.visit_delete(expression),
+            Statement::Expression { expression } => self.visit_expression(expression),
             Statement::For {
                 initializer,
                 condition,
@@ -26,36 +26,30 @@ pub trait StatementVisitor {
                 initializer.as_ref().map(|i| &**i),
                 condition.as_ref().map(|i| &**i),
                 increment.as_ref().map(|i| &**i),
-                &*body,
+                body,
             ),
             Statement::Foreach {
                 iterator,
                 iterable,
                 body,
-            } => self.visit_foreach(iterator, &*iterable, &*body),
-            Statement::Function { name, params, body } => {
-                self.visit_function(name, &*params, &*body)
-            },
+            } => self.visit_foreach(iterator, iterable, body),
+            Statement::Function { name, params, body } => self.visit_function(name, params, body),
             Statement::If {
                 condition,
                 then_branch,
                 else_branch,
-            } => self.visit_if(
-                &*condition,
-                &*then_branch,
-                else_branch.as_ref().map(|i| &**i),
-            ),
+            } => self.visit_if(condition, then_branch, else_branch.as_ref().map(|i| &**i)),
             Statement::Print {
                 newline,
                 expression,
-            } => self.visit_print(newline, &*expression),
+            } => self.visit_print(newline, expression),
             Statement::Return { keyword: _, value } => {
                 self.visit_return(value.as_ref().map(|i| &**i))
             },
             Statement::Var { name, initializer } => {
                 self.visit_var(name, initializer.as_ref().map(|i| &**i))
             },
-            Statement::While { condition, body } => self.visit_while(&*condition, &*body),
+            Statement::While { condition, body } => self.visit_while(condition, body),
         }
     }
 
