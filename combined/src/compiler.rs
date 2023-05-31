@@ -268,14 +268,6 @@ impl Compiler {
         Ok(())
     }
 
-    fn execute(&mut self, stmt: &Statement) -> LoxResult<()> {
-        self.accept_statement(stmt)
-    }
-
-    fn evaluate(&mut self, expr: &Expression) -> LoxResult<()> {
-        self.accept_expression(expr)
-    }
-
     fn identifier_constant(&mut self, token: &Token) -> LoxResult<usize> {
         let constant = match token.token_type {
             TokenType::This => "this".into(),
@@ -506,20 +498,17 @@ impl Default for Compiler {
     }
 }
 
-impl ExpressionVisitor<()> for Compiler {
-    fn visit_assignment(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Assignment { name, expression } = expr else {
-            unreachable!();
-        };
-
+impl ExpressionVisitor for Compiler {
+    fn visit_assignment(&mut self, name: &Token, expression: &Expression) -> LoxResult<()> {
         self.named_variable(name, true, Some(expression))
     }
 
-    fn visit_binary(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Binary { left, operator, right } = expr else {
-            unreachable!();
-        };
-
+    fn visit_binary(
+        &mut self,
+        left: &Expression,
+        operator: &Token,
+        right: &Expression,
+    ) -> LoxResult<()> {
         self.evaluate(left)?;
         self.evaluate(right)?;
 
@@ -553,11 +542,12 @@ impl ExpressionVisitor<()> for Compiler {
         }
     }
 
-    fn visit_call(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Call { callee, paren: _, arguments, invocation } = expr else {
-            unreachable!();
-        };
-
+    fn visit_call(
+        &mut self,
+        callee: &Expression,
+        arguments: &[Expression],
+        invocation: &bool,
+    ) -> LoxResult<()> {
         self.evaluate(callee)?;
 
         let pos = self.chunk().code.len() - 1;
@@ -577,28 +567,23 @@ impl ExpressionVisitor<()> for Compiler {
         }
     }
 
-    fn visit_get(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Get { name, object } = expr else {
-            unreachable!();
-        };
-
+    fn visit_get(&mut self, name: &Token, object: &Expression) -> LoxResult<()> {
         self.evaluate(object)?;
         let name = self.identifier_constant(name)?;
         self.emit_byte(OpCode::GetProperty(name))
     }
 
-    fn visit_grouping(&mut self, expr: &Expression) -> LoxResult<()> {
-        match expr {
-            Expression::Grouping { expression } => self.evaluate(expression),
-            _ => unreachable!(),
-        }
+    fn visit_grouping(&mut self, expression: &Expression) -> LoxResult<()> {
+        self.evaluate(expression)
     }
 
-    fn visit_index(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Index { item, is_slice, left, right } = expr else {
-            unreachable!();
-        };
-
+    fn visit_index(
+        &mut self,
+        item: &Expression,
+        is_slice: &bool,
+        left: Option<&Expression>,
+        right: Option<&Expression>,
+    ) -> LoxResult<()> {
         self.evaluate(item)?;
 
         if !is_slice {
@@ -624,12 +609,12 @@ impl ExpressionVisitor<()> for Compiler {
         }
     }
 
-    fn visit_indexed_assignment(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::IndexedAssignment { indexed_item, expression } = expr else {
-            unreachable!();
-        };
-
-        let Expression::Index { item, is_slice: _, left, right: _ } = &**indexed_item else {
+    fn visit_indexed_assignment(
+        &mut self,
+        indexed_item: &Expression,
+        expression: &Expression,
+    ) -> LoxResult<()> {
+        let Expression::Index { item, is_slice: _, left, right: _ } = indexed_item else {
             unreachable!();
         };
 
@@ -640,11 +625,7 @@ impl ExpressionVisitor<()> for Compiler {
         self.emit_byte(OpCode::SetIndex)
     }
 
-    fn visit_list(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::List { expressions } = expr else {
-            unreachable!();
-        };
-
+    fn visit_list(&mut self, expressions: &[Expression]) -> LoxResult<()> {
         for expression in expressions.iter() {
             self.evaluate(expression)?;
         }
@@ -662,33 +643,31 @@ impl ExpressionVisitor<()> for Compiler {
         Ok(())
     }
 
-    fn visit_literal(&mut self, expr: &Expression) -> LoxResult<()> {
-        match expr {
-            Expression::Literal { value } => match value {
-                Literal::Boolean(bool_val) => match bool_val {
-                    true => self.emit_byte(OpCode::True),
-                    false => self.emit_byte(OpCode::False),
-                },
-                Literal::Nil => self.emit_byte(OpCode::Nil),
-                Literal::Number(num_val) => {
-                    let constant = self.make_constant(Value::Number(*num_val))?;
-                    self.emit_byte(OpCode::Constant(constant))
-                },
-                Literal::String(str_val) | Literal::Identifier(str_val) => {
-                    let constant = self
-                        .make_constant(Value::Object(Object::String(Box::new(str_val.clone()))))?;
-                    self.emit_byte(OpCode::Constant(constant))
-                },
+    fn visit_literal(&mut self, value: &Literal) -> LoxResult<()> {
+        match value {
+            Literal::Boolean(bool_val) => match bool_val {
+                true => self.emit_byte(OpCode::True),
+                false => self.emit_byte(OpCode::False),
             },
-            _ => Err(LoxError::AstError),
+            Literal::Nil => self.emit_byte(OpCode::Nil),
+            Literal::Number(num_val) => {
+                let constant = self.make_constant(Value::Number(*num_val))?;
+                self.emit_byte(OpCode::Constant(constant))
+            },
+            Literal::String(str_val) | Literal::Identifier(str_val) => {
+                let constant =
+                    self.make_constant(Value::Object(Object::String(Box::new(str_val.clone()))))?;
+                self.emit_byte(OpCode::Constant(constant))
+            },
         }
     }
 
-    fn visit_logical(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Logical { left, operator, right } = expr else {
-            unreachable!();
-        };
-
+    fn visit_logical(
+        &mut self,
+        left: &Expression,
+        operator: &Token,
+        right: &Expression,
+    ) -> LoxResult<()> {
         self.evaluate(left)?;
 
         match operator.token_type {
@@ -712,11 +691,7 @@ impl ExpressionVisitor<()> for Compiler {
         }
     }
 
-    fn visit_map(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Map { expressions } = expr else {
-            unreachable!();
-        };
-
+    fn visit_map(&mut self, expressions: &[Expression]) -> LoxResult<()> {
         for expression in expressions.iter() {
             self.evaluate(expression)?;
         }
@@ -735,22 +710,19 @@ impl ExpressionVisitor<()> for Compiler {
         Ok(())
     }
 
-    fn visit_set(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Set { name, object, value } = expr else {
-            unreachable!();
-        };
-
+    fn visit_set(
+        &mut self,
+        name: &Token,
+        object: &Expression,
+        value: &Expression,
+    ) -> LoxResult<()> {
         self.evaluate(object)?;
         self.evaluate(value)?;
         let name = self.identifier_constant(name)?;
         self.emit_byte(OpCode::SetProperty(name))
     }
 
-    fn visit_super(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Super { token, name } = expr else {
-            unreachable!();
-        };
-
+    fn visit_super(&mut self, name: &Token, token: &Token) -> LoxResult<()> {
         match self.classes.last() {
             Some(class) => {
                 if !class.has_superclass {
@@ -770,11 +742,7 @@ impl ExpressionVisitor<()> for Compiler {
         self.emit_byte(OpCode::GetSuper(name_constant))
     }
 
-    fn visit_this(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::This { token } = expr else {
-            unreachable!();
-        };
-
+    fn visit_this(&mut self, token: &Token) -> LoxResult<()> {
         if self.classes.is_empty() {
             return Err(LoxError::ParseError(
                 token.line,
@@ -789,11 +757,7 @@ impl ExpressionVisitor<()> for Compiler {
         )
     }
 
-    fn visit_unary(&mut self, expr: &Expression) -> LoxResult<()> {
-        let Expression::Unary { operator, right } = expr else {
-            unreachable!();
-        };
-
+    fn visit_unary(&mut self, operator: &Token, right: &Expression) -> LoxResult<()> {
         self.evaluate(right)?;
 
         match operator.token_type {
@@ -803,20 +767,17 @@ impl ExpressionVisitor<()> for Compiler {
         }
     }
 
-    fn visit_variable(&mut self, expr: &Expression) -> LoxResult<()> {
-        match expr {
-            Expression::Variable { name } => self.named_variable(name, false, None),
-            _ => unreachable!(),
-        }
+    fn visit_variable(&mut self, name: &Token) -> LoxResult<()> {
+        self.named_variable(name, false, None)
     }
 }
 
 impl StatementVisitor for Compiler {
-    fn visit_assert(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Assert { expression, message } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_assert(
+        &mut self,
+        expression: &Expression,
+        message: Option<&Expression>,
+    ) -> LoxResult<()> {
         self.evaluate(expression)?;
 
         if let Some(message) = message {
@@ -827,11 +788,7 @@ impl StatementVisitor for Compiler {
         }
     }
 
-    fn visit_block(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Block { statements } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_block(&mut self, statements: &[Statement]) -> LoxResult<()> {
         self.begin_scope()?;
 
         for statement in statements.iter() {
@@ -841,18 +798,17 @@ impl StatementVisitor for Compiler {
         self.end_scope()
     }
 
-    fn visit_break(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Break = stmt else { unreachable!(); };
-
+    fn visit_break(&mut self) -> LoxResult<()> {
         let current_len = self.chunk().len();
         self.emit_byte(OpCode::Break(current_len))
     }
 
-    fn visit_class(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Class { name, superclass, methods } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_class(
+        &mut self,
+        name: &Token,
+        superclass: Option<&Token>,
+        methods: &[Statement],
+    ) -> LoxResult<()> {
         let name_constant = self.identifier_constant(name)?;
         self.declare_variable(name)?;
 
@@ -901,19 +857,13 @@ impl StatementVisitor for Compiler {
         Ok(())
     }
 
-    fn visit_continue(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Continue = stmt else { unreachable!(); };
-
+    fn visit_continue(&mut self) -> LoxResult<()> {
         let current_len = self.chunk().len();
         self.emit_byte(OpCode::Continue(current_len))
     }
 
-    fn visit_delete(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Delete { expression } = stmt else {
-            unreachable!();
-        };
-
-        let Expression::Index { item, is_slice: _, left, right: _ } = &**expression else {
+    fn visit_delete(&mut self, expression: &Expression) -> LoxResult<()> {
+        let Expression::Index { item, is_slice: _, left, right: _ } = expression else {
             unreachable!();
         };
 
@@ -923,20 +873,18 @@ impl StatementVisitor for Compiler {
         self.emit_byte(OpCode::DeleteIndex)
     }
 
-    fn visit_expression(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Expression { expression } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_expression(&mut self, expression: &Expression) -> LoxResult<()> {
         self.evaluate(expression)?;
         self.emit_byte(OpCode::Pop)
     }
 
-    fn visit_for(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::For { initializer, condition, increment, body } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_for(
+        &mut self,
+        initializer: Option<&Statement>,
+        condition: Option<&Expression>,
+        increment: Option<&Expression>,
+        body: &Statement,
+    ) -> LoxResult<()> {
         self.begin_scope()?;
 
         if let Some(initializer) = initializer {
@@ -975,11 +923,12 @@ impl StatementVisitor for Compiler {
         self.end_scope()
     }
 
-    fn visit_foreach(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Foreach { iterator, iterable, body } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_foreach(
+        &mut self,
+        iterator: &Token,
+        iterable: &Expression,
+        body: &Statement,
+    ) -> LoxResult<()> {
         self.begin_scope()?;
         self.add_local(&self.synthetic_token(TokenType::Skip, iterator.line))?;
 
@@ -1003,11 +952,12 @@ impl StatementVisitor for Compiler {
         self.end_scope()
     }
 
-    fn visit_function(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Function { name, params, body } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_function(
+        &mut self,
+        name: &Token,
+        params: &[Token],
+        body: &[Statement],
+    ) -> LoxResult<()> {
         let global = self.parse_variable(name)?;
         self.mark_initialized()?;
 
@@ -1015,11 +965,12 @@ impl StatementVisitor for Compiler {
         self.define_variable(global)
     }
 
-    fn visit_if(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::If { condition, then_branch, else_branch } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_if(
+        &mut self,
+        condition: &Expression,
+        then_branch: &Statement,
+        else_branch: Option<&Statement>,
+    ) -> LoxResult<()> {
         self.evaluate(condition)?;
 
         let then_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
@@ -1041,20 +992,12 @@ impl StatementVisitor for Compiler {
         Ok(())
     }
 
-    fn visit_print(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Print { newline, expression } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_print(&mut self, newline: &bool, expression: &Expression) -> LoxResult<()> {
         self.evaluate(expression)?;
         self.emit_byte(OpCode::Print(*newline))
     }
 
-    fn visit_return(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Return { keyword: _, value } = stmt else {
-            unreachable!();
-        };
-
+    fn visit_return(&mut self, value: Option<&Expression>) -> LoxResult<()> {
         match value {
             Some(expression) => {
                 if self.current_function().function_type == FunctionType::Initializer {
@@ -1071,26 +1014,7 @@ impl StatementVisitor for Compiler {
         }
     }
 
-    fn visit_while(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::While { condition, body } = stmt else {
-            unreachable!();
-        };
-
-        let loop_start = self.chunk().len();
-        self.evaluate(condition)?;
-        let exit_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
-        self.emit_byte(OpCode::Pop)?;
-        self.execute(body)?;
-        self.emit_loop(loop_start)?;
-        self.patch_jump(exit_jump)?;
-        self.emit_byte(OpCode::Pop)
-    }
-
-    fn visit_var(&mut self, stmt: &Statement) -> LoxResult<()> {
-        let Statement::Var { name, initializer } = stmt else {
-            unreachable!()
-        };
-
+    fn visit_var(&mut self, name: &Token, initializer: Option<&Expression>) -> LoxResult<()> {
         let global = self.parse_variable(name)?;
 
         match initializer {
@@ -1099,5 +1023,16 @@ impl StatementVisitor for Compiler {
         };
 
         self.define_variable(global)
+    }
+
+    fn visit_while(&mut self, condition: &Expression, body: &Statement) -> LoxResult<()> {
+        let loop_start = self.chunk().len();
+        self.evaluate(condition)?;
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse(0))?;
+        self.emit_byte(OpCode::Pop)?;
+        self.execute(body)?;
+        self.emit_loop(loop_start)?;
+        self.patch_jump(exit_jump)?;
+        self.emit_byte(OpCode::Pop)
     }
 }

@@ -2,47 +2,109 @@ use std::boxed::Box;
 
 use crate::{errors::LoxResult, tokens};
 
-pub trait ExpressionVisitor<T> {
-    fn accept_expression(&mut self, expr: &Expression) -> LoxResult<T> {
+pub trait ExpressionVisitor {
+    fn evaluate(&mut self, expr: &Expression) -> LoxResult<()> {
         match expr {
-            Expression::Assignment { .. } => self.visit_assignment(expr),
-            Expression::Binary { .. } => self.visit_binary(expr),
-            Expression::Call { .. } => self.visit_call(expr),
-            Expression::Get { .. } => self.visit_get(expr),
-            Expression::Grouping { .. } => self.visit_grouping(expr),
-            Expression::Index { .. } => self.visit_index(expr),
-            Expression::IndexedAssignment { .. } => self.visit_indexed_assignment(expr),
-            Expression::List { .. } => self.visit_list(expr),
-            Expression::Literal { .. } => self.visit_literal(expr),
-            Expression::Logical { .. } => self.visit_logical(expr),
-            Expression::Map { .. } => self.visit_map(expr),
-            Expression::Set { .. } => self.visit_set(expr),
-            Expression::Super { .. } => self.visit_super(expr),
-            Expression::This { .. } => self.visit_this(expr),
-            Expression::Unary { .. } => self.visit_unary(expr),
-            Expression::Variable { .. } => self.visit_variable(expr),
+            Expression::Assignment { name, expression } => {
+                self.visit_assignment(name, &*expression)
+            },
+            Expression::Binary {
+                left,
+                operator,
+                right,
+            } => self.visit_binary(&*left, operator, &*right),
+            Expression::Call {
+                callee,
+                paren: _,
+                arguments,
+                invocation,
+            } => self.visit_call(&*callee, &*arguments, invocation),
+            Expression::Get { name, object } => self.visit_get(name, &*object),
+            Expression::Grouping { expression } => self.visit_grouping(&*expression),
+            Expression::Index {
+                item,
+                is_slice,
+                left,
+                right,
+            } => self.visit_index(
+                &*item,
+                is_slice,
+                left.as_ref().map(|i| &**i),
+                right.as_ref().map(|i| &**i),
+            ),
+            Expression::IndexedAssignment {
+                indexed_item,
+                expression,
+            } => self.visit_indexed_assignment(&*indexed_item, &*expression),
+            Expression::List { expressions } => self.visit_list(&*expressions),
+            Expression::Literal { value } => self.visit_literal(value),
+            Expression::Logical {
+                left,
+                operator,
+                right,
+            } => self.visit_logical(&*left, operator, &*right),
+            Expression::Map { expressions } => self.visit_map(&*expressions),
+            Expression::Set {
+                name,
+                object,
+                value,
+            } => self.visit_set(name, &*object, &*value),
+            Expression::Super { name, token } => self.visit_super(name, token),
+            Expression::This { token } => self.visit_this(token),
+            Expression::Unary { operator, right } => self.visit_unary(operator, &*right),
+            Expression::Variable { name } => self.visit_variable(name),
         }
     }
 
-    fn visit_assignment(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_binary(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_call(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_get(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_grouping(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_index(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_indexed_assignment(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_list(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_literal(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_logical(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_map(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_set(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_super(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_this(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_unary(&mut self, expr: &Expression) -> LoxResult<T>;
-    fn visit_variable(&mut self, expr: &Expression) -> LoxResult<T>;
+    fn visit_assignment(&mut self, name: &tokens::Token, expression: &Expression) -> LoxResult<()>;
+    fn visit_binary(
+        &mut self,
+        left: &Expression,
+        operator: &tokens::Token,
+        right: &Expression,
+    ) -> LoxResult<()>;
+    fn visit_call(
+        &mut self,
+        callee: &Expression,
+        arguments: &[Expression],
+        invocation: &bool,
+    ) -> LoxResult<()>;
+    fn visit_get(&mut self, name: &tokens::Token, object: &Expression) -> LoxResult<()>;
+    fn visit_grouping(&mut self, expression: &Expression) -> LoxResult<()>;
+    fn visit_index(
+        &mut self,
+        item: &Expression,
+        is_slice: &bool,
+        left: Option<&Expression>,
+        right: Option<&Expression>,
+    ) -> LoxResult<()>;
+    fn visit_indexed_assignment(
+        &mut self,
+        indexed_item: &Expression,
+        expression: &Expression,
+    ) -> LoxResult<()>;
+    fn visit_list(&mut self, expressions: &[Expression]) -> LoxResult<()>;
+    fn visit_literal(&mut self, value: &tokens::Literal) -> LoxResult<()>;
+    fn visit_logical(
+        &mut self,
+        left: &Expression,
+        operator: &tokens::Token,
+        right: &Expression,
+    ) -> LoxResult<()>;
+    fn visit_map(&mut self, expressions: &[Expression]) -> LoxResult<()>;
+    fn visit_set(
+        &mut self,
+        name: &tokens::Token,
+        object: &Expression,
+        value: &Expression,
+    ) -> LoxResult<()>;
+    fn visit_super(&mut self, name: &tokens::Token, token: &tokens::Token) -> LoxResult<()>;
+    fn visit_this(&mut self, token: &tokens::Token) -> LoxResult<()>;
+    fn visit_unary(&mut self, operator: &tokens::Token, right: &Expression) -> LoxResult<()>;
+    fn visit_variable(&mut self, name: &tokens::Token) -> LoxResult<()>;
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Expression {
     Assignment {
         name: tokens::Token,
