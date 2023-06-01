@@ -177,8 +177,9 @@ impl Compiler {
             }
 
             let idx = self.compiler().local_count - 1;
-            if self.compiler().locals[idx].depth.is_some()
-                && self.compiler().locals[idx].depth.unwrap() <= self.compiler().scope_depth
+            if self.compiler().locals[idx]
+                .depth
+                .is_some_and(|depth| depth <= self.compiler().scope_depth)
             {
                 break;
             }
