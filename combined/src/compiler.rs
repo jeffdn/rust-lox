@@ -29,7 +29,6 @@ pub struct Compiler {
 
 struct CompilerNode {
     locals: Vec<Local>,
-    local_count: usize,
     upvalues: Vec<UpValue>,
     scope_depth: usize,
     function: Function,
@@ -39,7 +38,6 @@ impl CompilerNode {
     pub fn new(function_type: FunctionType) -> CompilerNode {
         let mut node = CompilerNode {
             locals: Vec::with_capacity(256),
-            local_count: 1,
             upvalues: Vec::with_capacity(256),
             scope_depth: 0,
             function: Function {
@@ -121,10 +119,16 @@ impl Compiler {
             .constants
             .iter()
             .enumerate()
-            .find(|(_, v)| *v.borrow() == value);
+            .find_map(|(idx, v)| {
+                if *v.borrow() == value {
+                    Some(idx)
+                } else {
+                    None
+                }
+            });
 
         match maybe_idx {
-            Some((idx, _)) => Ok(idx),
+            Some(idx) => Ok(idx),
             None => {
                 let constant = self.chunk().add_constant(value);
 
@@ -172,11 +176,11 @@ impl Compiler {
         self.compiler_mut().scope_depth -= 1;
 
         loop {
-            if self.compiler().local_count == 0 {
+            if self.compiler().locals.is_empty() {
                 break;
             }
 
-            let idx = self.compiler().local_count - 1;
+            let idx = self.compiler().locals.len() - 1;
             if self.compiler().locals[idx]
                 .depth
                 .is_some_and(|depth| depth <= self.compiler().scope_depth)
@@ -191,8 +195,6 @@ impl Compiler {
             } else {
                 self.emit_byte(OpCode::Pop)?;
             }
-
-            self.compiler_mut().local_count -= 1;
         }
 
         if self.compiler().scope_depth == 0
@@ -290,7 +292,6 @@ impl Compiler {
     }
 
     fn add_local(&mut self, name: &Token) -> LoxResult<()> {
-        self.compiler_mut().local_count += 1;
         self.compiler_mut().locals.push(Local {
             name: name.clone(),
             depth: None,
@@ -589,25 +590,18 @@ impl ExpressionVisitor for Compiler {
 
         if !is_slice {
             self.evaluate(left.as_ref().unwrap())?;
-            self.emit_byte(OpCode::GetIndex)
-        } else {
-            match (left, right) {
-                (Some(left), Some(right)) => {
-                    self.evaluate(left)?;
-                    self.evaluate(right)?;
-                    self.emit_byte(OpCode::GetSlice(true, true))
-                },
-                (Some(left), None) => {
-                    self.evaluate(left)?;
-                    self.emit_byte(OpCode::GetSlice(true, false))
-                },
-                (None, Some(right)) => {
-                    self.evaluate(right)?;
-                    self.emit_byte(OpCode::GetSlice(false, true))
-                },
-                (None, None) => self.emit_byte(OpCode::GetSlice(false, false)),
-            }
+            return self.emit_byte(OpCode::GetIndex);
         }
+
+        if let Some(left) = left {
+            self.evaluate(left)?;
+        }
+
+        if let Some(right) = right {
+            self.evaluate(right)?;
+        }
+
+        self.emit_byte(OpCode::GetSlice(left.is_some(), right.is_some()))
     }
 
     fn visit_indexed_assignment(
@@ -727,10 +721,10 @@ impl ExpressionVisitor for Compiler {
         match self.classes.last() {
             Some(class) => {
                 if !class.has_superclass {
-                    self.error("can't use 'super' outside of a class")?;
+                    self.error("can't user 'super' inside a class without a superclass")?
                 }
             },
-            None => self.error("can't user 'super' inside a class without a superclass")?,
+            None => self.error("can't use 'super' outside of a class")?,
         };
 
         let name_constant = self.identifier_constant(name)?;
