@@ -72,7 +72,6 @@ impl VirtualMachine {
             Native,
             NativeFunction {
                 function,
-                obj: None,
                 name: String::from(name),
                 arity,
             }
@@ -101,7 +100,6 @@ impl VirtualMachine {
                     Closure {
                         upvalues: Vec::with_capacity(STACK_MAX),
                         function,
-                        obj: None,
                     }
                 ));
 
@@ -265,7 +263,7 @@ impl VirtualMachine {
                                                                                 unreachable!();
                                                                             };
 
-                closure.function.chunk.constants.get($pos).clone()
+                closure.function.chunk.constants[$pos].clone()
             }};
         }
 
@@ -711,7 +709,6 @@ impl VirtualMachine {
                     self.stack_push_value(obj!(
                         Closure,
                         Closure {
-                            obj: None,
                             upvalues: captured,
                             function,
                         }
@@ -820,7 +817,7 @@ impl VirtualMachine {
     fn read_string(&self, index: usize) -> LoxResult<String> {
         match &*self.frame().closure.borrow() {
             Value::Object(Object::Closure(closure)) => {
-                match &*closure.function.chunk.constants.get(index).borrow() {
+                match &*closure.function.chunk.constants[index].borrow() {
                     Value::Object(Object::String(name)) => Ok(*name.clone()),
                     _ => err!("tried to read a string and failed"),
                 }
@@ -994,7 +991,6 @@ impl VirtualMachine {
                     BoundMethod {
                         receiver,
                         closure: method.clone(),
-                        obj: None,
                     }
                 );
 
@@ -1020,7 +1016,6 @@ impl VirtualMachine {
         let new_upvalue = Rc::new(RefCell::new(UpValue {
             location: item.clone(),
             location_index: upvalue_index,
-            obj: None,
         }));
 
         self.upvalues.push(new_upvalue.clone());

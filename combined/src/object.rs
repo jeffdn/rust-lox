@@ -100,7 +100,6 @@ pub struct Class {
     pub parent: Option<ValuePtr>,
     pub name: String,
     pub methods: HashMap<String, ValuePtr>,
-    pub obj: Option<Object>,
 }
 
 impl Class {
@@ -109,7 +108,6 @@ impl Class {
             name,
             parent: None,
             methods: HashMap::new(),
-            obj: None,
         }
     }
 }
@@ -118,7 +116,6 @@ impl Class {
 pub struct Instance {
     pub class: ValuePtr,
     pub fields: HashMap<String, ValuePtr>,
-    pub obj: Option<Object>,
 }
 
 impl Instance {
@@ -126,7 +123,6 @@ impl Instance {
         Self {
             class,
             fields: HashMap::new(),
-            obj: None,
         }
     }
 }
@@ -135,14 +131,12 @@ impl Instance {
 pub struct BoundMethod {
     pub receiver: ValuePtr,
     pub closure: ValuePtr,
-    pub obj: Option<Object>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct UpValue {
     pub location: ValuePtr,
     pub location_index: usize, // the position of `location` in the stack
-    pub obj: Option<Object>,
 }
 
 pub type UpValuePtr = Rc<RefCell<UpValue>>;
@@ -159,7 +153,6 @@ pub type NativeFn = fn(&[ValuePtr]) -> LoxResult<Value>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
-    pub obj: Option<Object>,
     pub upvalues: Vec<UpValuePtr>,
     pub function: Function,
 }
@@ -167,7 +160,6 @@ pub struct Closure {
 #[derive(Clone)]
 pub struct NativeFunction {
     pub function: NativeFn,
-    pub obj: Option<Object>,
     pub name: String,
     pub arity: usize,
 }
@@ -187,7 +179,6 @@ impl fmt::Debug for NativeFunction {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     pub function_type: FunctionType,
-    pub obj: Option<Object>,
     pub arity: usize,
     pub upvalue_count: usize,
     pub chunk: Chunk,

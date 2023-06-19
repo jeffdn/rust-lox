@@ -138,34 +138,3 @@ impl fmt::Display for Value {
         write!(f, "{output}")
     }
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ValueSet {
-    pub values: Vec<ValuePtr>,
-}
-
-impl Default for ValueSet {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ValueSet {
-    pub fn new() -> ValueSet {
-        ValueSet { values: Vec::new() }
-    }
-
-    pub fn write(&mut self, value: Value) -> usize {
-        self.values.push(ValuePtr::new(value));
-
-        self.values.len() - 1
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &ValuePtr> {
-        self.values.iter()
-    }
-
-    pub fn get(&self, index: usize) -> &ValuePtr {
-        &self.values[index]
-    }
-}

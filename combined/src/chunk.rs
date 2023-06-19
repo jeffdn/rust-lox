@@ -1,6 +1,6 @@
 use std::{boxed::Box, fmt, iter::Iterator};
 
-use crate::value::{Value, ValueSet};
+use crate::value::{Value, ValuePtr};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UpValue {
@@ -124,7 +124,7 @@ impl fmt::Display for OpCode {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Chunk {
     pub code: Vec<OpCode>,
-    pub constants: ValueSet,
+    pub constants: Vec<ValuePtr>,
     pub lines: Vec<usize>,
 }
 
@@ -138,7 +138,7 @@ impl Chunk {
     pub fn new() -> Chunk {
         Chunk {
             code: Vec::new(),
-            constants: ValueSet::new(),
+            constants: Vec::new(),
             lines: Vec::new(),
         }
     }
@@ -161,7 +161,8 @@ impl Chunk {
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {
-        self.constants.write(value)
+        self.constants.push(ValuePtr::new(value));
+        self.constants.len() - 1
     }
 
     #[cfg(feature = "debug")]

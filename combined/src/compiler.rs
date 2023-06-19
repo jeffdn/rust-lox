@@ -42,7 +42,6 @@ impl CompilerNode {
             scope_depth: 0,
             function: Function {
                 function_type: function_type.clone(),
-                obj: None,
                 arity: 0,
                 upvalue_count: 0,
                 chunk: Chunk::new(),
