@@ -1,9 +1,10 @@
 use std::fmt;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LoxError {
     UsageError,
     AstError,
+    CompileError(String),
     ResolutionError(String),
     ParseError(usize, String),
     TypeError(String),
@@ -19,6 +20,7 @@ impl fmt::Display for LoxError {
         let output = match self {
             LoxError::UsageError => "usage: lox [script]".to_string(),
             LoxError::AstError => "internal error in parsing AST".to_string(),
+            LoxError::CompileError(msg) => format!("compilation error: {}", msg),
             LoxError::ResolutionError(msg) => format!("resolution error: {}", msg),
             LoxError::ParseError(_, msg) => format!("parse error: {}", msg),
             LoxError::TypeError(msg) => format!("type error: {}", msg),

@@ -321,7 +321,7 @@ impl Compiler {
     }
 
     fn error(&self, message: &str) -> LoxResult<()> {
-        Err(LoxError::ResolutionError(message.into()))
+        Err(LoxError::CompileError(message.into()))
     }
 
     fn mark_initialized(&mut self) -> LoxResult<()> {
@@ -1028,5 +1028,145 @@ impl StatementVisitor for Compiler {
         self.emit_loop(loop_start)?;
         self.patch_jump(exit_jump)?;
         self.emit_byte(OpCode::Pop)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parser::Parser;
+    use crate::scanner::Scanner;
+
+    use super::*;
+
+    fn _generate_function(input: &str) -> LoxResult<Function> {
+        let mut scanner = Scanner::new(input.into());
+        let (tokens, _) = scanner.scan_tokens();
+        let mut parser = Parser::new(tokens);
+        let parse_output = parser.parse().unwrap();
+        let mut compiler = Compiler::new();
+        compiler.compile(parse_output)
+    }
+
+    #[test]
+    fn test_basic() {
+        let input = "var foo = 123;\nprintln foo;\n";
+        let function = _generate_function(input).unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Constant(1),
+                OpCode::DefineGlobal(0),
+                OpCode::GetGlobal(0),
+                OpCode::Print(true),
+                OpCode::Nil,
+                OpCode::Return,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_scope() {
+        let input = r#"
+            fn bar() {
+                var foo = 123;
+                return foo;
+            }
+            var foo = bar();
+            println foo;
+        "#;
+        let function = _generate_function(input).unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Closure(1, Box::new(vec![])),
+                OpCode::DefineGlobal(0),
+                OpCode::GetGlobal(0),
+                OpCode::Call(0),
+                OpCode::DefineGlobal(2),
+                OpCode::GetGlobal(2),
+                OpCode::Print(true),
+                OpCode::Nil,
+                OpCode::Return,
+            ],
+        );
+    }
+
+    #[test]
+    fn test_build_list() {
+        let input = r#"
+            println [1, 2, 1 + 2];
+            print [];
+        "#;
+        let function = _generate_function(input).unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Constant(0),
+                OpCode::Constant(1),
+                OpCode::Constant(0),
+                OpCode::Constant(1),
+                OpCode::Add,
+                OpCode::BuildList(3),
+                OpCode::Print(true),
+                OpCode::Constant(2),
+                OpCode::Print(false),
+                OpCode::Nil,
+                OpCode::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_build_map() {
+        let input = r#"
+            println {'a': 1};
+            print {};
+        "#;
+        let function = _generate_function(input).unwrap();
+
+        assert_eq!(
+            function.chunk.code,
+            [
+                OpCode::Constant(0),
+                OpCode::Constant(1),
+                OpCode::BuildMap(2),
+                OpCode::Print(true),
+                OpCode::Constant(2),
+                OpCode::Print(false),
+                OpCode::Nil,
+                OpCode::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_improper_use_of_break_fails() {
+        let input = r#"
+            if (true) {
+                break;
+            }
+        "#;
+        let output = _generate_function(input);
+        assert_eq!(
+            output.expect_err("didn't fail as expected"),
+            LoxError::CompileError("ending scope without correcting a break or continue".into())
+        );
+    }
+
+    #[test]
+    fn test_improper_use_of_continue_fails() {
+        let input = r#"
+            if (true) {
+                continue;
+            }
+        "#;
+        let output = _generate_function(&input);
+        assert_eq!(
+            output.expect_err("didn't fail as expected"),
+            LoxError::CompileError("ending scope without correcting a break or continue".into())
+        );
     }
 }
