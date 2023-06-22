@@ -180,7 +180,6 @@ impl fmt::Debug for NativeFunction {
 pub struct Function {
     pub function_type: FunctionType,
     pub arity: usize,
-    pub upvalue_count: usize,
     pub chunk: Chunk,
     pub name: String,
 }

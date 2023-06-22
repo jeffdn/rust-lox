@@ -2,15 +2,13 @@ var global_set;
 var global_get;
 
 fn main() {
-  {
-    var a = "initial";
+  var a = "initial";
 
-    fn set() { a = "updated"; }
-    fn get() { println a; }
+  fn set() { a = "updated"; }
+  fn get() { println a; }
 
-    global_set = set;
-    global_get = get;
-  }
+  global_set = set;
+  global_get = get;
 }
 
 main();
@@ -46,3 +44,24 @@ fn other_main() {
 other_main();
 global_one();
 global_two();
+
+fn other_other_main(n) {
+  var i = 0;
+
+  fn inner() {
+    if (i == n) {
+      return;
+    }
+
+    i += 1;
+    return i;
+  }
+
+  return inner;
+}
+
+var gen = other_other_main(3);
+assert gen() == 1;
+assert gen() == 2;
+assert gen() == 3;
+assert gen() == nil;

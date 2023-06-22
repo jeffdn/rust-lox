@@ -43,7 +43,6 @@ impl CompilerNode {
             function: Function {
                 function_type: function_type.clone(),
                 arity: 0,
-                upvalue_count: 0,
                 chunk: Chunk::new(),
                 name: "<script>".into(),
             },
@@ -415,8 +414,6 @@ impl Compiler {
             .upvalues
             .push(UpValue { is_local, index });
 
-        self.compiler_at_mut(depth).function.upvalue_count += 1;
-
         Ok(index)
     }
 
@@ -468,6 +465,8 @@ impl Compiler {
         for statement in body.iter() {
             self.execute(statement)?;
         }
+
+        self.end_scope()?;
 
         let compiler = self.end_compiler()?;
         let constant =

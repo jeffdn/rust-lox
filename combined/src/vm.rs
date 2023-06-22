@@ -356,9 +356,14 @@ impl VirtualMachine {
                 },
                 OpCode::GetUpValue(index) => {
                     let upvalue = match &*self.frame().closure.borrow() {
-                        Value::Object(Object::Closure(closure)) => {
-                            closure.upvalues[index - 1].borrow().location.clone()
-                        },
+                        Value::Object(Object::Closure(closure)) => closure
+                            .upvalues
+                            .iter()
+                            .find(|uv| uv.borrow().location_index == index)
+                            .unwrap()
+                            .borrow()
+                            .location
+                            .clone(),
                         _ => unreachable!(),
                     };
 
@@ -368,7 +373,13 @@ impl VirtualMachine {
                     let last_stack = self.stack.last().unwrap().clone();
                     match &*self.frame_mut().closure.borrow_mut() {
                         Value::Object(Object::Closure(closure)) => {
-                            closure.upvalues[index - 1].borrow_mut().location = last_stack;
+                            closure
+                                .upvalues
+                                .iter()
+                                .find(|uv| uv.borrow().location_index == index)
+                                .unwrap()
+                                .borrow_mut()
+                                .location = last_stack;
                         },
                         _ => unreachable!(),
                     }
@@ -1007,10 +1018,12 @@ impl VirtualMachine {
     fn capture_upvalue(&mut self, upvalue_index: usize) -> LoxResult<UpValuePtr> {
         let item = &self.stack[self.frame().stack_offset + upvalue_index];
 
-        for (idx, upvalue) in self.upvalues.iter().enumerate() {
-            if idx == upvalue_index - 1 {
-                return Ok(upvalue.clone());
-            }
+        if let Some(uv) = self
+            .upvalues
+            .iter()
+            .find(|uv| uv.borrow().location_index == upvalue_index)
+        {
+            return Ok(uv.clone());
         }
 
         let new_upvalue = Rc::new(RefCell::new(UpValue {
