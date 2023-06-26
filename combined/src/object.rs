@@ -204,8 +204,8 @@ impl fmt::Display for Object {
                 )
             },
             Object::Class(class) => class.name.clone(),
-            Object::Closure(closure) => closure.function.name.clone(),
-            Object::Function(function) => function.name.clone(),
+            Object::Closure(closure) => format!("<closure: {}>", closure.function.name),
+            Object::Function(function) => format!("<function: {}>", function.name),
             Object::Instance(instance) => {
                 let Value::Object(Object::Class(class)) = &*instance.class.0.borrow() else {
                     unreachable!();

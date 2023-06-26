@@ -401,18 +401,12 @@ impl Compiler {
     }
 
     fn add_upvalue(&mut self, index: usize, is_local: bool, depth: usize) -> LoxResult<usize> {
-        if let Some(uv) = self
-            .compiler_at_mut(depth)
-            .upvalues
-            .iter()
-            .find(|uv| uv.is_local == is_local && uv.index == index)
-        {
-            return Ok(uv.index);
-        }
+        let uv = UpValue { is_local, index };
+        let compiler = self.compiler_at_mut(depth);
 
-        self.compiler_at_mut(depth)
-            .upvalues
-            .push(UpValue { is_local, index });
+        if !compiler.upvalues.contains(&uv) {
+            compiler.upvalues.push(uv);
+        }
 
         Ok(index)
     }

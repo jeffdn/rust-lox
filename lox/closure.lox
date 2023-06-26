@@ -45,8 +45,8 @@ other_main();
 global_one();
 global_two();
 
-fn other_other_main(n) {
-  var i = 0;
+fn other_other_main(m, n) {
+  var i = m;
 
   fn inner() {
     if (i == n) {
@@ -60,8 +60,8 @@ fn other_other_main(n) {
   return inner;
 }
 
-var gen = other_other_main(3);
-assert gen() == 1;
+var gen = other_other_main(1, 4);
 assert gen() == 2;
 assert gen() == 3;
+assert gen() == 4;
 assert gen() == nil;

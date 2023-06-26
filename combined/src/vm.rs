@@ -359,7 +359,9 @@ impl VirtualMachine {
                         Value::Object(Object::Closure(closure)) => closure
                             .upvalues
                             .iter()
-                            .find(|uv| uv.borrow().location_index == index)
+                            .find(|uv| {
+                                uv.borrow().location_index == self.frame().stack_offset + index
+                            })
                             .unwrap()
                             .borrow()
                             .location
@@ -371,12 +373,13 @@ impl VirtualMachine {
                 },
                 OpCode::SetUpValue(index) => {
                     let last_stack = self.stack.last().unwrap().clone();
+                    let pos = self.frame().stack_offset + index;
                     match &*self.frame_mut().closure.borrow_mut() {
                         Value::Object(Object::Closure(closure)) => {
                             closure
                                 .upvalues
                                 .iter()
-                                .find(|uv| uv.borrow().location_index == index)
+                                .find(|uv| uv.borrow().location_index == pos)
                                 .unwrap()
                                 .borrow_mut()
                                 .location = last_stack;
@@ -704,11 +707,11 @@ impl VirtualMachine {
                     let mut captured: Vec<UpValuePtr> = Vec::with_capacity(upvalues.len());
                     for uv in upvalues.iter() {
                         let new_upvalue = if uv.is_local {
-                            self.capture_upvalue(uv.index)?
+                            self.capture_upvalue(self.frame().stack_offset + uv.index)?
                         } else {
                             match &*self.frame().closure.borrow() {
                                 Value::Object(Object::Closure(closure)) => {
-                                    closure.upvalues[index - 1].clone()
+                                    closure.upvalues[index].clone()
                                 },
                                 _ => unreachable!(),
                             }
@@ -730,8 +733,8 @@ impl VirtualMachine {
                         err!("can't close an upvalue without a stack!");
                     };
 
-                    let value = self.pop_stack()?;
-                    self.close_upvalues(value);
+                    self.close_upvalues(self.stack.len() - 1);
+                    self.stack.pop();
                 },
                 OpCode::Assert(has_message) => {
                     let message_ptr = has_message.then(|| self.pop_stack().ok()).flatten();
@@ -783,6 +786,7 @@ impl VirtualMachine {
                     let result = self.pop_stack()?;
 
                     let old_frame = self.frames.pop().unwrap();
+                    self.close_upvalues(old_frame.stack_offset);
 
                     if self.frames.is_empty() {
                         self.pop_stack()?;
@@ -1016,7 +1020,7 @@ impl VirtualMachine {
     }
 
     fn capture_upvalue(&mut self, upvalue_index: usize) -> LoxResult<UpValuePtr> {
-        let item = &self.stack[self.frame().stack_offset + upvalue_index];
+        let item = &self.stack[upvalue_index];
 
         if let Some(uv) = self
             .upvalues
@@ -1036,21 +1040,9 @@ impl VirtualMachine {
         Ok(new_upvalue)
     }
 
-    fn close_upvalues(&mut self, value: ValuePtr) {
-        for idx in (0..self.upvalues.len()).rev() {
-            if self.upvalues[idx].borrow().location != value {
-                break;
-            }
-
-            self.upvalues.remove(idx);
-        }
-
-        // let last = self.stack.last().unwrap();
-        // println!("closing {}", upvalue_index);
-        // while !self.upvalues.is_empty() && self.upvalues.last().unwrap().borrow().location_index >= upvalue_index {
-        //     println!("popping {:?}", self.upvalues.last().unwrap());
-        //     self.upvalues.pop();
-        // }
+    fn close_upvalues(&mut self, position: usize) {
+        self.upvalues
+            .retain(|uv| uv.borrow_mut().location_index < position);
     }
 
     fn define_method(&mut self, name: &str) -> LoxResult<()> {
