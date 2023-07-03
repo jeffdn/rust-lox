@@ -183,52 +183,15 @@ impl Chunk {
         };
 
         let output = match code {
-            OpCode::Constant(index) => format!(
-                "{:<20} {}",
-                "op_constant",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::GetLocal(index) => format!(
-                "{:<20} {}",
-                "op_get_local",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::SetLocal(index) => format!(
-                "{:<20} {}",
-                "op_set_local",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::GetGlobal(index) => format!(
-                "{:<20} {}",
-                "op_get_global",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::DefineGlobal(index) => format!(
-                "{:<20} {}",
-                "op_define_global",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::SetGlobal(index) => format!(
-                "{:<20} {}",
-                "op_set_global",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::GetUpValue(index) => format!(
-                "{:<20} {}",
-                "op_get_upvalue",
-                *index, //self.constants.get(*index),
-            ),
-            OpCode::SetUpValue(index) => format!(
-                "{:<20} {}, {:?}",
-                "op_set_upvalue",
-                *index,
-                self.constants.get(*index),
-            ),
-            OpCode::GetProperty(index) => format!(
-                "{:<20} {}",
-                "op_get_property",
-                *index, //self.constants.get(*index),
-            ),
+            OpCode::Constant(index) => format!("{:<20} {}", "op_constant", *index),
+            OpCode::GetLocal(index) => format!("{:<20} {}", "op_get_local", *index),
+            OpCode::SetLocal(index) => format!("{:<20} {}", "op_set_local", *index),
+            OpCode::GetGlobal(index) => format!("{:<20} {}", "op_get_global", *index),
+            OpCode::DefineGlobal(index) => format!("{:<20} {}", "op_define_global", *index),
+            OpCode::SetGlobal(index) => format!("{:<20} {}", "op_set_global", *index),
+            OpCode::GetUpValue(index) => format!("{:<20} {}", "op_get_upvalue", *index),
+            OpCode::SetUpValue(index) => format!("{:<20} {}", "op_set_upvalue", *index),
+            OpCode::GetProperty(index) => format!("{:<20} {}", "op_get_property", *index),
             OpCode::SetProperty(index) => format!("{:<20} {}", "op_set_property", *index),
             OpCode::GetSuper(index) => format!("{:<20} {}", "op_get_super", *index),
             OpCode::GetSlice(left, right) => format!("{:<20} {left} {right}", "op_get_slice"),

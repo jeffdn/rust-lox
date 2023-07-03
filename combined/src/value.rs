@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::object::Object;
+use crate::tokens::Literal;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -13,6 +14,18 @@ pub enum Value {
     Nil,
     Number(f64),
     Object(Object),
+}
+
+impl From<Literal> for Value {
+    fn from(value: Literal) -> Self {
+        match value {
+            Literal::Boolean(bool_val) => Value::Bool(bool_val),
+            Literal::Nil => Value::Nil,
+            Literal::Number(num_val) => Value::Number(num_val),
+            Literal::String(str_val) => Value::Object(Object::String(Box::new(str_val))),
+            Literal::Identifier(_) => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
