@@ -1236,10 +1236,9 @@ impl<'a> Compiler<'a> {
     fn mark_initialized(&mut self) -> LoxResult<()> {
         match self.compiler().scope_depth {
             0 => Ok(()),
-            _ => {
-                let scope_depth = self.compiler().scope_depth;
+            n => {
                 match self.compiler_mut().locals.last_mut() {
-                    Some(mut local) => local.depth = Some(scope_depth),
+                    Some(local) => local.depth = Some(n),
                     None => self.error("this should never happen")?,
                 };
 
