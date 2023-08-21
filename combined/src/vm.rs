@@ -298,10 +298,10 @@ impl VirtualMachine {
                 #[cfg(feature = "debug")]
                 self.dump(&self.function().chunk, frame.pos);
 
-                closure.function.chunk.code[frame.pos].clone()
+                unsafe { &*closure.function.chunk.code.as_ptr().add(frame.pos) }
             };
 
-            match code {
+            match *code {
                 OpCode::Constant(index) => self.stack.push(global!(index)),
                 OpCode::False => self.stack_push_value(Value::Bool(false)),
                 OpCode::True => self.stack_push_value(Value::Bool(true)),
