@@ -31,6 +31,7 @@ pub struct CallFrame {
 
 pub struct VirtualMachine {
     frames: Vec<CallFrame>,
+    frame: *mut CallFrame,
     stack: Vec<ValuePtr>,
     globals: HashMap<String, ValuePtr>,
     upvalues: Vec<UpValuePtr>,
@@ -60,6 +61,7 @@ impl VirtualMachine {
     pub fn new() -> VirtualMachine {
         VirtualMachine {
             frames: Vec::with_capacity(FRAMES_MAX),
+            frame: std::ptr::null_mut(),
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::with_capacity(STACK_MAX),
             upvalues: Vec::with_capacity(STACK_MAX),
@@ -181,12 +183,14 @@ impl VirtualMachine {
             .ok_or_else(|| LoxError::RuntimeError("stack empty".into()))
     }
 
+    #[inline(always)]
     fn frame(&self) -> &CallFrame {
-        self.frames.last().unwrap()
+        unsafe { &*self.frame }
     }
 
+    #[inline(always)]
     fn frame_mut(&mut self) -> &mut CallFrame {
-        self.frames.last_mut().unwrap()
+        unsafe { &mut *self.frame }
     }
 
     #[cfg(feature = "debug")]
@@ -285,7 +289,7 @@ impl VirtualMachine {
 
         loop {
             let code = {
-                let frame = self.frames.last().unwrap();
+                let frame = self.frame();
 
                 let Value::Object(Object::Closure(closure)) = &*frame.closure.borrow() else {
                     unreachable!();
@@ -784,7 +788,6 @@ impl VirtualMachine {
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
-
                     let old_frame = self.frames.pop().unwrap();
                     self.close_upvalues(old_frame.stack_offset);
 
@@ -793,6 +796,7 @@ impl VirtualMachine {
                         return Ok(());
                     }
 
+                    self.frame = unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) };
                     self.stack.truncate(old_frame.stack_offset + 1);
                     *self.stack.last_mut().unwrap() = result;
                 },
@@ -859,6 +863,7 @@ impl VirtualMachine {
         };
 
         self.frames.push(frame);
+        self.frame = unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) };
 
         Ok(())
     }

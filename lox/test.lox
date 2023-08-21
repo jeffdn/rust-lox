@@ -20,9 +20,9 @@ fn fib(n) {
     return fib(n - 2) + fib(n - 1);
 }
 
-for (var i = 0; i < 30; i += 1) {
+// for (var i = 0; i < 30; i += 1) {
   var start = time();
   fib(30);
   println "completed in: " + (time() - start) + " seconds";
   // cache.clear();
-}
+// }
