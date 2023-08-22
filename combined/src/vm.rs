@@ -263,9 +263,8 @@ impl VirtualMachine {
 
         macro_rules! global {
             ( $pos:expr ) => {{
-                let Value::Object(Object::Closure(closure)) = &*self.frame().closure.borrow() else {
-                                unreachable!();
-                            };
+                let cb = self.frame().closure.borrow();
+                let Value::Object(Object::Closure(closure)) = &*cb else { unreachable!() };
 
                 closure.function.chunk.constants[$pos].clone()
             }};
