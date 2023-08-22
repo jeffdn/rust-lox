@@ -264,8 +264,8 @@ impl VirtualMachine {
         macro_rules! global {
             ( $pos:expr ) => {{
                 let Value::Object(Object::Closure(closure)) = &*self.frame().closure.borrow() else {
-                                                                                unreachable!();
-                                                                            };
+                                unreachable!();
+                            };
 
                 closure.function.chunk.constants[$pos].clone()
             }};
@@ -788,7 +788,7 @@ impl VirtualMachine {
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
-                    let old_frame = self.frames.pop().unwrap();
+                    let old_frame = self.pop_frame()?;
                     self.close_upvalues(old_frame.stack_offset);
 
                     if self.frames.is_empty() {
@@ -796,7 +796,6 @@ impl VirtualMachine {
                         return Ok(());
                     }
 
-                    self.frame = unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) };
                     self.stack.truncate(old_frame.stack_offset + 1);
                     *self.stack.last_mut().unwrap() = result;
                 },
@@ -855,6 +854,24 @@ impl VirtualMachine {
         Ok(())
     }
 
+    fn pop_frame(&mut self) -> LoxResult<CallFrame> {
+        let frame = self.frames.pop().unwrap();
+
+        self.frame = unsafe {
+            match self.frames.is_empty() {
+                true => std::ptr::null_mut(),
+                false => self.frames.as_mut_ptr().add(self.frames.len() - 1),
+            }
+        };
+
+        Ok(frame)
+    }
+
+    fn push_frame(&mut self, frame: CallFrame) {
+        self.frames.push(frame);
+        self.frame = unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) };
+    }
+
     fn call(&mut self, callee: ValuePtr, arg_count: usize) -> LoxResult<()> {
         let frame = CallFrame {
             closure: callee,
@@ -862,8 +879,7 @@ impl VirtualMachine {
             pos: 0,
         };
 
-        self.frames.push(frame);
-        self.frame = unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) };
+        self.push_frame(frame);
 
         Ok(())
     }
