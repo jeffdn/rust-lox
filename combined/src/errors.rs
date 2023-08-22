@@ -1,4 +1,6 @@
-use std::fmt;
+use std::{boxed::Box, fmt};
+
+use crate::tokens::Token;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoxError {
@@ -6,11 +8,12 @@ pub enum LoxError {
     AstError,
     CompileError(String),
     ResolutionError(String),
-    ParseError(usize, String),
+    ParseError(Token, String),
     TypeError(String),
     InputError(String),
     RuntimeError(String),
     SyntaxError(usize, String),
+    Collection(Box<Vec<LoxError>>),
 }
 
 pub type LoxResult<T> = Result<T, LoxError>;
@@ -27,8 +30,54 @@ impl fmt::Display for LoxError {
             LoxError::InputError(msg) => msg.clone(),
             LoxError::SyntaxError(line, msg) => format!("error on line {}: {}", line, msg),
             LoxError::RuntimeError(msg) => format!("runtime error: {}", msg),
+            LoxError::Collection(errors) => errors
+                .iter()
+                .map(|e| format!("{}", e))
+                .collect::<Vec<String>>()
+                .join("\n"),
         };
 
         write!(f, "{}", output)
+    }
+}
+
+impl LoxError {
+    pub fn print_parse_error(&self, source: &str) {
+        match self {
+            LoxError::Collection(errors) => {
+                for (idx, error) in errors.iter().enumerate() {
+                    error.print_parse_error(source);
+
+                    if idx < errors.len() - 1 {
+                        println!("\n");
+                    }
+                }
+            },
+            LoxError::ParseError(token, msg) => {
+                let line = source
+                    .split('\n')
+                    .enumerate()
+                    .find_map(|(idx, line)| {
+                        if idx + 1 == token.line {
+                            Some(line)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                let space: String = (0..token.column).map(|_| " ").collect();
+                let marker: String = (0..token.length).map(|_| "-").collect();
+
+                let sep_len = line.len().max(20).min(100);
+                let hashes: String = (0..=sep_len).map(|_| "-").collect();
+
+                println!("{}", hashes);
+                println!("parse error on line {}: {}\n", token.line, msg);
+                println!("{}", line);
+                println!("{}^{}", space, marker);
+                println!("{}", hashes);
+            },
+            _ => println!("{}", self),
+        }
     }
 }

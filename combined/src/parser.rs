@@ -1,3 +1,5 @@
+use std::boxed::Box;
+
 use crate::{
     errors::{LoxError, LoxResult},
     expressions::Expression,
@@ -17,13 +19,22 @@ impl Parser {
 
     pub fn parse(&mut self) -> LoxResult<Vec<Statement>> {
         let mut statements: Vec<Statement> = Vec::new();
+        let mut errors: Vec<LoxError> = Vec::new();
 
         while !self.at_end() {
-            let statement = self.declaration_statement()?;
+            let statement = self.declaration_statement();
 
-            if let Some(stmt) = statement {
-                statements.push(stmt);
-            }
+            match statement {
+                Ok(stmt) => statements.push(stmt),
+                Err(e) => {
+                    errors.push(e);
+                    self.synchronize();
+                },
+            };
+        }
+
+        if !errors.is_empty() {
+            return Err(LoxError::Collection(Box::new(errors)));
         }
 
         Ok(statements)
@@ -72,8 +83,7 @@ impl Parser {
 
         while !self.token_type_matches(&[TokenType::RightBrace]) && !self.at_end() {
             match self.declaration_statement() {
-                Ok(Some(stmt)) => statements.push(stmt),
-                Ok(None) => continue,
+                Ok(stmt) => statements.push(stmt),
                 Err(e) => return Err(e),
             };
         }
@@ -214,8 +224,8 @@ impl Parser {
         })
     }
 
-    fn declaration_statement(&mut self) -> LoxResult<Option<Statement>> {
-        let statement = match self.token_type_matches(&[TokenType::Class]) {
+    fn declaration_statement(&mut self) -> LoxResult<Statement> {
+        match self.token_type_matches(&[TokenType::Class]) {
             true => self.class_declaration(),
             false => match self.token_type_matches(&[TokenType::Function]) {
                 true => self.function("function".into()),
@@ -223,14 +233,6 @@ impl Parser {
                     true => self.var_declaration(),
                     false => self.statement(),
                 },
-            },
-        };
-
-        match statement {
-            Ok(stmt) => Ok(Some(stmt)),
-            Err(_) => {
-                self.synchronize();
-                Ok(None)
             },
         }
     }
@@ -818,13 +820,10 @@ impl Parser {
 
     fn error(&mut self, next_token: &Token, message: String) -> LoxError {
         if next_token.token_type == TokenType::Eof {
-            return LoxError::ParseError(next_token.line, format!("at end {}", message));
+            return LoxError::ParseError(next_token.clone(), format!("at end {}", message));
         }
 
-        LoxError::ParseError(
-            next_token.line,
-            format!("at '{}' {}", next_token.lexeme, message),
-        )
+        LoxError::ParseError(next_token.clone(), message)
     }
 
     fn check_current_token(&mut self, token_type: &TokenType) -> bool {

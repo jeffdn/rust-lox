@@ -59,6 +59,8 @@ impl CompilerNode {
                 lexeme,
                 literal: None,
                 line: 0,
+                column: 0,
+                length: 0,
             },
             depth: Some(0),
             is_captured: false,
@@ -476,12 +478,7 @@ impl Compiler {
             _ => unreachable!(),
         };
 
-        Token {
-            token_type,
-            lexeme,
-            literal: None,
-            line,
-        }
+        Token::new(token_type, lexeme, None, line, 0, 0)
     }
 }
 
@@ -737,7 +734,7 @@ impl ExpressionVisitor for Compiler {
     fn visit_this(&mut self, token: &Token) -> LoxResult<()> {
         if self.classes.is_empty() {
             return Err(LoxError::ParseError(
-                token.line,
+                token.clone(),
                 "can't use 'this' outside of classes".into(),
             ));
         }
@@ -999,8 +996,7 @@ impl StatementVisitor for Compiler {
         match value {
             Some(expression) => {
                 if self.current_function().function_type == FunctionType::Initializer {
-                    return Err(LoxError::ParseError(
-                        0,
+                    return Err(LoxError::CompileError(
                         "can't return from a class initializer".into(),
                     ));
                 }

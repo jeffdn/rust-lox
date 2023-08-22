@@ -16,19 +16,31 @@ use std::{
     io::{self, Write},
 };
 
-use crate::{errors::LoxError, vm::VirtualMachine};
+use crate::{
+    errors::{LoxError, LoxResult},
+    vm::VirtualMachine,
+};
 
 use tikv_jemallocator::Jemalloc;
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-fn eval(source: String) -> Result<(), LoxError> {
+fn eval(source: String) -> LoxResult<()> {
     let mut vm = VirtualMachine::new();
-    vm.interpret(&source)
+    let result = vm.interpret(&source);
+
+    if let Err(ref e) = result {
+        if matches!(e, LoxError::ParseError(_, _) | LoxError::Collection(_)) {
+            e.print_parse_error(&source);
+            return Ok(());
+        }
+    }
+
+    result
 }
 
-fn run_lox_file(script_path: &str) -> Result<(), LoxError> {
+fn run_lox_file(script_path: &str) -> LoxResult<()> {
     let source = fs::read_to_string(script_path).ok().ok_or_else(|| {
         LoxError::InputError(format!("unable to parse source file '{}'", script_path))
     })?;
@@ -46,7 +58,7 @@ fn slurp_expr() -> String {
     input_expr
 }
 
-fn run_lox_repl() -> Result<(), LoxError> {
+fn run_lox_repl() -> LoxResult<()> {
     loop {
         print!("lox > ");
         io::stdout().flush().unwrap();
@@ -56,7 +68,7 @@ fn run_lox_repl() -> Result<(), LoxError> {
     }
 }
 
-fn main() -> Result<(), LoxError> {
+fn main() -> LoxResult<()> {
     let args: Vec<String> = env::args().collect();
 
     match args.len() {

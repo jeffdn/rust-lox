@@ -143,6 +143,8 @@ pub struct Token {
     pub lexeme: String,
     pub literal: Option<Literal>,
     pub line: usize,
+    pub column: usize,
+    pub length: usize,
 }
 
 impl Token {
@@ -151,12 +153,16 @@ impl Token {
         lexeme: String,
         literal: Option<Literal>,
         line: usize,
+        column: usize,
+        length: usize,
     ) -> Token {
         Token {
             token_type,
             lexeme,
             literal,
             line,
+            column,
+            length,
         }
     }
 }

@@ -120,8 +120,9 @@ impl VirtualMachine {
                 self.run()?;
             },
             Err(e) => {
-                println!("parse errors:");
-                println!(" - {}", e);
+                // println!("parse errors:");
+                // println!(" - {}", e);
+                return Err(e);
             },
         };
 

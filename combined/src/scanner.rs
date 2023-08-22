@@ -12,6 +12,7 @@ pub struct Scanner {
     start: usize,
     current: usize,
     line: usize,
+    column: usize,
 }
 
 impl Scanner {
@@ -24,6 +25,7 @@ impl Scanner {
             start: 0,
             current: 0,
             line: 1,
+            column: 0,
         }
     }
 
@@ -36,7 +38,7 @@ impl Scanner {
             match possible_token {
                 Ok(token_type) => match token_type {
                     TokenType::Skip => {},
-                    _ => self.add_token(token_type),
+                    _ => self.add_token(token_type, None),
                 },
                 Err(e) => self
                     .errors
@@ -44,8 +46,14 @@ impl Scanner {
             };
         }
 
-        self.tokens
-            .push(Token::new(TokenType::Eof, "".to_string(), None, self.line));
+        self.tokens.push(Token::new(
+            TokenType::Eof,
+            "".to_string(),
+            None,
+            self.line,
+            self.column,
+            0,
+        ));
 
         (self.tokens.clone(), self.errors.clone())
     }
@@ -54,18 +62,21 @@ impl Scanner {
         self.current >= self.source.len()
     }
 
-    fn add_token(&mut self, token_type: TokenType) {
+    fn add_token(&mut self, token_type: TokenType, literal: Option<Literal>) {
         self.tokens.push(Token::new(
             token_type,
             self.chars[self.start..self.current].iter().collect(),
-            None,
+            literal,
             self.line,
+            self.column,
+            self.current - self.start,
         ));
     }
 
     pub fn advance(&mut self) -> char {
         let char_at = self.current;
         self.current += 1;
+        self.column += 1;
 
         self.chars[char_at]
     }
@@ -121,6 +132,7 @@ impl Scanner {
             ' ' | '\r' | '\t' => Ok(TokenType::Skip),
             '\n' => {
                 self.line += 1;
+                self.column = 0;
                 Ok(TokenType::Skip)
             },
             '"' => self.add_string('"'),
@@ -188,6 +200,7 @@ impl Scanner {
         while self.peek() != until && !self.at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
+                self.column = 0;
             }
             self.advance();
         }
@@ -204,12 +217,7 @@ impl Scanner {
                 .collect(),
         );
 
-        self.tokens.push(Token::new(
-            TokenType::String,
-            self.chars[self.start..self.current].iter().collect(),
-            Some(literal),
-            self.line,
-        ));
+        self.add_token(TokenType::String, Some(literal));
 
         Ok(TokenType::Skip)
     }
@@ -230,12 +238,7 @@ impl Scanner {
         let string_literal: String = self.chars[self.start..self.current].iter().collect();
         let literal = Literal::Number(string_literal.parse().unwrap());
 
-        self.tokens.push(Token::new(
-            TokenType::Number,
-            self.chars[self.start..self.current].iter().collect(),
-            Some(literal),
-            self.line,
-        ));
+        self.add_token(TokenType::Number, Some(literal));
 
         Ok(TokenType::Skip)
     }
@@ -246,6 +249,7 @@ impl Scanner {
         }
 
         self.current += 1;
+        self.column += 1;
 
         true
     }

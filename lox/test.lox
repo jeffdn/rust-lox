@@ -12,6 +12,15 @@ var cache = {};
 //    return cache[n];
 //}
 
+class < {
+}
+
+class < {
+}
+
+fn class () {
+}
+
 fn fib(n) {
     if (n < 2) {
         return n;
