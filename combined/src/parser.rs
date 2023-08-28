@@ -89,6 +89,8 @@ impl Parser {
             message = Some(Box::new(self.expression()?));
         }
 
+        self.consume(&TokenType::Semicolon, "expected ';'".into())?;
+
         Ok(Statement::Assert {
             expression,
             message,
@@ -97,6 +99,8 @@ impl Parser {
 
     fn delete_statement(&mut self) -> LoxResult<Statement> {
         let expression = Box::new(self.call()?);
+
+        self.consume(&TokenType::Semicolon, "expected ';'".into())?;
 
         Ok(Statement::Delete { expression })
     }
