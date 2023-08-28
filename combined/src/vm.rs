@@ -264,7 +264,9 @@ impl VirtualMachine {
         macro_rules! global {
             ( $pos:expr ) => {{
                 let cb = self.frame().closure.borrow();
-                let Value::Object(Object::Closure(closure)) = &*cb else { unreachable!() };
+                let Value::Object(Object::Closure(closure)) = &*cb else {
+                    unreachable!()
+                };
 
                 closure.function.chunk.constants[$pos].clone()
             }};
@@ -422,7 +424,8 @@ impl VirtualMachine {
                 },
                 OpCode::SetProperty(index) => {
                     let instance_ptr = self.stack[self.stack.len() - 2].clone();
-                    let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut() else {
+                    let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut()
+                    else {
                         err!("not an instance");
                     };
                     let name_constant = global!(index);
@@ -654,7 +657,8 @@ impl VirtualMachine {
                 OpCode::IteratorNext(index, jump) => {
                     let stack_index = index + self.frame().stack_offset;
                     let iterator_ptr = self.stack[stack_index - 1].clone();
-                    let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut() else {
+                    let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut()
+                    else {
                         unreachable!();
                     };
 
@@ -693,7 +697,8 @@ impl VirtualMachine {
                 },
                 OpCode::Invoke(index, arg_count) => {
                     let name_constant = global!(index);
-                    let Value::Object(Object::String(method_name)) = &*name_constant.borrow() else {
+                    let Value::Object(Object::String(method_name)) = &*name_constant.borrow()
+                    else {
                         unreachable!();
                     };
 

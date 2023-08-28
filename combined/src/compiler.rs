@@ -600,7 +600,13 @@ impl ExpressionVisitor for Compiler {
         indexed_item: &Expression,
         expression: &Expression,
     ) -> LoxResult<()> {
-        let Expression::Index { item, is_slice: _, left, right: _ } = indexed_item else {
+        let Expression::Index {
+            item,
+            is_slice: _,
+            left,
+            right: _,
+        } = indexed_item
+        else {
             unreachable!();
         };
 
@@ -849,7 +855,13 @@ impl StatementVisitor for Compiler {
     }
 
     fn visit_delete(&mut self, expression: &Expression) -> LoxResult<()> {
-        let Expression::Index { item, is_slice: _, left, right: _ } = expression else {
+        let Expression::Index {
+            item,
+            is_slice: _,
+            left,
+            right: _,
+        } = expression
+        else {
             unreachable!();
         };
 
