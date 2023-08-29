@@ -142,19 +142,16 @@ impl VirtualMachine {
             };
         }
 
-        let color_globals = HashMap::from_iter(
-            vec![
-                color_fn! { "black", _black },
-                color_fn! { "red", _red },
-                color_fn! { "green", _green },
-                color_fn! { "yellow", _yellow },
-                color_fn! { "blue", _blue },
-                color_fn! { "magenta", _magenta },
-                color_fn! { "cyan", _cyan },
-                color_fn! { "white", _white },
-            ]
-            .into_iter(),
-        );
+        let color_globals = HashMap::from_iter(vec![
+            color_fn! { "black", _black },
+            color_fn! { "red", _red },
+            color_fn! { "green", _green },
+            color_fn! { "yellow", _yellow },
+            color_fn! { "blue", _blue },
+            color_fn! { "magenta", _magenta },
+            color_fn! { "cyan", _cyan },
+            color_fn! { "white", _white },
+        ]);
 
         ValuePtr::new(obj!(
             Module,

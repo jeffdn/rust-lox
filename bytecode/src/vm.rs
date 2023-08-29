@@ -117,19 +117,16 @@ impl VirtualMachine {
             };
         }
 
-        let color_globals = HashMap::from_iter(
-            vec![
-                color_fn! { "black", _black },
-                color_fn! { "red", _red },
-                color_fn! { "green", _green },
-                color_fn! { "yellow", _yellow },
-                color_fn! { "blue", _blue },
-                color_fn! { "magenta", _magenta },
-                color_fn! { "cyan", _cyan },
-                color_fn! { "white", _white },
-            ]
-            .into_iter(),
-        );
+        let color_globals = HashMap::from_iter(vec![
+            color_fn! { "black", _black },
+            color_fn! { "red", _red },
+            color_fn! { "green", _green },
+            color_fn! { "yellow", _yellow },
+            color_fn! { "blue", _blue },
+            color_fn! { "magenta", _magenta },
+            color_fn! { "cyan", _cyan },
+            color_fn! { "white", _white },
+        ]);
 
         ValuePtr::new(obj!(
             Module,
@@ -236,9 +233,10 @@ impl VirtualMachine {
 
         macro_rules! global {
             ( $pos:expr ) => {{
-                let Value::Object(Object::Closure(closure)) = &*self.frame().closure.borrow() else {
-                                                                                unreachable!();
-                                                                            };
+                let Value::Object(Object::Closure(closure)) = &*self.frame().closure.borrow()
+                else {
+                    unreachable!();
+                };
 
                 closure.function.chunk.constants.get($pos).clone()
             }};
@@ -382,7 +380,8 @@ impl VirtualMachine {
                 },
                 OpCode::SetProperty(index) => {
                     let instance_ptr = self.stack[self.stack.len() - 2].clone();
-                    let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut() else {
+                    let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut()
+                    else {
                         err!("not an instance");
                     };
                     let name_constant = global!(index);
@@ -614,7 +613,8 @@ impl VirtualMachine {
                 OpCode::IteratorNext(index, jump) => {
                     let stack_index = index + self.frame().stack_offset;
                     let iterator_ptr = self.stack[stack_index - 1].clone();
-                    let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut() else {
+                    let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut()
+                    else {
                         unreachable!();
                     };
 
@@ -653,7 +653,8 @@ impl VirtualMachine {
                 },
                 OpCode::Invoke(index, arg_count) => {
                     let name_constant = global!(index);
-                    let Value::Object(Object::String(method_name)) = &*name_constant.borrow() else {
+                    let Value::Object(Object::String(method_name)) = &*name_constant.borrow()
+                    else {
                         unreachable!();
                     };
 
