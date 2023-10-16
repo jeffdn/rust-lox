@@ -265,7 +265,7 @@ impl VirtualMachine {
                     unreachable!()
                 };
 
-                closure.function.chunk.constants[$pos].clone()
+                unsafe { &*closure.function.chunk.constants.as_ptr().add($pos) }
             }};
         }
 
@@ -304,7 +304,7 @@ impl VirtualMachine {
             };
 
             match *code {
-                OpCode::Constant(index) => self.stack.push(global!(index)),
+                OpCode::Constant(index) => self.stack.push(global!(index).clone()),
                 OpCode::False => self.stack_push_value(Value::Bool(false)),
                 OpCode::True => self.stack_push_value(Value::Bool(true)),
                 OpCode::Nil => self.stack_push_value(Value::Nil),
@@ -591,13 +591,13 @@ impl VirtualMachine {
                     let left = self.stack.last_mut().unwrap();
 
                     let output = match (&*right.borrow(), &*left.borrow()) {
+                        (Value::Number(b), Value::Number(a)) => Value::Number(a + b),
                         (Value::Object(Object::List(b)), Value::Object(Object::List(a))) => {
                             let mut new_list: Vec<ValuePtr> = *a.clone();
                             new_list.extend_from_slice(b);
 
                             obj!(List, new_list)
                         },
-                        (Value::Number(b), Value::Number(a)) => Value::Number(a + b),
                         (Value::Number(b), Value::Object(Object::String(a))) => {
                             obj!(String, format!("{a}{b}"))
                         },
@@ -661,7 +661,7 @@ impl VirtualMachine {
 
                     if iterator.next == 0 {
                         let constant = global!(index);
-                        self.stack.push(constant);
+                        self.stack.push(constant.clone());
                     }
 
                     if iterator.next == iterator.items.len() {
@@ -887,7 +887,7 @@ impl VirtualMachine {
 
     fn call_value(&mut self, arg_count: usize) -> LoxResult<()> {
         let offset = self.stack.len() - arg_count - 1;
-        let at_offset = self.stack[offset].clone();
+        let at_offset = unsafe { &*self.stack.as_ptr().add(offset) };
 
         match &*at_offset.borrow() {
             Value::Object(object) => match object {
@@ -936,7 +936,7 @@ impl VirtualMachine {
 
     fn invoke(&mut self, method_name: &str, arg_count: usize) -> LoxResult<()> {
         let offset = self.stack.len() - arg_count - 1;
-        let at_offset = self.stack[offset].clone();
+        let at_offset = unsafe { &*self.stack.as_ptr().add(offset) };
         let mut at_offset_borrowed = at_offset.borrow_mut();
 
         match &mut *at_offset_borrowed {
