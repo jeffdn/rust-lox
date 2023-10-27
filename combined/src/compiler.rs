@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use fxhash::{FxBuildHasher, FxHashMap as HashMap};
 
 use crate::{
     chunk::{Chunk, OpCode, UpValue},
@@ -692,7 +692,7 @@ impl ExpressionVisitor for Compiler {
             true => {
                 let constant =
                     self.make_constant(Value::Object(Object::Map(Box::new(ValueMap {
-                        map: HashMap::with_capacity(16),
+                        map: HashMap::with_capacity_and_hasher(16, FxBuildHasher::default()),
                     }))))?;
                 self.emit_byte(OpCode::Constant(constant))?;
             },

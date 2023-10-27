@@ -1,4 +1,6 @@
-use std::{boxed::Box, cell::RefCell, collections::HashMap, fmt, rc::Rc};
+use std::{boxed::Box, cell::RefCell, fmt, rc::Rc};
+
+use fxhash::{FxBuildHasher, FxHashMap as HashMap};
 
 use crate::{
     chunk::Chunk,
@@ -107,7 +109,7 @@ impl Class {
         Self {
             name,
             parent: None,
-            methods: HashMap::new(),
+            methods: HashMap::with_hasher(FxBuildHasher::default()),
         }
     }
 }
@@ -122,7 +124,7 @@ impl Instance {
     pub fn new(class: ValuePtr) -> Self {
         Self {
             class,
-            fields: HashMap::new(),
+            fields: HashMap::with_hasher(FxBuildHasher::default()),
         }
     }
 }

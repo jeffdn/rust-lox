@@ -1,4 +1,6 @@
-use std::{cell::RefCell, collections::HashMap, fs, rc::Rc};
+use std::{cell::RefCell, fs, rc::Rc};
+
+use fxhash::{FxBuildHasher, FxHashMap as HashMap};
 
 use crate::{
     builtin,
@@ -63,7 +65,7 @@ impl VirtualMachine {
             frames: Vec::with_capacity(FRAMES_MAX),
             frame: std::ptr::null_mut(),
             stack: Vec::with_capacity(STACK_MAX),
-            globals: HashMap::with_capacity(STACK_MAX),
+            globals: HashMap::with_capacity_and_hasher(STACK_MAX, FxBuildHasher::default()),
             upvalues: Vec::with_capacity(STACK_MAX),
             init_string: "init",
         }
