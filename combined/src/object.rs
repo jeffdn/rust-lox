@@ -1,12 +1,15 @@
+use core::hash::BuildHasherDefault;
 use std::{boxed::Box, cell::RefCell, fmt, rc::Rc};
 
-use fxhash::{FxBuildHasher, FxHashMap as HashMap};
+use rustc_hash::{FxHashMap as HashMap, FxHasher};
 
 use crate::{
     chunk::Chunk,
     errors::{LoxError, LoxResult},
     value::{Value, ValuePtr},
 };
+
+type LoxBuildHasher = BuildHasherDefault<FxHasher>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Object {
@@ -109,7 +112,7 @@ impl Class {
         Self {
             name,
             parent: None,
-            methods: HashMap::with_hasher(FxBuildHasher::default()),
+            methods: HashMap::with_hasher(LoxBuildHasher::default()),
         }
     }
 }
@@ -124,7 +127,7 @@ impl Instance {
     pub fn new(class: ValuePtr) -> Self {
         Self {
             class,
-            fields: HashMap::with_hasher(FxBuildHasher::default()),
+            fields: HashMap::with_hasher(LoxBuildHasher::default()),
         }
     }
 }

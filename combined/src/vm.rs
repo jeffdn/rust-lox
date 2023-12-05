@@ -1,6 +1,9 @@
+use core::hash::BuildHasherDefault;
 use std::{cell::RefCell, fs, rc::Rc};
 
-use fxhash::{FxBuildHasher, FxHashMap as HashMap};
+use rustc_hash::{FxHashMap as HashMap, FxHasher};
+
+type LoxBuildHasher = BuildHasherDefault<FxHasher>;
 
 use crate::{
     builtin,
@@ -65,7 +68,7 @@ impl VirtualMachine {
             frames: Vec::with_capacity(FRAMES_MAX),
             frame: std::ptr::null_mut(),
             stack: Vec::with_capacity(STACK_MAX),
-            globals: HashMap::with_capacity_and_hasher(STACK_MAX, FxBuildHasher::default()),
+            globals: HashMap::with_capacity_and_hasher(STACK_MAX, LoxBuildHasher::default()),
             upvalues: Vec::with_capacity(STACK_MAX),
             init_string: "init",
         }

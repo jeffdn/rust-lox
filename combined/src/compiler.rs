@@ -1,4 +1,6 @@
-use fxhash::{FxBuildHasher, FxHashMap as HashMap};
+use core::hash::BuildHasherDefault;
+
+use rustc_hash::{FxHashMap as HashMap, FxHasher};
 
 use crate::{
     chunk::{Chunk, OpCode, UpValue},
@@ -9,6 +11,8 @@ use crate::{
     tokens::{Literal, Token, TokenType},
     value::Value,
 };
+
+type LoxBuildHasher = BuildHasherDefault<FxHasher>;
 
 struct Local {
     name: Token,
@@ -692,7 +696,7 @@ impl ExpressionVisitor for Compiler {
             true => {
                 let constant =
                     self.make_constant(Value::Object(Object::Map(Box::new(ValueMap {
-                        map: HashMap::with_capacity_and_hasher(16, FxBuildHasher::default()),
+                        map: HashMap::with_capacity_and_hasher(16, LoxBuildHasher::default()),
                     }))))?;
                 self.emit_byte(OpCode::Constant(constant))?;
             },

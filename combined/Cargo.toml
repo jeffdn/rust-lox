@@ -1,13 +1,13 @@
 [package]
 name = "rust-lox"
 authors = ["Jeff Nettleton <jeffdn@gmail.com>"]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fxhash = "0.2"
+rustc-hash = "1.1"
 tikv-jemallocator = "0.5"
 
 [features]
