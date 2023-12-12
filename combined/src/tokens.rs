@@ -32,6 +32,11 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
+    ShiftLeft,
+    ShiftRight,
+    BitAnd,
+    BitOr,
+    BitXor,
     MinusEqual,
     PlusEqual,
 

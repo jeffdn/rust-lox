@@ -99,6 +99,15 @@ pub fn _sqrt(input: &[ValuePtr]) -> LoxResult<Value> {
     }
 }
 
+pub fn _pow(input: &[ValuePtr]) -> LoxResult<Value> {
+    match (&*input[0].borrow(), &*input[1].borrow()) {
+        (Value::Number(number), Value::Number(exp)) => Ok(Value::Number(number.powf(*exp))),
+        _ => Err(LoxError::RuntimeError(
+            "sqrt() only operates on numbers".into(),
+        )),
+    }
+}
+
 macro_rules! color_fn {
     ( $name:tt, $code:expr ) => {
         pub fn $name(input: &[ValuePtr]) -> LoxResult<Value> {

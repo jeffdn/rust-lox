@@ -114,6 +114,7 @@ impl VirtualMachine {
                 self.call(closure, 0)?;
 
                 self.define_native("len", builtin::_len, 1);
+                self.define_native("pow", builtin::_pow, 2);
                 self.define_native("range", builtin::_range, 2);
                 self.define_native("sqrt", builtin::_sqrt, 1);
                 self.define_native("str", builtin::_str, 1);
@@ -259,6 +260,39 @@ impl VirtualMachine {
                     };
 
                     *left = ValuePtr::new($output(result));
+                }
+            };
+        }
+
+        macro_rules! integer_binary {
+            ( $op:tt, $op_char:expr, $output:expr ) => {
+                {
+                    let right = self.pop_stack()?;
+                    let left = self.stack.last_mut().unwrap();
+
+                    let result = match (&*right.borrow(), &*left.borrow()) {
+                        (Value::Number(b), Value::Number(a)) => (*a as i64) $op (*b as i64),
+                        _ => err!(&format!("comparison '{}' only operates on numbers", $op_char)),
+                    };
+
+                    *left = ValuePtr::new($output(result as f64));
+                }
+            };
+        }
+
+        macro_rules! bit_ops {
+            ( $op:tt, $op_char:expr ) => {
+                {
+                    let right = self.pop_stack()?;
+                    let left = self.stack.last_mut().unwrap();
+
+                    let result = match (&*right.borrow(), &*left.borrow()) {
+                        (Value::Number(b), Value::Number(a)) => Value::Number(((*a as i64) $op (*b as i64)) as f64),
+                        (Value::Bool(b), Value::Bool(a)) => Value::Bool(*a $op *b),
+                        _ => err!(&format!("comparison '{}' only operates on integers and bools", $op_char)),
+                    };
+
+                    *left = ValuePtr::new(result);
                 }
             };
         }
@@ -632,6 +666,11 @@ impl VirtualMachine {
                     };
                     self.stack_push_value(Value::Number(-item));
                 },
+                OpCode::ShiftLeft => integer_binary! { <<, "<<", Value::Number },
+                OpCode::ShiftRight => integer_binary! { >>, ">>", Value::Number },
+                OpCode::BitAnd => bit_ops! { &, '&' },
+                OpCode::BitOr => bit_ops! { |, '|' },
+                OpCode::BitXor => bit_ops! { ^, '^' },
                 OpCode::Print(newline) => {
                     let value = self.pop_stack()?;
 

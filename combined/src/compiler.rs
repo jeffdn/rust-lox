@@ -515,6 +515,11 @@ impl ExpressionVisitor for Compiler {
             TokenType::Plus => self.emit_byte(OpCode::Add),
             TokenType::Star => self.emit_byte(OpCode::Multiply),
             TokenType::Slash => self.emit_byte(OpCode::Divide),
+            TokenType::ShiftLeft => self.emit_byte(OpCode::ShiftLeft),
+            TokenType::ShiftRight => self.emit_byte(OpCode::ShiftRight),
+            TokenType::BitAnd => self.emit_byte(OpCode::BitAnd),
+            TokenType::BitOr => self.emit_byte(OpCode::BitOr),
+            TokenType::BitXor => self.emit_byte(OpCode::BitXor),
             TokenType::BangEqual => {
                 self.emit_byte(OpCode::Equal)?;
                 self.emit_byte(OpCode::Not)

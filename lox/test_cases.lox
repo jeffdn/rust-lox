@@ -5,6 +5,9 @@ print "booleans...";
 assert true;
 assert !false;
 assert !!true;
+assert true | false;
+assert !(false & false);
+assert true & true;
 println colors.green(' ok');
 
 
@@ -13,6 +16,10 @@ print "numbers...";
 assert 4 % 2 == 0;
 assert 4 % 3 == 1;
 assert 4 * 6 == 24;
+assert 4 << 2 == 16;
+assert 3 << 1 == 6;
+assert 3 & 4 == 0;
+assert 3 | 4 == 7;
 println colors.green(' ok');
 
 

@@ -94,12 +94,21 @@ impl Scanner {
             },
             '<' => match self.check_next('=') {
                 true => Ok(TokenType::LessEqual),
-                false => Ok(TokenType::Less),
+                false => match self.check_next('<') {
+                    true => Ok(TokenType::ShiftLeft),
+                    false => Ok(TokenType::Less),
+                },
             },
             '>' => match self.check_next('=') {
                 true => Ok(TokenType::GreaterEqual),
-                false => Ok(TokenType::Greater),
+                false => match self.check_next('>') {
+                    true => Ok(TokenType::ShiftRight),
+                    false => Ok(TokenType::Greater),
+                },
             },
+            '&' => Ok(TokenType::BitAnd),
+            '|' => Ok(TokenType::BitOr),
+            '^' => Ok(TokenType::BitXor),
             '-' => match self.check_next('=') {
                 true => Ok(TokenType::MinusEqual),
                 false => Ok(TokenType::Minus),

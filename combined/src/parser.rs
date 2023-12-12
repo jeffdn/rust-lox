@@ -581,7 +581,16 @@ impl Parser {
     fn factor(&mut self) -> LoxResult<Expression> {
         let expr = self.unary()?;
 
-        if self.token_type_matches(&[TokenType::Percent, TokenType::Slash, TokenType::Star]) {
+        if self.token_type_matches(&[
+            TokenType::Percent,
+            TokenType::Slash,
+            TokenType::Star,
+            TokenType::ShiftLeft,
+            TokenType::ShiftRight,
+            TokenType::BitAnd,
+            TokenType::BitOr,
+            TokenType::BitXor,
+        ]) {
             let operator = self.previous();
             let right = self.factor()?;
 
