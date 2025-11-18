@@ -158,7 +158,7 @@ impl Scanner {
             "false" => TokenType::False,
             "for" => TokenType::For,
             "foreach" => TokenType::Foreach,
-            "fn" => TokenType::Function,
+            "fn" | "fun" => TokenType::Function,
             "if" => TokenType::If,
             "in" => TokenType::In,
             "nil" => TokenType::Nil,

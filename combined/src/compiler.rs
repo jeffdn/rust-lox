@@ -6,11 +6,13 @@ use crate::{
     chunk::{Chunk, OpCode, UpValue},
     errors::{LoxError, LoxResult},
     expressions::{Expression, ExpressionVisitor},
+    gc::Heap,
     object::{Function, FunctionType, Object, ValueMap},
     statements::{Statement, StatementVisitor},
     tokens::{Literal, Token, TokenType},
     value::Value,
 };
+use std::boxed::Box;
 
 type LoxBuildHasher = BuildHasherDefault<FxHasher>;
 
@@ -25,9 +27,10 @@ struct ClassCompiler {
     pub has_superclass: bool,
 }
 
-pub struct Compiler {
+pub struct Compiler<'h> {
     compilers: Vec<CompilerNode>,
     classes: Vec<ClassCompiler>,
+    heap: &'h mut Heap,
     // panic_mode: bool,
 }
 
@@ -72,11 +75,12 @@ impl CompilerNode {
     }
 }
 
-impl Compiler {
-    pub fn new() -> Compiler {
+impl<'h> Compiler<'h> {
+    pub fn new(heap: &'h mut Heap) -> Self {
         Compiler {
             compilers: vec![CompilerNode::new(FunctionType::Script)],
             classes: Vec::new(),
+            heap,
             // panic_mode: false,
         }
     }
@@ -121,13 +125,7 @@ impl Compiler {
             .constants
             .iter()
             .enumerate()
-            .find_map(|(idx, v)| {
-                if *v.borrow() == value {
-                    Some(idx)
-                } else {
-                    None
-                }
-            });
+            .find_map(|(idx, v)| if *v == value { Some(idx) } else { None });
 
         match maybe_idx {
             Some(idx) => Ok(idx),
@@ -280,7 +278,8 @@ impl Compiler {
             _ => token.lexeme.clone(),
         };
 
-        self.make_constant(Value::Object(Object::String(Box::new(constant))))
+        let string_obj = self.heap.allocate(Object::String(Box::new(constant)));
+        self.make_constant(Value::Obj(string_obj))
     }
 
     fn parse_variable(&mut self, name: &Token) -> LoxResult<usize> {
@@ -357,8 +356,10 @@ impl Compiler {
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, x)| x.name.lexeme == token.lexeme)
-        {
+            .find(|(_, x)| {
+                // eprintln!("Checking local: {} against {}", x.name.lexeme, token.lexeme);
+                x.name.lexeme == token.lexeme
+            }) {
             Some((idx, local)) => {
                 if local.depth.is_none() {
                     return Err(self
@@ -407,15 +408,16 @@ impl Compiler {
         let uv = UpValue { is_local, index };
         let compiler = self.compiler_at_mut(depth);
 
-        if !compiler.upvalues.contains(&uv) {
-            compiler.upvalues.push(uv);
+        if let Some(i) = compiler.upvalues.iter().position(|x| *x == uv) {
+            return Ok(i);
         }
 
-        Ok(index)
+        compiler.upvalues.push(uv);
+        Ok(compiler.upvalues.len() - 1)
     }
 
     fn resolve_upvalue(&mut self, token: &Token, depth: usize) -> LoxResult<usize> {
-        if depth + 2 >= self.compilers.len() {
+        if depth + 1 >= self.compilers.len() {
             return Err(LoxError::ResolutionError(
                 "unable to resolve upvalue: too shallow".into(),
             ));
@@ -466,8 +468,12 @@ impl Compiler {
         self.end_scope()?;
 
         let compiler = self.end_compiler()?;
-        let constant =
-            self.make_constant(Value::Object(Object::Function(Box::new(compiler.function))))?;
+        let constant = {
+            let function_obj = self
+                .heap
+                .allocate(Object::Function(Box::new(compiler.function)));
+            self.make_constant(Value::Obj(function_obj))?
+        };
 
         self.emit_byte(OpCode::Closure(constant, Box::new(compiler.upvalues)))
     }
@@ -489,13 +495,13 @@ impl Compiler {
     }
 }
 
-impl Default for Compiler {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for Compiler {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
-impl ExpressionVisitor for Compiler {
+impl<'h> ExpressionVisitor for Compiler<'h> {
     fn visit_assignment(&mut self, name: &Token, expression: &Expression) -> LoxResult<()> {
         self.named_variable(name, true, Some(expression))
     }
@@ -633,9 +639,10 @@ impl ExpressionVisitor for Compiler {
 
         match expressions.is_empty() {
             true => {
-                let constant = self.make_constant(Value::Object(Object::List(Box::new(
-                    Vec::with_capacity(16),
-                ))))?;
+                let list_obj = self
+                    .heap
+                    .allocate(Object::List(Box::new(Vec::with_capacity(16))));
+                let constant = self.make_constant(Value::Obj(list_obj))?;
                 self.emit_byte(OpCode::Constant(constant))?;
             },
             false => self.emit_byte(OpCode::BuildList(expressions.len()))?,
@@ -656,8 +663,12 @@ impl ExpressionVisitor for Compiler {
                 self.emit_byte(OpCode::Constant(constant))
             },
             Literal::String(str_val) | Literal::Identifier(str_val) => {
-                let constant =
-                    self.make_constant(Value::Object(Object::String(Box::new(str_val.clone()))))?;
+                let constant = {
+                    let string_obj = self
+                        .heap
+                        .allocate(Object::String(Box::new(str_val.clone())));
+                    self.make_constant(Value::Obj(string_obj))?
+                };
                 self.emit_byte(OpCode::Constant(constant))
             },
         }
@@ -699,10 +710,12 @@ impl ExpressionVisitor for Compiler {
 
         match expressions.is_empty() {
             true => {
-                let constant =
-                    self.make_constant(Value::Object(Object::Map(Box::new(ValueMap {
+                let constant = {
+                    let map_obj = self.heap.allocate(Object::Map(Box::new(ValueMap {
                         map: HashMap::with_capacity_and_hasher(16, LoxBuildHasher::default()),
-                    }))))?;
+                    })));
+                    self.make_constant(Value::Obj(map_obj))?
+                };
                 self.emit_byte(OpCode::Constant(constant))?;
             },
             false => self.emit_byte(OpCode::BuildMap(expressions.len()))?,
@@ -736,6 +749,11 @@ impl ExpressionVisitor for Compiler {
         let name_constant = self.identifier_constant(name)?;
         self.named_variable(
             &self.synthetic_token(TokenType::This, token.line),
+            false,
+            None,
+        )?;
+        self.named_variable(
+            &self.synthetic_token(TokenType::Super, token.line),
             false,
             None,
         )?;
@@ -773,7 +791,7 @@ impl ExpressionVisitor for Compiler {
     }
 }
 
-impl StatementVisitor for Compiler {
+impl<'h> StatementVisitor for Compiler<'h> {
     fn visit_assert(
         &mut self,
         expression: &Expression,
@@ -938,10 +956,10 @@ impl StatementVisitor for Compiler {
     ) -> LoxResult<()> {
         self.begin_scope()?;
         self.add_local(&self.synthetic_token(TokenType::Skip, iterator.line))?;
+        let offset = self.compiler().locals.len() - 1;
 
         let global = self.parse_variable(iterator)?;
         self.define_variable(global)?;
-        let offset = self.compiler().locals.len() - 1;
 
         self.evaluate(iterable)?;
         self.emit_byte(OpCode::DefineIterator)?;
@@ -951,8 +969,24 @@ impl StatementVisitor for Compiler {
         self.emit_byte(OpCode::IteratorNext(offset, 0))?;
 
         self.execute(body)?;
+        let pop_pos = self.chunk().len();
+        self.emit_byte(OpCode::Pop)?;
 
-        self.emit_loop(loop_start)?;
+        let loop_instruction_idx = self.chunk().len();
+        self.emit_byte(OpCode::Loop(loop_instruction_idx - loop_start + 1))?;
+
+        let last_code = self.chunk().len();
+        for code in self.chunk().code[loop_start..last_code].iter_mut() {
+            match code {
+                OpCode::Break(initial) => *code = OpCode::Jump(last_code - *initial),
+                OpCode::Continue(initial) => {
+                    let jump = pop_pos - *initial - 1;
+                    *code = OpCode::Jump(jump);
+                },
+                _ => {},
+            };
+        }
+
         self.patch_jump(loop_start + 1)?;
         self.emit_byte(OpCode::Pop)?;
 
@@ -1051,19 +1085,20 @@ mod tests {
 
     use super::*;
 
-    fn _generate_function(input: &str) -> LoxResult<Function> {
+    fn _generate_function(heap: &mut Heap, input: &str) -> LoxResult<Function> {
         let mut scanner = Scanner::new(input.into());
         let (tokens, _) = scanner.scan_tokens();
         let mut parser = Parser::new(tokens);
         let parse_output = parser.parse().unwrap();
-        let mut compiler = Compiler::new();
+        let mut compiler = Compiler::new(heap);
         compiler.compile(parse_output)
     }
 
     #[test]
     fn test_basic() {
+        let mut heap = Heap::new();
         let input = "var foo = 123;\nprintln foo;\n";
-        let function = _generate_function(input).unwrap();
+        let function = _generate_function(&mut heap, input).unwrap();
 
         assert_eq!(
             function.chunk.code,
@@ -1080,6 +1115,7 @@ mod tests {
 
     #[test]
     fn test_scope() {
+        let mut heap = Heap::new();
         let input = r#"
             fn bar() {
                 var foo = 123;
@@ -1088,7 +1124,7 @@ mod tests {
             var foo = bar();
             println foo;
         "#;
-        let function = _generate_function(input).unwrap();
+        let function = _generate_function(&mut heap, input).unwrap();
 
         assert_eq!(
             function.chunk.code,
@@ -1108,11 +1144,12 @@ mod tests {
 
     #[test]
     fn test_build_list() {
+        let mut heap = Heap::new();
         let input = r#"
             println [1, 2, 1 + 2];
             print [];
         "#;
-        let function = _generate_function(input).unwrap();
+        let function = _generate_function(&mut heap, input).unwrap();
 
         assert_eq!(
             function.chunk.code,
@@ -1134,11 +1171,12 @@ mod tests {
 
     #[test]
     fn test_build_map() {
+        let mut heap = Heap::new();
         let input = r#"
             println {'a': 1};
             print {};
         "#;
-        let function = _generate_function(input).unwrap();
+        let function = _generate_function(&mut heap, input).unwrap();
 
         assert_eq!(
             function.chunk.code,
@@ -1157,12 +1195,13 @@ mod tests {
 
     #[test]
     fn test_improper_use_of_break_fails() {
+        let mut heap = Heap::new();
         let input = r#"
             if (true) {
                 break;
             }
         "#;
-        let output = _generate_function(input);
+        let output = _generate_function(&mut heap, input);
         assert_eq!(
             output.expect_err("didn't fail as expected"),
             LoxError::CompileError("ending scope without correcting a break or continue".into())
@@ -1171,12 +1210,13 @@ mod tests {
 
     #[test]
     fn test_improper_use_of_continue_fails() {
+        let mut heap = Heap::new();
         let input = r#"
             if (true) {
                 continue;
             }
         "#;
-        let output = _generate_function(&input);
+        let output = _generate_function(&mut heap, &input);
         assert_eq!(
             output.expect_err("didn't fail as expected"),
             LoxError::CompileError("ending scope without correcting a break or continue".into())

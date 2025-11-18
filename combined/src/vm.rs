@@ -1,5 +1,5 @@
 use core::hash::BuildHasherDefault;
-use std::{cell::RefCell, fs, rc::Rc};
+use std::fs;
 
 use rustc_hash::{FxHashMap as HashMap, FxHasher};
 
@@ -10,6 +10,7 @@ use crate::{
     chunk::OpCode,
     compiler::Compiler,
     errors::{LoxError, LoxResult},
+    gc::{Heap, ObjPtr, Trace},
     object::{
         BoundMethod, Class, Closure, Instance, Module, NativeFn, NativeFunction, Object, UpValue,
         UpValuePtr, ValueIter, ValueMap,
@@ -40,6 +41,7 @@ pub struct VirtualMachine {
     stack: Vec<ValuePtr>,
     globals: HashMap<String, ValuePtr>,
     upvalues: Vec<UpValuePtr>,
+    heap: Heap,
 
     init_string: &'static str,
 }
@@ -51,8 +53,8 @@ impl Default for VirtualMachine {
 }
 
 macro_rules! obj {
-    ( $ot:tt, $val:expr ) => {
-        Value::Object(Object::$ot(Box::new($val)))
+    ( $self:expr, $ot:tt, $val:expr ) => {
+        Value::Obj($self.allocate(Object::$ot(Box::new($val))))
     };
 }
 
@@ -70,12 +72,59 @@ impl VirtualMachine {
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::with_capacity_and_hasher(STACK_MAX, LoxBuildHasher::default()),
             upvalues: Vec::with_capacity(STACK_MAX),
+            heap: Heap::new(),
             init_string: "init",
         }
     }
 
-    fn build_native(&self, name: &str, function: NativeFn, arity: usize) -> ValuePtr {
-        ValuePtr::new(obj!(
+    pub fn allocate(&mut self, object: Object) -> ObjPtr {
+        if self.heap.bytes_allocated > self.heap.next_gc {
+            self.collect_garbage();
+        }
+        self.heap.allocate(object)
+    }
+
+    pub fn collect_garbage(&mut self) {
+        self.mark_roots();
+        self.heap.trace_references();
+        self.heap.sweep();
+
+        // Adjust next_gc
+        self.heap.next_gc = self.heap.bytes_allocated * 2;
+    }
+
+    fn mark_roots(&mut self) {
+        // Stack
+        for value in &self.stack {
+            value.trace(&mut self.heap);
+        }
+
+        // Globals
+        for value in self.globals.values() {
+            value.trace(&mut self.heap);
+        }
+
+        // Upvalues
+        for upvalue in &self.upvalues {
+            self.heap.mark_object(*upvalue);
+        }
+
+        // Frames (closures)
+        for frame in &self.frames {
+            frame.closure.trace(&mut self.heap);
+        }
+
+        // Current frame
+        if !self.frame.is_null() {
+            unsafe {
+                (*self.frame).closure.trace(&mut self.heap);
+            }
+        }
+    }
+
+    fn build_native(&mut self, name: &str, function: NativeFn, arity: usize) -> ValuePtr {
+        Value::new(obj!(
+            self,
             Native,
             NativeFunction {
                 function,
@@ -98,11 +147,12 @@ impl VirtualMachine {
 
         match parse_output {
             Ok(output) => {
-                let mut compiler = Compiler::new();
+                let mut compiler = Compiler::new(&mut self.heap);
 
                 let function = compiler.compile(output)?;
 
-                let closure = ValuePtr::new(obj!(
+                let closure = Value::new(obj!(
+                    self,
                     Closure,
                     Closure {
                         upvalues: Vec::with_capacity(STACK_MAX),
@@ -110,7 +160,7 @@ impl VirtualMachine {
                     }
                 ));
 
-                self.stack.push(closure.clone());
+                self.stack.push(closure);
                 self.call(closure, 0)?;
 
                 self.define_native("len", builtin::_len, 1);
@@ -121,7 +171,8 @@ impl VirtualMachine {
                 self.define_native("time", builtin::_time, 0);
                 self.define_native("type", builtin::_type, 1);
 
-                self.globals.insert("colors".into(), self.build_colors());
+                let colors_module = self.build_colors();
+                self.globals.insert("colors".into(), colors_module);
 
                 self.run()?;
             },
@@ -141,7 +192,7 @@ impl VirtualMachine {
         Ok(())
     }
 
-    fn build_colors(&self) -> ValuePtr {
+    fn build_colors(&mut self) -> ValuePtr {
         macro_rules! color_fn {
             ( $name:expr, $symbol:tt ) => {
                 ($name.into(), self.build_native($name, builtin::$symbol, 1))
@@ -159,7 +210,8 @@ impl VirtualMachine {
             color_fn! { "white", _white },
         ]);
 
-        ValuePtr::new(obj!(
+        Value::new(obj!(
+            self,
             Module,
             Module {
                 name: "colors".into(),
@@ -170,11 +222,7 @@ impl VirtualMachine {
 
     #[cfg(feature = "debug")]
     fn dump(&self, chunk: &Chunk, idx: usize) {
-        let stack_str: Vec<String> = self
-            .stack
-            .iter()
-            .map(|v| format!("{}", (*v.borrow())))
-            .collect();
+        let stack_str: Vec<String> = self.stack.iter().map(|v| format!("{}", v)).collect();
 
         println!("          [{}]", stack_str.join(", "));
         chunk.disassemble_instruction(&chunk.code[idx], idx);
@@ -198,14 +246,19 @@ impl VirtualMachine {
 
     #[cfg(feature = "debug")]
     fn function(&self) -> Function {
-        match &*self.frame().closure.borrow() {
-            Value::Object(Object::Closure(closure)) => closure.function.clone(),
+        match &self.frame().closure {
+            Value::Obj(closure_ptr) => unsafe {
+                match &closure_ptr.deref().obj {
+                    Object::Closure(closure) => closure.function.clone(),
+                    _ => unreachable!(),
+                }
+            },
             _ => unreachable!(),
         }
     }
 
     fn stack_push_value(&mut self, value: Value) {
-        self.stack.push(ValuePtr::new(value));
+        self.stack.push(Value::new(value));
     }
 
     fn _convert_index(&self, len: usize, number: i32) -> usize {
@@ -217,8 +270,8 @@ impl VirtualMachine {
             return Ok(None);
         }
 
-        let arg: Option<i32> = match &*self.pop_stack()?.borrow() {
-            Value::Number(number) => Some(*number as i32),
+        let arg: Option<i32> = match self.pop_stack()? {
+            Value::Number(number) => Some(number as i32),
             _ => err!("only numbers can be used to slice containers"),
         };
 
@@ -254,12 +307,12 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.stack.last_mut().unwrap();
 
-                    let result = match (&*right.borrow(), &*left.borrow()) {
+                    let result = match (&right, &*left) {
                         (Value::Number(b), Value::Number(a)) => a $op b,
                         _ => err!(&format!("comparison '{}' only operates on numbers", $op_char)),
                     };
 
-                    *left = ValuePtr::new($output(result));
+                    *left = Value::new($output(result));
                 }
             };
         }
@@ -270,12 +323,12 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.stack.last_mut().unwrap();
 
-                    let result = match (&*right.borrow(), &*left.borrow()) {
+                    let result = match (&right, &*left) {
                         (Value::Number(b), Value::Number(a)) => (*a as i64) $op (*b as i64),
                         _ => err!(&format!("comparison '{}' only operates on numbers", $op_char)),
                     };
 
-                    *left = ValuePtr::new($output(result as f64));
+                    *left = Value::new($output(result as f64));
                 }
             };
         }
@@ -286,39 +339,46 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.stack.last_mut().unwrap();
 
-                    let result = match (&*right.borrow(), &*left.borrow()) {
+                    let result = match (&right, &*left) {
                         (Value::Number(b), Value::Number(a)) => Value::Number(((*a as i64) $op (*b as i64)) as f64),
                         (Value::Bool(b), Value::Bool(a)) => Value::Bool(*a $op *b),
                         _ => err!(&format!("comparison '{}' only operates on integers and bools", $op_char)),
                     };
 
-                    *left = ValuePtr::new(result);
+                    *left = Value::new(result);
                 }
             };
         }
 
         macro_rules! global {
             ( $pos:expr ) => {{
-                let cb = self.frame().closure.borrow();
-                let Value::Object(Object::Closure(closure)) = &*cb else {
+                let Value::Obj(closure_ptr) = &self.frame().closure else {
                     unreachable!()
                 };
+                unsafe {
+                    let closure_obj = closure_ptr.deref();
+                    let Object::Closure(closure) = &closure_obj.obj else {
+                        unreachable!()
+                    };
 
-                unsafe { &*closure.function.chunk.constants.as_ptr().add($pos) }
+                    &*closure.function.chunk.constants.as_ptr().add($pos)
+                }
             }};
         }
 
         macro_rules! truthy {
             ( $item:expr ) => {{
-                match &*$item.borrow() {
+                match $item {
                     Value::Bool(boolean) => Ok(*boolean),
                     Value::Nil => Ok(false),
                     Value::Number(number) => Ok(*number != 0.0f64),
-                    Value::Object(object) => match object {
-                        Object::List(list) => Ok(!list.is_empty()),
-                        Object::Map(hmap) => Ok(!hmap.map.is_empty()),
-                        Object::String(string) => Ok(!string.is_empty()),
-                        _ => Ok(true),
+                    Value::Obj(obj_ptr) => unsafe {
+                        match &obj_ptr.deref().obj {
+                            Object::List(list) => Ok(!list.is_empty()),
+                            Object::Map(hmap) => Ok(!hmap.map.is_empty()),
+                            Object::String(string) => Ok(!string.is_empty()),
+                            _ => Ok(true),
+                        }
                     },
                 }
             }};
@@ -328,22 +388,28 @@ impl VirtualMachine {
             let code = {
                 let frame = self.frame();
 
-                let Value::Object(Object::Closure(closure)) = &*frame.closure.borrow() else {
-                    unreachable!();
+                let Value::Obj(closure_ptr) = &frame.closure else {
+                    unreachable!()
                 };
+                unsafe {
+                    let closure_obj = closure_ptr.deref();
+                    let Object::Closure(closure) = &closure_obj.obj else {
+                        unreachable!();
+                    };
 
-                if frame.pos >= closure.function.chunk.code.len() {
-                    break;
+                    if frame.pos >= closure.function.chunk.code.len() {
+                        break;
+                    }
+
+                    #[cfg(feature = "debug")]
+                    self.dump(&self.function().chunk, frame.pos);
+
+                    &*closure.function.chunk.code.as_ptr().add(frame.pos)
                 }
-
-                #[cfg(feature = "debug")]
-                self.dump(&self.function().chunk, frame.pos);
-
-                unsafe { &*closure.function.chunk.code.as_ptr().add(frame.pos) }
             };
 
-            match *code {
-                OpCode::Constant(index) => self.stack.push(global!(index).clone()),
+            match code {
+                OpCode::Constant(index) => self.stack.push(*global!(*index)),
                 OpCode::False => self.stack_push_value(Value::Bool(false)),
                 OpCode::True => self.stack_push_value(Value::Bool(true)),
                 OpCode::Nil => self.stack_push_value(Value::Nil),
@@ -352,38 +418,50 @@ impl VirtualMachine {
                 },
                 OpCode::GetLocal(index) => {
                     let index = index + self.frame().stack_offset;
-                    self.stack.push(self.stack[index].clone());
+                    self.stack.push(self.stack[index]);
                 },
                 OpCode::SetLocal(index) => {
-                    let val = self.stack.last().unwrap().clone();
+                    let val = *self.stack.last().unwrap();
                     let index = index + self.frame().stack_offset;
                     self.stack[index] = val;
                 },
+                OpCode::DefineGlobal(index) => {
+                    let key = match global!(*index) {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(string) => *string.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
+                        _ => unreachable!(),
+                    };
+                    let val = self.pop_stack()?;
+                    self.globals.insert(key, val);
+                },
                 OpCode::GetGlobal(index) => {
-                    let val = match &*global!(index).borrow() {
-                        Value::Object(Object::String(string)) => {
-                            self.globals.get(&**string).ok_or_else(|| {
-                                LoxError::RuntimeError(format!("undefined variable: {}", &**string))
-                            })?
+                    let key = match global!(*index) {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(string) => *string.clone(),
+                                _ => unreachable!(),
+                            }
                         },
                         _ => unreachable!(),
                     };
 
-                    self.stack.push(val.clone());
-                },
-                OpCode::DefineGlobal(index) => {
-                    let key = match &*global!(index).borrow() {
-                        Value::Object(Object::String(string)) => *string.clone(),
-                        _ => unreachable!(),
-                    };
-
-                    let val = self.pop_stack()?;
-
-                    self.globals.insert(key, val);
+                    match self.globals.get(&key) {
+                        Some(val) => self.stack_push_value(*val),
+                        None => err!(&format!("undefined variable: {key}")),
+                    }
                 },
                 OpCode::SetGlobal(index) => {
-                    let key = match &*global!(index).borrow() {
-                        Value::Object(Object::String(string)) => *string.clone(),
+                    let key = match global!(*index) {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(string) => *string.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
                         _ => unreachable!(),
                     };
 
@@ -391,204 +469,275 @@ impl VirtualMachine {
                         err!(&format!("undefined variable: {key}"))
                     }
 
-                    let val = self.stack.last().unwrap().clone();
+                    let val = *self.stack.last().unwrap();
 
                     self.globals.insert(key, val);
                 },
                 OpCode::GetUpValue(index) => {
-                    let upvalue = match &*self.frame().closure.borrow() {
-                        Value::Object(Object::Closure(closure)) => closure
-                            .upvalues
-                            .iter()
-                            .find(|uv| {
-                                uv.borrow().location_index == self.frame().stack_offset + index
-                            })
-                            .unwrap()
-                            .borrow()
-                            .location
-                            .clone(),
+                    let upvalue_ptr = match &self.frame().closure {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::Closure(closure) => closure.upvalues[*index],
+                                _ => unreachable!(),
+                            }
+                        },
                         _ => unreachable!(),
                     };
 
-                    self.stack.push(upvalue);
+                    let val = unsafe {
+                        let uv = upvalue_ptr.deref();
+                        let upvalue = uv.obj.as_upvalue().unwrap();
+                        if upvalue.location_index != usize::MAX {
+                            self.stack[upvalue.location_index]
+                        } else {
+                            upvalue.location
+                        }
+                    };
+                    self.stack_push_value(val);
                 },
                 OpCode::SetUpValue(index) => {
-                    let last_stack = self.stack.last().unwrap().clone();
-                    let pos = self.frame().stack_offset + index;
-                    match &*self.frame_mut().closure.borrow_mut() {
-                        Value::Object(Object::Closure(closure)) => {
-                            closure
-                                .upvalues
-                                .iter()
-                                .find(|uv| uv.borrow().location_index == pos)
-                                .unwrap()
-                                .borrow_mut()
-                                .location = last_stack;
+                    let val = *self.stack.last().unwrap();
+                    let mut upvalue_ptr = match &self.frame().closure {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::Closure(closure) => closure.upvalues[*index],
+                                _ => unreachable!(),
+                            }
                         },
                         _ => unreachable!(),
+                    };
+
+                    unsafe {
+                        let uv = upvalue_ptr.deref_mut();
+                        let upvalue = match &mut uv.obj {
+                            Object::UpValue(uv) => uv,
+                            _ => unreachable!(),
+                        };
+                        if upvalue.location_index != usize::MAX {
+                            self.stack[upvalue.location_index] = val;
+                        } else {
+                            upvalue.location = val;
+                        }
                     }
                 },
                 OpCode::GetProperty(index) => {
-                    let name_constant = global!(index);
-                    let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
-                        unreachable!();
+                    let instance = *self.stack.last().unwrap();
+                    let name_constant = global!(*index);
+                    let prop_name = match name_constant {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(prop_name) => prop_name.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
+                        _ => unreachable!(),
                     };
 
-                    let last = self.stack.last().unwrap().clone();
-                    match &*last.borrow() {
-                        Value::Object(Object::Instance(instance)) => {
-                            match instance.fields.get(&**prop_name) {
-                                Some(prop) => {
-                                    *self.stack.last_mut().unwrap() = prop.clone();
+                    match instance {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::Instance(instance) => {
+                                    match instance.fields.get(&*prop_name) {
+                                        Some(value) => {
+                                            let value = *value;
+                                            self.pop_stack()?;
+                                            self.stack_push_value(value);
+                                        },
+                                        None => {
+                                            let _class = match &instance.class {
+                                                Value::Obj(class_ptr) => {
+                                                    match &class_ptr.deref().obj {
+                                                        Object::Class(class) => class.clone(),
+                                                        _ => unreachable!(),
+                                                    }
+                                                },
+                                                _ => unreachable!(),
+                                            };
+                                            self.bind_method(&instance.class, &prop_name)?;
+                                        },
+                                    }
                                 },
-                                None => self.bind_method(&instance.class, prop_name)?,
-                            };
-                        },
-                        Value::Object(Object::Module(module)) => {
-                            match module.map.get(&**prop_name) {
-                                Some(prop) => {
-                                    *self.stack.last_mut().unwrap() = prop.clone();
+                                Object::Module(module) => match module.map.get(&*prop_name) {
+                                    Some(value) => {
+                                        let value = *value;
+                                        self.pop_stack()?;
+                                        self.stack_push_value(value);
+                                    },
+                                    None => err!(&format!("undefined property '{}'", prop_name)),
                                 },
-                                None => err!(&format!(
-                                    "module '{}' has no property '{}'",
-                                    module.name, prop_name
-                                )),
-                            };
+                                _ => err!("only instances have properties"),
+                            }
                         },
-                        _ => err!("only modules and instances have properties"),
-                    };
+                        _ => err!("only instances have properties"),
+                    }
                 },
                 OpCode::SetProperty(index) => {
-                    let instance_ptr = self.stack[self.stack.len() - 2].clone();
-                    let Value::Object(Object::Instance(instance)) = &mut *instance_ptr.borrow_mut()
-                    else {
-                        err!("not an instance");
-                    };
-                    let name_constant = global!(index);
-                    let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
-                        unreachable!();
+                    let name_constant = global!(*index);
+                    let prop_name = match name_constant {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(prop_name) => prop_name.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
+                        _ => unreachable!(),
                     };
 
                     let value = self.pop_stack()?;
+                    let instance_ptr = *self.stack.last().unwrap();
 
-                    instance.fields.insert(*prop_name.clone(), value.clone());
-                    *self.stack.last_mut().unwrap() = value;
+                    match instance_ptr {
+                        Value::Obj(mut ptr) => unsafe {
+                            match &mut ptr.deref_mut().obj {
+                                Object::Instance(instance) => {
+                                    instance.fields.insert(*prop_name, value);
+                                    *self.stack.last_mut().unwrap() = value;
+                                },
+                                _ => err!("only instances have fields"),
+                            }
+                        },
+                        _ => err!("only instances have fields"),
+                    }
                 },
                 OpCode::GetSuper(index) => {
-                    let instance_ptr = self.pop_stack()?;
-                    let Value::Object(Object::Instance(instance)) = &*instance_ptr.borrow() else {
-                        err!("not an instance");
-                    };
-                    let name_constant = global!(index);
-                    let Value::Object(Object::String(prop_name)) = &*name_constant.borrow() else {
-                        unreachable!();
-                    };
-
-                    let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
-                        unreachable!();
+                    let name_constant = global!(*index);
+                    let prop_name = match name_constant {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(prop_name) => prop_name.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
+                        _ => unreachable!(),
                     };
 
-                    let Some(super_class) = &class.parent else {
-                        err!("can't use super. on a base class!");
-                    };
+                    let super_class = self.pop_stack()?;
+                    let _instance = *self.stack.last().unwrap();
 
-                    self.bind_method(super_class, prop_name)?;
+                    self.bind_method(&super_class, &prop_name)?;
                 },
                 OpCode::GetIndex => {
                     let index = self.pop_stack()?;
-                    let container = self.pop_stack()?;
+                    let callee = self.pop_stack()?;
 
-                    let value = match &*container.borrow() {
-                        Value::Object(Object::List(list)) => match &*index.borrow() {
-                            Value::Number(number) => {
-                                let index_usize = self._extract_index(list.len(), *number);
-                                list[index_usize].clone()
-                            },
-                            _ => err!("lists can only be indexed with integers"),
+                    match callee {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::List(list) => {
+                                    let index = match index {
+                                        Value::Number(number) => {
+                                            self._extract_index(list.len(), number)
+                                        },
+                                        _ => err!("only numbers can be used to index lists"),
+                                    };
+                                    match list.get(index) {
+                                        Some(item) => self.stack_push_value(*item),
+                                        None => self.stack_push_value(Value::Nil),
+                                    }
+                                },
+                                Object::Map(hmap) => match hmap.map.get(&index) {
+                                    Some(item) => self.stack_push_value(*item),
+                                    None => self.stack_push_value(Value::Nil),
+                                },
+                                Object::String(string) => {
+                                    let index = match index {
+                                        Value::Number(number) => {
+                                            self._extract_index(string.len(), number)
+                                        },
+                                        _ => err!("only numbers can be used to index strings"),
+                                    };
+                                    match string.chars().nth(index) {
+                                        Some(c) => {
+                                            let char_obj = obj!(self, String, c.to_string());
+                                            self.stack_push_value(Value::new(char_obj));
+                                        },
+                                        None => self.stack_push_value(Value::Nil),
+                                    }
+                                },
+                                _ => err!("only lists, maps, and strings can be indexed"),
+                            }
                         },
-                        Value::Object(Object::String(string)) => match &*index.borrow() {
-                            Value::Number(number) => {
-                                let index_usize = self._extract_index(string.len(), *number);
-
-                                ValuePtr::new(obj!(
-                                    String,
-                                    string.chars().nth(index_usize).unwrap().to_string()
-                                ))
-                            },
-                            _ => err!("strings can only be indexed with integers"),
-                        },
-                        Value::Object(Object::Map(hmap)) => match hmap.map.get(&index) {
-                            Some(value) => value.clone(),
-                            None => err!(&format!("no entry for key {index:?}")),
-                        },
-                        _ => err!("only lists and maps can be indexed into"),
-                    };
-
-                    self.stack.push(value);
+                        _ => err!("only lists, maps, and strings can be indexed"),
+                    }
                 },
                 OpCode::SetIndex => {
                     let value = self.pop_stack()?;
                     let index = self.pop_stack()?;
-                    let container = self.pop_stack()?;
+                    let container = *self.stack.last().unwrap();
 
-                    match &mut *container.borrow_mut() {
-                        Value::Object(Object::List(list)) => match &*index.borrow() {
-                            Value::Number(number) => {
-                                let index_usize = self._extract_index(list.len(), *number);
-                                list[index_usize] = value.clone();
-                            },
-                            _ => err!("lists can only be indexed with integers"),
-                        },
-                        Value::Object(Object::Map(hmap)) => {
-                            hmap.map.insert(index, value.clone());
+                    match container {
+                        Value::Obj(mut ptr) => unsafe {
+                            match &mut ptr.deref_mut().obj {
+                                Object::List(list) => match index {
+                                    Value::Number(number) => {
+                                        let index_usize = self._extract_index(list.len(), number);
+                                        list[index_usize] = value;
+                                    },
+                                    _ => err!("lists can only be indexed with integers"),
+                                },
+                                Object::Map(hmap) => {
+                                    hmap.map.insert(index, value);
+                                },
+                                _ => err!("only lists and maps can be indexed into"),
+                            }
                         },
                         _ => err!("only lists and maps can be indexed into"),
-                    };
-
-                    self.stack.push(value);
+                    }
                 },
                 OpCode::DeleteIndex => {
                     let index = self.pop_stack()?;
                     let container = self.pop_stack()?;
 
-                    match &mut *container.borrow_mut() {
-                        Value::Object(Object::List(list)) => match &*index.borrow() {
-                            Value::Number(number) => {
-                                let index_usize = self._extract_index(list.len(), *number);
-                                list.remove(index_usize);
-                            },
-                            _ => err!("lists can only be indexed with integers"),
-                        },
-                        Value::Object(Object::Map(hmap)) => {
-                            hmap.map.remove(&index);
+                    match container {
+                        Value::Obj(mut ptr) => unsafe {
+                            match &mut ptr.deref_mut().obj {
+                                Object::List(list) => match index {
+                                    Value::Number(number) => {
+                                        let index_usize = self._extract_index(list.len(), number);
+                                        list.remove(index_usize);
+                                    },
+                                    _ => err!("lists can only be indexed with integers"),
+                                },
+                                Object::Map(hmap) => {
+                                    hmap.map.remove(&index);
+                                },
+                                _ => err!("only lists and maps can be indexed into"),
+                            }
                         },
                         _ => err!("only lists and maps can be indexed into"),
-                    };
+                    }
                 },
                 OpCode::GetSlice(has_left, has_right) => {
-                    let right = self._get_slice_argument(has_right)?;
-                    let left = self._get_slice_argument(has_left)?;
+                    let right = self._get_slice_argument(*has_right)?;
+                    let left = self._get_slice_argument(*has_left)?;
 
-                    let value = match &*self.pop_stack()?.borrow() {
-                        Value::Object(Object::List(list)) => {
-                            let (left, right) = self._get_slice_range(list.len(), left, right);
-                            let tmp_value = if left > right {
-                                vec![]
-                            } else {
-                                list[left..right].to_vec()
-                            };
+                    let value = match self.pop_stack()? {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::List(list) => {
+                                    let (left, right) =
+                                        self._get_slice_range(list.len(), left, right);
+                                    let tmp_value = if left > right {
+                                        vec![]
+                                    } else {
+                                        list[left..right].to_vec()
+                                    };
 
-                            obj!(List, tmp_value)
-                        },
-                        Value::Object(Object::String(string)) => {
-                            let (left, right) = self._get_slice_range(string.len(), left, right);
-                            let tmp_value = if left > right {
-                                "".to_string()
-                            } else {
-                                string[left..right].to_string()
-                            };
+                                    obj!(self, List, tmp_value)
+                                },
+                                Object::String(string) => {
+                                    let (left, right) =
+                                        self._get_slice_range(string.len(), left, right);
+                                    let tmp_value = if left > right {
+                                        "".to_string()
+                                    } else {
+                                        string[left..right].to_string()
+                                    };
 
-                            obj!(String, tmp_value)
+                                    obj!(self, String, tmp_value)
+                                },
+                                _ => err!("only lists and strings can be sliced"),
+                            }
                         },
                         _ => err!("only lists and strings can be sliced"),
                     };
@@ -597,9 +746,8 @@ impl VirtualMachine {
                 },
                 OpCode::Equal => {
                     let right = self.pop_stack()?;
-                    let left = self.pop_stack()?;
-
-                    self.stack_push_value(Value::Bool(*right.borrow() == *left.borrow()));
+                    let left = self.stack.last_mut().unwrap();
+                    *left = Value::Bool(right == *left);
                 },
                 OpCode::Greater => binary! { >, '>', Value::Bool },
                 OpCode::Less => binary! { <, '<', Value::Bool },
@@ -607,20 +755,26 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.pop_stack()?;
 
-                    let right = right.borrow();
-
-                    match &*right {
-                        Value::Object(Object::List(list)) => {
-                            self.stack_push_value(Value::Bool(list.contains(&left)));
-                        },
-                        Value::Object(Object::Map(hmap)) => {
-                            self.stack_push_value(Value::Bool(hmap.map.contains_key(&left)));
-                        },
-                        Value::Object(Object::String(string)) => match &*left.borrow() {
-                            Value::Object(Object::String(substring)) => {
-                                self.stack_push_value(Value::Bool(string.contains(&**substring)));
-                            },
-                            _ => err!("invalid 'in' check: strings can only contain other strings"),
+                    match right {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::List(list) => {
+                                    self.stack_push_value(Value::Bool(list.contains(&left)));
+                                },
+                                Object::Map(hmap) => {
+                                    self.stack_push_value(Value::Bool(hmap.map.contains_key(&left)));
+                                },
+                                Object::String(string) => match left {
+                                    Value::Obj(sub_ptr) => match &sub_ptr.deref().obj {
+                                        Object::String(substring) => {
+                                            self.stack_push_value(Value::Bool(string.contains(&**substring)));
+                                        },
+                                        _ => err!("invalid 'in' check: strings can only contain other strings"),
+                                    },
+                                    _ => err!("invalid 'in' check: strings can only contain other strings"),
+                                },
+                                _ => err!("'in' operator only functions on iterables"),
+                            }
                         },
                         _ => err!("'in' operator only functions on iterables"),
                     };
@@ -629,27 +783,30 @@ impl VirtualMachine {
                     let right = self.pop_stack()?;
                     let left = self.stack.last_mut().unwrap();
 
-                    let output = match (&*right.borrow(), &*left.borrow()) {
-                        (Value::Number(b), Value::Number(a)) => Value::Number(a + b),
-                        (Value::Object(Object::List(b)), Value::Object(Object::List(a))) => {
-                            let mut new_list: Vec<ValuePtr> = *a.clone();
-                            new_list.extend_from_slice(b);
-
-                            obj!(List, new_list)
+                    match (&right, &*left) {
+                        (Value::Number(b), Value::Number(a)) => *left = Value::Number(a + b),
+                        (Value::Obj(b_ptr), Value::Obj(a_ptr)) => unsafe {
+                            match (&b_ptr.deref().obj, &a_ptr.deref().obj) {
+                                (Object::String(b), Object::String(a)) => {
+                                    let s = format!("{}{}", a, b);
+                                    let val = Value::new(obj!(self, String, s));
+                                    let left = self.stack.last_mut().unwrap();
+                                    *left = val;
+                                },
+                                (Object::List(b), Object::List(a)) => {
+                                    let mut new_list = (**a).clone();
+                                    new_list.extend(b.iter().cloned());
+                                    let val = Value::new(obj!(self, List, new_list));
+                                    let left = self.stack.last_mut().unwrap();
+                                    *left = val;
+                                },
+                                _ => {
+                                    err!("operands must be two numbers, two strings, or two lists")
+                                },
+                            }
                         },
-                        (Value::Number(b), Value::Object(Object::String(a))) => {
-                            obj!(String, format!("{a}{b}"))
-                        },
-                        (Value::Object(Object::String(b)), Value::Number(a)) => {
-                            obj!(String, format!("{a}{b}"))
-                        },
-                        (Value::Object(Object::String(b)), Value::Object(Object::String(a))) => {
-                            obj!(String, format!("{a}{b}"))
-                        },
-                        _ => err!("operation '+' only operates on numbers and strings"),
-                    };
-
-                    *left = ValuePtr::new(output);
+                        _ => err!("operands must be two numbers, two strings, or two lists"),
+                    }
                 },
                 OpCode::Subtract => binary! { -, '-', Value::Number },
                 OpCode::Modulo => binary! { %, '%', Value::Number },
@@ -660,7 +817,7 @@ impl VirtualMachine {
                     self.stack_push_value(Value::Bool(!truthy!(&item)?));
                 },
                 OpCode::Negate => {
-                    let item = match *(self.pop_stack()?).borrow() {
+                    let item = match self.pop_stack()? {
                         Value::Number(number) => number,
                         _ => err!("negation only operates on numbers"),
                     };
@@ -671,13 +828,12 @@ impl VirtualMachine {
                 OpCode::BitAnd => bit_ops! { &, '&' },
                 OpCode::BitOr => bit_ops! { |, '|' },
                 OpCode::BitXor => bit_ops! { ^, '^' },
-                OpCode::Print(newline) => {
+                OpCode::Print(no_newline) => {
                     let value = self.pop_stack()?;
-
-                    if newline {
-                        println!("{}", *value.borrow())
+                    if *no_newline {
+                        print!("{}", value)
                     } else {
-                        print!("{}", *value.borrow())
+                        println!("{}", value)
                     }
                 },
                 OpCode::Jump(offset) => self.frame_mut().pos += offset,
@@ -691,35 +847,39 @@ impl VirtualMachine {
                 OpCode::Continue(_) => unreachable!(),
                 OpCode::DefineIterator => {
                     let to_iterate = self.pop_stack()?;
-                    let value_iter = ValueIter::new(to_iterate)?;
+                    let value_iter = ValueIter::new(&mut self.heap, to_iterate)?;
 
-                    self.stack_push_value(obj!(Iterator, value_iter));
+                    let iterator_obj = obj!(self, Iterator, value_iter);
+                    self.stack_push_value(Value::new(iterator_obj));
                 },
                 OpCode::IteratorNext(index, jump) => {
-                    let stack_index = index + self.frame().stack_offset;
-                    let iterator_ptr = self.stack[stack_index - 1].clone();
-                    let Value::Object(Object::Iterator(iterator)) = &mut *iterator_ptr.borrow_mut()
-                    else {
-                        unreachable!();
-                    };
+                    let iterator_ptr = self.stack[*index];
 
-                    if iterator.next == 0 {
-                        let constant = global!(index);
-                        self.stack.push(constant.clone());
-                    }
-
-                    if iterator.next == iterator.items.len() {
-                        self.frame_mut().pos += jump + 1;
-                    } else {
-                        self.stack[stack_index] = iterator.items[iterator.next].clone();
-                        iterator.next += 1;
+                    match iterator_ptr {
+                        Value::Obj(mut ptr) => unsafe {
+                            match &mut ptr.deref_mut().obj {
+                                Object::Iterator(iterator) => {
+                                    if iterator.next < iterator.items.len() {
+                                        let item = iterator.items[iterator.next];
+                                        iterator.next += 1;
+                                        self.stack_push_value(item);
+                                    } else {
+                                        self.stack_push_value(Value::Nil);
+                                        self.frame_mut().pos += jump;
+                                    }
+                                },
+                                _ => unreachable!(),
+                            }
+                        },
+                        _ => unreachable!(),
                     }
                 },
                 OpCode::BuildList(item_count) => {
                     let range_start = self.stack.len() - item_count;
                     let list: Vec<ValuePtr> = self.stack.split_off(range_start);
 
-                    self.stack_push_value(obj!(List, list));
+                    let list_obj = obj!(self, List, list);
+                    self.stack_push_value(Value::new(list_obj));
                 },
                 OpCode::BuildMap(item_count) => {
                     let range_start = self.stack.len() - item_count;
@@ -730,52 +890,80 @@ impl VirtualMachine {
                             .map(|_| (items.next().unwrap(), items.next().unwrap())),
                     );
 
-                    self.stack_push_value(obj!(Map, ValueMap { map }));
+                    let map_obj = obj!(self, Map, ValueMap { map });
+                    self.stack_push_value(Value::new(map_obj));
                 },
                 OpCode::Call(arg_count) => {
-                    self.call_value(arg_count)?;
+                    self.call_value(*arg_count)?;
                     continue;
                 },
                 OpCode::Invoke(index, arg_count) => {
-                    let name_constant = global!(index);
-                    let Value::Object(Object::String(method_name)) = &*name_constant.borrow()
-                    else {
-                        unreachable!();
-                    };
-
-                    self.invoke(method_name, arg_count)?;
-                    continue;
-                },
-                OpCode::Closure(index, ref upvalues) => {
-                    let constant = global!(index);
-                    let function = match &*constant.borrow() {
-                        Value::Object(Object::Function(function)) => *function.clone(),
+                    let name_constant = global!(*index);
+                    let method_name = match name_constant {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(method_name) => method_name.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
                         _ => unreachable!(),
                     };
 
-                    let mut captured: Vec<UpValuePtr> = Vec::with_capacity(upvalues.len());
-                    for uv in upvalues.iter() {
-                        let new_upvalue = if uv.is_local {
-                            self.capture_upvalue(self.frame().stack_offset + uv.index)?
-                        } else {
-                            match &*self.frame().closure.borrow() {
-                                Value::Object(Object::Closure(closure)) => {
-                                    closure.upvalues[index].clone()
-                                },
+                    self.invoke(&method_name, *arg_count)?;
+                    continue;
+                },
+                OpCode::Closure(index, upvalues) => {
+                    let prototype = {
+                        let frame = self.frame();
+                        let closure_val = &frame.closure;
+                        match closure_val {
+                            Value::Obj(ptr) => unsafe {
+                                match &ptr.deref().obj {
+                                    Object::Closure(closure) => {
+                                        match &closure.function.chunk.constants[*index] {
+                                            Value::Obj(proto_ptr) => match &proto_ptr.deref().obj {
+                                                Object::Function(function) => function.clone(),
+                                                _ => unreachable!(),
+                                            },
+                                            _ => unreachable!(),
+                                        }
+                                    },
+                                    _ => unreachable!(),
+                                }
+                            },
+                            _ => unreachable!(),
+                        }
+                    };
+
+                    let mut closure = Closure {
+                        function: *prototype,
+                        upvalues: Vec::new(),
+                    };
+
+                    let stack_offset = self.frame().stack_offset;
+                    let current_closure_upvalues = match &self.frame().closure {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::Closure(c) => c.upvalues.clone(),
                                 _ => unreachable!(),
                             }
-                        };
+                        },
+                        _ => unreachable!(),
+                    };
 
-                        captured.push(new_upvalue);
+                    for uv in upvalues.iter() {
+                        let is_local = uv.is_local;
+                        let index = uv.index;
+                        if is_local {
+                            let location = self.capture_upvalue(stack_offset + index)?;
+                            closure.upvalues.push(location);
+                        } else {
+                            closure.upvalues.push(current_closure_upvalues[index]);
+                        }
                     }
 
-                    self.stack_push_value(obj!(
-                        Closure,
-                        Closure {
-                            upvalues: captured,
-                            function,
-                        }
-                    ));
+                    let closure_obj = obj!(self, Closure, closure);
+                    self.stack_push_value(Value::new(closure_obj));
                 },
                 OpCode::CloseUpValue => {
                     if self.stack.is_empty() {
@@ -790,13 +978,18 @@ impl VirtualMachine {
                     let assertion_ptr = self.pop_stack()?;
 
                     if !truthy!(&assertion_ptr)? {
-                        let message = if has_message {
-                            match &*message_ptr.unwrap().borrow() {
-                                Value::Object(Object::String(message)) => format!("{message}"),
+                        let message = if *has_message {
+                            match message_ptr.unwrap() {
+                                Value::Obj(ptr) => unsafe {
+                                    match &ptr.deref().obj {
+                                        Object::String(message) => format!("{message}"),
+                                        _ => err!("assert message must be a string"),
+                                    }
+                                },
                                 _ => err!("assert message must be a string"),
                             }
                         } else {
-                            format!("{} is not true", assertion_ptr.borrow())
+                            format!("{} is not true", assertion_ptr)
                         };
 
                         err!(&format!("assertion failed: {message}"))
@@ -811,8 +1004,13 @@ impl VirtualMachine {
                     let mut vm = VirtualMachine::new();
                     vm.interpret(&source)?;
 
-                    let key = match &*global!(index).borrow() {
-                        Value::Object(Object::String(string)) => *string.clone(),
+                    let key = match global!(*index) {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::String(string) => string.clone(),
+                                _ => unreachable!(),
+                            }
+                        },
                         _ => unreachable!(),
                     };
 
@@ -820,16 +1018,15 @@ impl VirtualMachine {
                         self.globals.insert(key, val);
                     }
 
-                    self.globals.insert(
-                        key.clone(),
-                        ValuePtr::new(obj!(
-                            Module,
-                            Module {
-                                name: key,
-                                map: vm.globals,
-                            }
-                        )),
+                    let module_obj = obj!(
+                        self,
+                        Module,
+                        Module {
+                            name: *key.clone(),
+                            map: vm.globals,
+                        }
                     );
+                    self.globals.insert(*key, Value::new(module_obj));
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
@@ -845,29 +1042,40 @@ impl VirtualMachine {
                     *self.stack.last_mut().unwrap() = result;
                 },
                 OpCode::Class(index) => {
-                    let class_name = self.read_string(index)?;
+                    let class_name = self.read_string(*index)?;
 
-                    self.stack_push_value(obj!(Class, Class::new(class_name)));
+                    let class_obj = obj!(self, Class, Class::new(class_name));
+                    self.stack_push_value(Value::new(class_obj));
                 },
                 OpCode::Inherit => {
                     let sub_class_ptr = self.pop_stack()?;
                     let super_class_ptr = self.stack.last_mut().unwrap();
 
-                    let methods = match &*super_class_ptr.borrow() {
-                        Value::Object(Object::Class(super_class)) => super_class.methods.clone(),
+                    let methods = match super_class_ptr {
+                        Value::Obj(ptr) => unsafe {
+                            match &ptr.deref().obj {
+                                Object::Class(super_class) => super_class.methods.clone(),
+                                _ => err!("super class must be a class"),
+                            }
+                        },
                         _ => err!("super class must be a class"),
                     };
 
-                    match &mut *sub_class_ptr.borrow_mut() {
-                        Value::Object(Object::Class(sub_class)) => {
-                            sub_class.parent = Some(super_class_ptr.clone());
-                            sub_class.methods = methods;
+                    match sub_class_ptr {
+                        Value::Obj(mut ptr) => unsafe {
+                            match &mut ptr.deref_mut().obj {
+                                Object::Class(sub_class) => {
+                                    sub_class.parent = Some(*super_class_ptr);
+                                    sub_class.methods = methods;
+                                },
+                                _ => unreachable!(),
+                            }
                         },
                         _ => unreachable!(),
                     };
                 },
                 OpCode::Method(index) => {
-                    self.define_method(&self.read_string(index)?)?;
+                    self.define_method(&self.read_string(*index)?)?;
                 },
             };
 
@@ -878,11 +1086,17 @@ impl VirtualMachine {
     }
 
     fn read_string(&self, index: usize) -> LoxResult<String> {
-        match &*self.frame().closure.borrow() {
-            Value::Object(Object::Closure(closure)) => {
-                match &*closure.function.chunk.constants[index].borrow() {
-                    Value::Object(Object::String(name)) => Ok(*name.clone()),
-                    _ => err!("tried to read a string and failed"),
+        match &self.frame().closure {
+            Value::Obj(closure_ptr) => unsafe {
+                match &closure_ptr.deref().obj {
+                    Object::Closure(closure) => match &closure.function.chunk.constants[index] {
+                        Value::Obj(ptr) => match &ptr.deref().obj {
+                            Object::String(name) => Ok(*name.clone()),
+                            _ => err!("tried to read a string and failed"),
+                        },
+                        _ => err!("tried to read a string and failed"),
+                    },
+                    _ => unreachable!(),
                 }
             },
             _ => unreachable!(),
@@ -933,46 +1147,51 @@ impl VirtualMachine {
         let offset = self.stack.len() - arg_count - 1;
         let at_offset = unsafe { &*self.stack.as_ptr().add(offset) };
 
-        match &*at_offset.borrow() {
-            Value::Object(object) => match object {
-                Object::Closure(closure) => {
-                    self.check_arity(&closure.function.name, closure.function.arity, arg_count)?;
-                    self.call(at_offset.clone(), arg_count)?;
-                },
-                Object::BoundMethod(bound_method) => {
-                    let arg_range_start = self.stack.len() - arg_count;
-                    self.stack[arg_range_start - 1] = bound_method.receiver.clone();
+        match at_offset {
+            Value::Obj(ptr) => unsafe {
+                match &ptr.deref().obj {
+                    Object::Closure(closure) => {
+                        self.check_arity(
+                            &closure.function.name,
+                            closure.function.arity,
+                            arg_count,
+                        )?;
+                        self.call(*at_offset, arg_count)?;
+                    },
+                    Object::BoundMethod(bound_method) => {
+                        let arg_range_start = self.stack.len() - arg_count;
+                        self.stack[arg_range_start - 1] = bound_method.receiver;
 
-                    self.call(bound_method.closure.clone(), arg_count)?;
-                },
-                Object::Class(class) => {
-                    let position = self.stack.len() - arg_count - 1;
-                    self.stack[position] =
-                        ValuePtr::new(obj!(Instance, Instance::new(at_offset.clone())));
+                        self.call(bound_method.closure, arg_count)?;
+                    },
+                    Object::Class(class) => {
+                        let position = self.stack.len() - arg_count - 1;
+                        self.stack[position] =
+                            Value::new(obj!(self, Instance, Instance::new(*at_offset)));
 
-                    if let Some(init_ptr) = class.methods.get(self.init_string) {
-                        self.call(init_ptr.clone(), arg_count)?;
-                    } else if arg_count != 0 {
-                        err!(&format!(
-                            "expected no arguments on initialization but got {arg_count}",
-                        ));
-                    } else {
+                        if let Some(init_ptr) = class.methods.get(self.init_string) {
+                            self.call(*init_ptr, arg_count)?;
+                        } else if arg_count != 0 {
+                            err!(&format!(
+                                "expected no arguments on initialization but got {arg_count}",
+                            ));
+                        } else {
+                            self.frame_mut().pos += 1;
+                        }
+                    },
+                    Object::Native(native) => {
+                        self.check_arity(&native.name, native.arity, arg_count)?;
+
+                        let args = &self.stack[self.stack.len() - arg_count..];
+                        let result = (native.function)(&mut self.heap, args)?;
+                        self.stack.truncate(self.stack.len() - arg_count - 1);
+                        self.stack_push_value(result);
                         self.frame_mut().pos += 1;
-                    }
-                },
-                Object::Native(native) => {
-                    self.check_arity(&native.name, native.arity, arg_count)?;
-
-                    let arg_range_start = self.stack.len() - arg_count;
-                    let result = (native.function)(&self.stack.split_off(arg_range_start))?;
-
-                    self.pop_stack()?;
-                    self.stack_push_value(result);
-                    self.frame_mut().pos += 1;
-                },
-                _ => err!("can only call functions and classes"),
+                    },
+                    _ => err!("can only call functions and classes"),
+                }
             },
-            _ => unreachable!(),
+            _ => err!("can only call functions and classes"),
         };
 
         Ok(())
@@ -981,144 +1200,192 @@ impl VirtualMachine {
     fn invoke(&mut self, method_name: &str, arg_count: usize) -> LoxResult<()> {
         let offset = self.stack.len() - arg_count - 1;
         let at_offset = unsafe { &*self.stack.as_ptr().add(offset) };
-        let mut at_offset_borrowed = at_offset.borrow_mut();
 
-        match &mut *at_offset_borrowed {
-            Value::Object(Object::Instance(instance)) => match instance.fields.get(method_name) {
-                Some(prop) => {
-                    self.stack[offset] = prop.clone();
-                    self.call_value(arg_count)
-                },
-                None => {
-                    let Value::Object(Object::Class(class)) = &*instance.class.borrow() else {
-                        unreachable!();
-                    };
+        match at_offset {
+            Value::Obj(mut ptr) => unsafe {
+                match &mut ptr.deref_mut().obj {
+                    Object::Instance(instance) => match instance.fields.get(method_name) {
+                        Some(prop) => {
+                            self.stack[offset] = *prop;
+                            self.call_value(arg_count)
+                        },
+                        None => {
+                            let Value::Obj(class_ptr) = &instance.class else {
+                                unreachable!();
+                            };
+                            let Object::Class(class) = &class_ptr.deref().obj else {
+                                unreachable!();
+                            };
 
-                    match class.methods.get(method_name) {
-                        Some(prop) => self.call(prop.clone(), arg_count),
+                            match class.methods.get(method_name) {
+                                Some(prop) => self.call(*prop, arg_count),
+                                None => err!(&format!(
+                                    "no method '{}' on class '{}'",
+                                    method_name, class.name
+                                )),
+                            }
+                        },
+                    },
+                    Object::Module(module) => match module.map.get(method_name) {
+                        Some(prop) => {
+                            self.stack[offset] = *prop;
+                            self.call_value(arg_count)
+                        },
                         None => err!(&format!(
-                            "no method '{}' on class '{}'",
-                            method_name, class.name
+                            "module '{}' has no property '{}'",
+                            module.name, method_name
                         )),
-                    }
-                },
-            },
-            Value::Object(Object::Module(module)) => match module.map.get(method_name) {
-                Some(prop) => {
-                    self.stack[offset] = prop.clone();
-                    self.call_value(arg_count)
-                },
-                None => err!(&format!(
-                    "module '{}' has no property '{}'",
-                    module.name, method_name
-                )),
-            },
-            Value::Object(Object::Map(hmap)) => {
-                match (method_name, arg_count) {
-                    ("clear", 0) => hmap.map.clear(),
-                    ("keys", 0) => {
-                        self.stack[offset] =
-                            ValuePtr::new(obj!(List, hmap.map.keys().cloned().collect()));
                     },
-                    ("values", 0) => {
-                        self.stack[offset] =
-                            ValuePtr::new(obj!(List, hmap.map.values().cloned().collect()));
+                    Object::Map(hmap) => {
+                        match (method_name, arg_count) {
+                            ("clear", 0) => hmap.map.clear(),
+                            ("keys", 0) => {
+                                self.stack[offset] =
+                                    Value::new(obj!(self, List, hmap.map.keys().cloned().collect()));
+                            },
+                            ("values", 0) => {
+                                self.stack[offset] =
+                                    Value::new(obj!(self, List, hmap.map.values().cloned().collect()));
+                            },
+                            _ => err!(&format!(
+                                "map does not have the method '{method_name}' with {arg_count} argument(s)",
+                            )),
+                        };
+
+                        self.frame_mut().pos += 1;
+                        Ok(())
                     },
-                    _ => err!(&format!(
-                        "map does not have the method '{method_name}' with {arg_count} argument(s)",
-                    )),
-                };
+                    Object::List(list) => {
+                        match (method_name, arg_count) {
+                            ("clear", 0) => list.clear(),
+                            _ => err!(&format!(
+                                "list does not have the method '{method_name}' with {arg_count} argument(s)",
+                            )),
+                        };
 
-                self.frame_mut().pos += 1;
-                Ok(())
-            },
-            Value::Object(Object::List(list)) => {
-                match (method_name, arg_count) {
-                    ("clear", 0) => list.clear(),
-                    _ => err!(&format!(
-                        "list does not have the method '{method_name}' with {arg_count} argument(s)",
-                    )),
-                };
+                        self.frame_mut().pos += 1;
+                        Ok(())
+                    },
+                    Object::String(string) => {
+                        match (method_name, arg_count) {
+                            ("clear", 0) => string.clear(),
+                            _ => err!(&format!(
+                                "string does not have the method '{method_name}' with {arg_count} argument(s)",
+                            )),
+                        };
 
-                self.frame_mut().pos += 1;
-                Ok(())
-            },
-            Value::Object(Object::String(string)) => {
-                match (method_name, arg_count) {
-                    ("clear", 0) => string.clear(),
-                    _ => err!(&format!(
-                        "string does not have the method '{method_name}' with {arg_count} argument(s)",
-                    )),
-                };
-
-                self.frame_mut().pos += 1;
-                Ok(())
+                        self.frame_mut().pos += 1;
+                        Ok(())
+                    },
+                    _ => err!("only instances have methods"),
+                }
             },
             _ => err!("only instances have methods"),
         }
     }
 
     fn bind_method(&mut self, class_ptr: &ValuePtr, name: &str) -> LoxResult<()> {
-        let Value::Object(Object::Class(class)) = &*class_ptr.borrow() else {
+        let Value::Obj(class_ptr) = class_ptr else {
             unreachable!();
         };
+        unsafe {
+            let Object::Class(class) = &class_ptr.deref().obj else {
+                unreachable!();
+            };
 
-        match class.methods.get(name) {
-            Some(method) => {
-                let receiver = self.pop_stack()?;
+            match class.methods.get(name) {
+                Some(method) => {
+                    let receiver = self.pop_stack()?;
 
-                let bound_method = obj!(
-                    BoundMethod,
-                    BoundMethod {
-                        receiver,
-                        closure: method.clone(),
-                    }
-                );
+                    let bound_method = obj!(
+                        self,
+                        BoundMethod,
+                        BoundMethod {
+                            receiver,
+                            closure: *method,
+                        }
+                    );
 
-                self.stack_push_value(bound_method);
+                    self.stack_push_value(Value::new(bound_method));
 
-                Ok(())
-            },
-            None => Err(LoxError::RuntimeError(format!(
-                "'{name}' not a valid property",
-            ))),
+                    Ok(())
+                },
+                None => Err(LoxError::RuntimeError(format!(
+                    "'{name}' not a valid property",
+                ))),
+            }
         }
     }
 
     fn capture_upvalue(&mut self, upvalue_index: usize) -> LoxResult<UpValuePtr> {
         let item = &self.stack[upvalue_index];
 
-        if let Some(uv) = self
-            .upvalues
-            .iter()
-            .find(|uv| uv.borrow().location_index == upvalue_index)
-        {
-            return Ok(uv.clone());
+        if let Some(uv) = self.upvalues.iter().find(|uv| unsafe {
+            uv.deref().obj.as_upvalue().unwrap().location_index == upvalue_index
+        }) {
+            return Ok(*uv);
         }
 
-        let new_upvalue = Rc::new(RefCell::new(UpValue {
-            location: item.clone(),
+        let new_upvalue = self.heap.allocate(Object::UpValue(Box::new(UpValue {
+            location: *item,
             location_index: upvalue_index,
-        }));
+        })));
 
-        self.upvalues.push(new_upvalue.clone());
+        self.upvalues.push(new_upvalue);
 
         Ok(new_upvalue)
     }
 
     fn close_upvalues(&mut self, position: usize) {
-        self.upvalues
-            .retain(|uv| uv.borrow_mut().location_index < position);
+        // We need to iterate and modify, so we can't use retain directly if we want to modify the dropped ones.
+        // Instead, we can partition or iterate.
+        // Since `upvalues` contains ObjPtr, we can clone the ptrs we want to close.
+
+        let mut i = 0;
+        while i < self.upvalues.len() {
+            let should_close = unsafe {
+                self.upvalues[i]
+                    .deref()
+                    .obj
+                    .as_upvalue()
+                    .unwrap()
+                    .location_index
+                    >= position
+            };
+
+            if should_close {
+                let mut uv_ptr = self.upvalues.remove(i);
+                unsafe {
+                    let uv = uv_ptr.deref_mut();
+                    let upvalue = match &mut uv.obj {
+                        Object::UpValue(uv) => uv,
+                        _ => unreachable!(),
+                    };
+                    // Move value from stack to heap (location)
+                    upvalue.location = self.stack[upvalue.location_index];
+                    upvalue.location_index = usize::MAX; // Mark as closed
+                }
+            } else {
+                i += 1;
+            }
+        }
     }
 
     fn define_method(&mut self, name: &str) -> LoxResult<()> {
         let method = self.pop_stack()?;
-        let class_ptr = self.stack[self.stack.len() - 1].clone();
-        let Value::Object(Object::Class(class)) = &mut *class_ptr.borrow_mut() else {
-            return Err(LoxError::RuntimeError("no class on stack".into()));
-        };
+        let class_ptr = self.stack[self.stack.len() - 1];
 
-        class.methods.insert(String::from(name), method);
+        match class_ptr {
+            Value::Obj(mut ptr) => unsafe {
+                match &mut ptr.deref_mut().obj {
+                    Object::Class(class) => {
+                        class.methods.insert(String::from(name), method);
+                    },
+                    _ => return Err(LoxError::RuntimeError("no class on stack".into())),
+                }
+            },
+            _ => return Err(LoxError::RuntimeError("no class on stack".into())),
+        }
 
         Ok(())
     }

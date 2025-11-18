@@ -1,56 +1,28 @@
 use std::{
-    cell::{Ref, RefCell, RefMut},
     fmt,
     hash::{Hash, Hasher},
-    rc::Rc,
 };
 
-use crate::object::Object;
-use crate::tokens::Literal;
+use crate::gc::{Heap, ObjPtr, Trace};
 
-#[derive(Clone, Debug, PartialEq)]
+use crate::object::Object;
+
+#[derive(Clone, Copy, Debug)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
-    Object(Object),
+    Obj(ObjPtr),
 }
 
-impl From<Literal> for Value {
-    fn from(value: Literal) -> Self {
-        match value {
-            Literal::Boolean(bool_val) => Value::Bool(bool_val),
-            Literal::Nil => Value::Nil,
-            Literal::Number(num_val) => Value::Number(num_val),
-            Literal::String(str_val) => Value::Object(Object::String(Box::new(str_val))),
-            Literal::Identifier(_) => unreachable!(),
-        }
-    }
-}
+// impl From<Literal> for Value removed because it requires allocation which needs Heap access
+// We will handle literal conversion in Compiler/VM
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ValuePtr(pub Rc<RefCell<Value>>);
+pub type ValuePtr = Value;
 
-impl Eq for ValuePtr {}
-
-#[allow(clippy::derived_hash_with_manual_eq)]
-impl Hash for ValuePtr {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.borrow().hash(state);
-    }
-}
-
-impl ValuePtr {
+impl Value {
     pub fn new(value: Value) -> Self {
-        Self(Rc::new(RefCell::new(value)))
-    }
-
-    pub fn borrow(&self) -> Ref<'_, Value> {
-        self.0.borrow()
-    }
-
-    pub fn borrow_mut(&self) -> RefMut<'_, Value> {
-        self.0.borrow_mut()
+        value
     }
 }
 
@@ -77,6 +49,30 @@ static LIST_HASH: u64 = 6029635940393011764;
 static MAP_HASH: u64 = 3238540539993370792;
 static METHOD_HASH: u64 = 16751306561248198995;
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Nil, Value::Nil) => true,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::Obj(a_ptr), Value::Obj(b_ptr)) => {
+                if a_ptr == b_ptr {
+                    return true;
+                }
+                unsafe {
+                    match (&a_ptr.deref().obj, &b_ptr.deref().obj) {
+                        (Object::String(a), Object::String(b)) => a == b,
+                        (Object::List(a), Object::List(b)) => a == b,
+                        (Object::Map(a), Object::Map(b)) => a == b,
+                        _ => false,
+                    }
+                }
+            },
+            _ => false,
+        }
+    }
+}
+
 impl Eq for Value {}
 
 #[allow(clippy::derived_hash_with_manual_eq)]
@@ -92,8 +88,8 @@ impl Hash for Value {
                 exponent.hash(state);
                 sign.hash(state);
             },
-            Value::Object(object) => {
-                match object {
+            Value::Obj(obj_ptr) => unsafe {
+                match &obj_ptr.deref().obj {
                     Object::BoundMethod(_) => METHOD_HASH.hash(state),
                     Object::Class(_) => CLASS_HASH.hash(state),
                     Object::Closure(_) => CLOSURE_HASH.hash(state),
@@ -102,20 +98,20 @@ impl Hash for Value {
                     Object::Iterator(iterator) => {
                         LIST_HASH.hash(state);
                         for item in iterator.items.iter() {
-                            item.borrow().hash(state);
+                            item.hash(state);
                         }
                     },
                     Object::List(list) => {
                         LIST_HASH.hash(state);
                         for item in list.iter() {
-                            item.borrow().hash(state);
+                            item.hash(state);
                         }
                     },
                     Object::Map(hmap) => {
                         MAP_HASH.hash(state);
                         for (key, val) in hmap.map.iter() {
-                            key.borrow().hash(state);
-                            val.borrow().hash(state);
+                            key.hash(state);
+                            val.hash(state);
                         }
                     },
                     Object::Module(module) => {
@@ -123,17 +119,17 @@ impl Hash for Value {
                         module.name.hash(state);
                         for (key, val) in module.map.iter() {
                             key.hash(state);
-                            val.borrow().hash(state);
+                            val.hash(state);
                         }
                     },
                     Object::String(_) => {},
-                    Object::UpValue(uv) => uv.location.borrow().hash(state),
-                };
+                    Object::UpValue(uv) => uv.location.hash(state),
+                }
 
-                match object {
+                match &obj_ptr.deref().obj {
                     Object::List(_) | Object::Map(_) | Object::UpValue(_) => {},
-                    _ => object.to_string().hash(state),
-                };
+                    _ => obj_ptr.deref().obj.to_string().hash(state),
+                }
             },
         };
     }
@@ -141,13 +137,19 @@ impl Hash for Value {
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let output = match self {
-            Value::Bool(boolean) => boolean.to_string(),
-            Value::Nil => "nil".into(),
-            Value::Number(number) => number.to_string(),
-            Value::Object(object) => object.to_string(),
-        };
+        match self {
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Nil => write!(f, "nil"),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Obj(ptr) => unsafe { write!(f, "{}", ptr.deref().obj) },
+        }
+    }
+}
 
-        write!(f, "{output}")
+impl Trace for Value {
+    fn trace(&self, heap: &mut Heap) {
+        if let Value::Obj(ptr) = self {
+            heap.mark_object(*ptr);
+        }
     }
 }

@@ -3,6 +3,7 @@ pub mod chunk;
 pub mod compiler;
 pub mod errors;
 pub mod expressions;
+pub mod gc;
 pub mod object;
 pub mod parser;
 pub mod scanner;
