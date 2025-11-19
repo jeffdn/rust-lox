@@ -785,6 +785,32 @@ impl VirtualMachine {
 
                     match (&right, &*left) {
                         (Value::Number(b), Value::Number(a)) => *left = Value::Number(a + b),
+                        (Value::Obj(b_ptr), Value::Number(a)) => unsafe {
+                            match &b_ptr.deref().obj {
+                                Object::String(b) => {
+                                    let s = format!("{a}{b}");
+                                    let val = Value::new(obj!(self, String, s));
+                                    let left = self.stack.last_mut().unwrap();
+                                    *left = val;
+                                },
+                                _ => {
+                                    err!("operands must be two numbers, two strings, or two lists")
+                                },
+                            }
+                        },
+                        (Value::Number(b), Value::Obj(a_ptr)) => unsafe {
+                            match &a_ptr.deref().obj {
+                                Object::String(a) => {
+                                    let s = format!("{a}{b}");
+                                    let val = Value::new(obj!(self, String, s));
+                                    let left = self.stack.last_mut().unwrap();
+                                    *left = val;
+                                },
+                                _ => {
+                                    err!("operands must be two numbers, two strings, or two lists")
+                                },
+                            }
+                        },
                         (Value::Obj(b_ptr), Value::Obj(a_ptr)) => unsafe {
                             match (&b_ptr.deref().obj, &a_ptr.deref().obj) {
                                 (Object::String(b), Object::String(a)) => {
@@ -828,12 +854,12 @@ impl VirtualMachine {
                 OpCode::BitAnd => bit_ops! { &, '&' },
                 OpCode::BitOr => bit_ops! { |, '|' },
                 OpCode::BitXor => bit_ops! { ^, '^' },
-                OpCode::Print(no_newline) => {
+                OpCode::Print(newline) => {
                     let value = self.pop_stack()?;
-                    if *no_newline {
-                        print!("{}", value)
-                    } else {
+                    if *newline {
                         println!("{}", value)
+                    } else {
+                        print!("{}", value)
                     }
                 },
                 OpCode::Jump(offset) => self.frame_mut().pos += offset,

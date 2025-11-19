@@ -37,6 +37,6 @@ print "running naive fibonacci sequence";
 
 var start = time();
 
-print fib(30);
+print fib(50);
 
 print "finished in " + (time() - start) + " seconds";
