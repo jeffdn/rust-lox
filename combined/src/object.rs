@@ -46,29 +46,27 @@ pub struct ValueIter {
 impl ValueIter {
     pub fn new(heap: &mut Heap, value: ValuePtr) -> LoxResult<Self> {
         let value = match value {
-            Value::Obj(ptr) => unsafe {
-                match &ptr.deref().obj {
-                    Object::List(list) => ValueIter {
-                        items: *list.clone(),
-                        next: 0,
-                    },
-                    Object::Map(map) => ValueIter {
-                        items: map.map.keys().cloned().collect(),
-                        next: 0,
-                    },
-                    Object::String(string) => ValueIter {
-                        items: string
-                            .chars()
-                            .map(|x| Value::Obj(heap.allocate(Object::String(Box::new(x.into())))))
-                            .collect(),
-                        next: 0,
-                    },
-                    _ => {
-                        return Err(LoxError::RuntimeError(
-                            "only lists, maps, and strings can be iterated".into(),
-                        ))
-                    },
-                }
+            Value::Obj(ptr) => match &ptr.obj {
+                Object::List(list) => ValueIter {
+                    items: *list.clone(),
+                    next: 0,
+                },
+                Object::Map(map) => ValueIter {
+                    items: map.map.keys().cloned().collect(),
+                    next: 0,
+                },
+                Object::String(string) => ValueIter {
+                    items: string
+                        .chars()
+                        .map(|x| Value::Obj(heap.allocate(Object::String(Box::new(x.into())))))
+                        .collect(),
+                    next: 0,
+                },
+                _ => {
+                    return Err(LoxError::RuntimeError(
+                        "only lists, maps, and strings can be iterated".into(),
+                    ))
+                },
             },
             _ => {
                 return Err(LoxError::RuntimeError(
@@ -202,24 +200,24 @@ pub struct Function {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let output = match self {
-            Object::BoundMethod(method) => unsafe {
+            Object::BoundMethod(method) => {
                 let Value::Obj(receiver_ptr) = method.receiver else {
                     unreachable!();
                 };
-                let Object::Instance(receiver) = &receiver_ptr.deref().obj else {
+                let Object::Instance(receiver) = &receiver_ptr.obj else {
                     unreachable!();
                 };
                 let Value::Obj(class_ptr) = receiver.class else {
                     unreachable!();
                 };
-                let Object::Class(class) = &class_ptr.deref().obj else {
+                let Object::Class(class) = &class_ptr.obj else {
                     unreachable!();
                 };
 
                 let Value::Obj(closure_ptr) = method.closure else {
                     unreachable!();
                 };
-                let Object::Closure(closure) = &closure_ptr.deref().obj else {
+                let Object::Closure(closure) = &closure_ptr.obj else {
                     unreachable!();
                 };
 
@@ -231,11 +229,11 @@ impl fmt::Display for Object {
             Object::Class(class) => class.name.clone(),
             Object::Closure(closure) => format!("<closure: {}>", closure.function.name),
             Object::Function(function) => format!("<function: {}>", function.name),
-            Object::Instance(instance) => unsafe {
+            Object::Instance(instance) => {
                 let Value::Obj(class_ptr) = instance.class else {
                     unreachable!();
                 };
-                let Object::Class(class) = &class_ptr.deref().obj else {
+                let Object::Class(class) = &class_ptr.obj else {
                     unreachable!();
                 };
 

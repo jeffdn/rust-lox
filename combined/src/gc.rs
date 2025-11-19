@@ -1,5 +1,6 @@
 use std::{
     alloc::{alloc, dealloc, Layout},
+    ops::{Deref, DerefMut},
     ptr::NonNull,
 };
 
@@ -27,17 +28,19 @@ impl ObjPtr {
     pub fn as_ptr(&self) -> *mut GcObject {
         self.0.as_ptr()
     }
+}
 
-    /// # Safety
-    /// Dereferencing a raw pointer is unsafe. The caller must ensure the pointer is valid.
-    pub unsafe fn deref(&self) -> &GcObject {
-        self.0.as_ref()
+impl Deref for ObjPtr {
+    type Target = GcObject;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.as_ref() }
     }
+}
 
-    /// # Safety
-    /// Dereferencing a raw pointer is unsafe. The caller must ensure the pointer is valid.
-    pub unsafe fn deref_mut(&mut self) -> &mut GcObject {
-        &mut *self.0.as_ptr()
+impl DerefMut for ObjPtr {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0.as_ptr() }
     }
 }
 
@@ -63,22 +66,18 @@ impl Heap {
     }
 
     pub fn mark_object(&mut self, mut ptr: ObjPtr) {
-        unsafe {
-            let header = &mut ptr.deref_mut().header;
-            if header.is_marked {
-                return;
-            }
-            header.is_marked = true;
-            self.gray_stack.push(ptr);
+        let header = &mut ptr.header;
+        if header.is_marked {
+            return;
         }
+        header.is_marked = true;
+        self.gray_stack.push(ptr);
     }
 
     pub fn trace_references(&mut self) {
         while let Some(ptr) = self.gray_stack.pop() {
-            unsafe {
-                let obj = &ptr.deref().obj;
-                obj.trace(self);
-            }
+            let obj = &ptr.obj;
+            obj.trace(self);
         }
     }
 

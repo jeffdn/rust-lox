@@ -37,15 +37,13 @@ pub fn _time(_: &mut Heap, _: &[ValuePtr]) -> LoxResult<Value> {
 
 pub fn _str(heap: &mut Heap, input: &[ValuePtr]) -> LoxResult<Value> {
     match &input[0] {
-        Value::Obj(ptr) => unsafe {
-            match &ptr.deref().obj {
-                Object::String(string) => Ok(Value::Obj(
-                    heap.allocate(Object::String(Box::new(*string.clone()))),
-                )),
-                _ => Err(LoxError::RuntimeError(
-                    "string() only accepts primitives".into(),
-                )),
-            }
+        Value::Obj(ptr) => match &ptr.obj {
+            Object::String(string) => Ok(Value::Obj(
+                heap.allocate(Object::String(Box::new(*string.clone()))),
+            )),
+            _ => Err(LoxError::RuntimeError(
+                "string() only accepts primitives".into(),
+            )),
         },
         _ => Ok(Value::Obj(
             heap.allocate(Object::String(Box::new(input[0].to_string()))),
@@ -55,15 +53,13 @@ pub fn _str(heap: &mut Heap, input: &[ValuePtr]) -> LoxResult<Value> {
 
 pub fn _len(_: &mut Heap, input: &[ValuePtr]) -> LoxResult<Value> {
     match &input[0] {
-        Value::Obj(ptr) => unsafe {
-            match &ptr.deref().obj {
-                Object::List(list) => Ok(Value::Number(list.len() as f64)),
-                Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
-                Object::String(string) => Ok(Value::Number(string.len() as f64)),
-                _ => Err(LoxError::RuntimeError(
-                    "len() only accepts strings, lists, and maps".into(),
-                )),
-            }
+        Value::Obj(ptr) => match &ptr.obj {
+            Object::List(list) => Ok(Value::Number(list.len() as f64)),
+            Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
+            Object::String(string) => Ok(Value::Number(string.len() as f64)),
+            _ => Err(LoxError::RuntimeError(
+                "len() only accepts strings, lists, and maps".into(),
+            )),
         },
         _ => Err(LoxError::RuntimeError(
             "len() only accepts strings, lists, and maps".into(),
@@ -76,21 +72,19 @@ pub fn _type(heap: &mut Heap, input: &[ValuePtr]) -> LoxResult<Value> {
         Value::Bool(_) => "bool",
         Value::Nil => "nil",
         Value::Number(_) => "number",
-        Value::Obj(ptr) => unsafe {
-            match &ptr.deref().obj {
-                Object::BoundMethod(_) => "method",
-                Object::Class(_) => "class",
-                Object::Closure(_) => "closure",
-                Object::Function(_) => "function",
-                Object::Instance(_) => "object",
-                Object::Iterator(_) => "iterator",
-                Object::List(_) => "list",
-                Object::Map(_) => "map",
-                Object::Module(_) => "module",
-                Object::Native(_) => "function",
-                Object::String(_) => "string",
-                Object::UpValue(uv) => return _type(heap, &[uv.location]),
-            }
+        Value::Obj(ptr) => match &ptr.obj {
+            Object::BoundMethod(_) => "method",
+            Object::Class(_) => "class",
+            Object::Closure(_) => "closure",
+            Object::Function(_) => "function",
+            Object::Instance(_) => "object",
+            Object::Iterator(_) => "iterator",
+            Object::List(_) => "list",
+            Object::Map(_) => "map",
+            Object::Module(_) => "module",
+            Object::Native(_) => "function",
+            Object::String(_) => "string",
+            Object::UpValue(uv) => return _type(heap, &[uv.location]),
         },
     };
 

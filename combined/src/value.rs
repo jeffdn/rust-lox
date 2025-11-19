@@ -59,13 +59,11 @@ impl PartialEq for Value {
                 if a_ptr == b_ptr {
                     return true;
                 }
-                unsafe {
-                    match (&a_ptr.deref().obj, &b_ptr.deref().obj) {
-                        (Object::String(a), Object::String(b)) => a == b,
-                        (Object::List(a), Object::List(b)) => a == b,
-                        (Object::Map(a), Object::Map(b)) => a == b,
-                        _ => false,
-                    }
+                match (&a_ptr.obj, &b_ptr.obj) {
+                    (Object::String(a), Object::String(b)) => a == b,
+                    (Object::List(a), Object::List(b)) => a == b,
+                    (Object::Map(a), Object::Map(b)) => a == b,
+                    _ => false,
                 }
             },
             _ => false,
@@ -88,8 +86,8 @@ impl Hash for Value {
                 exponent.hash(state);
                 sign.hash(state);
             },
-            Value::Obj(obj_ptr) => unsafe {
-                match &obj_ptr.deref().obj {
+            Value::Obj(obj_ptr) => {
+                match &obj_ptr.obj {
                     Object::BoundMethod(_) => METHOD_HASH.hash(state),
                     Object::Class(_) => CLASS_HASH.hash(state),
                     Object::Closure(_) => CLOSURE_HASH.hash(state),
@@ -126,9 +124,9 @@ impl Hash for Value {
                     Object::UpValue(uv) => uv.location.hash(state),
                 }
 
-                match &obj_ptr.deref().obj {
+                match &obj_ptr.obj {
                     Object::List(_) | Object::Map(_) | Object::UpValue(_) => {},
-                    _ => obj_ptr.deref().obj.to_string().hash(state),
+                    _ => obj_ptr.obj.to_string().hash(state),
                 }
             },
         };
@@ -141,7 +139,7 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Nil => write!(f, "nil"),
             Value::Number(n) => write!(f, "{}", n),
-            Value::Obj(ptr) => unsafe { write!(f, "{}", ptr.deref().obj) },
+            Value::Obj(ptr) => write!(f, "{}", ptr.obj),
         }
     }
 }
