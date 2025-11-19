@@ -65,13 +65,13 @@ impl ValueIter {
                 _ => {
                     return Err(LoxError::RuntimeError(
                         "only lists, maps, and strings can be iterated".into(),
-                    ))
+                    ));
                 },
             },
             _ => {
                 return Err(LoxError::RuntimeError(
                     "only lists, maps, and strings can be iterated".into(),
-                ))
+                ));
             },
         };
 
@@ -97,10 +97,10 @@ impl PartialEq for ValueMap {
         }
 
         for (key, val) in self.map.iter() {
-            if let Some(other_val) = other.map.get(key) {
-                if val != other_val {
-                    return false;
-                }
+            if let Some(other_val) = other.map.get(key)
+                && val != other_val
+            {
+                return false;
             }
         }
 

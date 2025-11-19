@@ -381,14 +381,14 @@ impl Parser {
                     return Ok(Expression::Assignment {
                         name,
                         expression: Box::new(value),
-                    })
+                    });
                 },
                 Expression::Get { name, object } => {
                     return Ok(Expression::Set {
                         name,
                         object,
                         value: Box::new(value),
-                    })
+                    });
                 },
                 Expression::Index {
                     item,
@@ -438,7 +438,7 @@ impl Parser {
                             operator: token,
                             right: Box::new(value),
                         }),
-                    })
+                    });
                 },
                 Expression::Index {
                     item,

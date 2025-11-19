@@ -350,7 +350,7 @@ impl VirtualMachine {
 
         macro_rules! global {
             ( $pos:expr ) => {{
-                let Value::Obj(mut closure_ptr) = &self.frame().closure else {
+                let &Value::Obj(mut closure_ptr) = &self.frame().closure else {
                     unreachable!()
                 };
 
@@ -382,7 +382,7 @@ impl VirtualMachine {
             let code = {
                 let frame = self.frame();
 
-                let Value::Obj(mut closure_ptr) = &frame.closure else {
+                let &Value::Obj(mut closure_ptr) = &frame.closure else {
                     unreachable!()
                 };
 
@@ -725,14 +725,20 @@ impl VirtualMachine {
                             Object::String(string) => match left {
                                 Value::Obj(sub_ptr) => match &sub_ptr.obj {
                                     Object::String(substring) => {
-                                        self.stack_push_value(Value::Bool(string.contains(&**substring)));
+                                        self.stack_push_value(Value::Bool(
+                                            string.contains(&**substring),
+                                        ));
                                     },
-                                    _ => err!("invalid 'in' check: strings can only contain other strings"),
+                                    _ => err!(
+                                        "invalid 'in' check: strings can only contain other strings"
+                                    ),
                                 },
-                                _ => err!("invalid 'in' check: strings can only contain other strings"),
+                                _ => err!(
+                                    "invalid 'in' check: strings can only contain other strings"
+                                ),
                             },
                             _ => err!("'in' operator only functions on iterables"),
-                        }
+                        },
                         _ => err!("'in' operator only functions on iterables"),
                     };
                 },
@@ -962,7 +968,7 @@ impl VirtualMachine {
                         err!(&format!("assertion failed: {message}"))
                     }
                 },
-                OpCode::Import(ref path, index) => {
+                OpCode::Import(path, index) => {
                     let path = *path.clone();
                     let source = fs::read_to_string(&path).ok().ok_or_else(|| {
                         LoxError::RuntimeError(format!("unable to import file '{path}'"))
@@ -1155,7 +1161,7 @@ impl VirtualMachine {
         let at_offset = unsafe { &*self.stack.as_ptr().add(offset) };
 
         match at_offset {
-            Value::Obj(mut ptr) => match &mut ptr.obj {
+            &Value::Obj(mut ptr) => match &mut ptr.obj {
                 Object::Instance(instance) => match instance.fields.get(method_name) {
                     Some(prop) => {
                         self.stack[offset] = *prop;
