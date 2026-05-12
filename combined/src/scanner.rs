@@ -5,7 +5,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Scanner {
-    source: String,
     chars: Vec<char>,
     errors: Vec<LoxError>,
     tokens: Vec<Token>,
@@ -17,7 +16,6 @@ pub struct Scanner {
 impl Scanner {
     pub fn new(source: String) -> Scanner {
         Scanner {
-            source: source.clone(),
             chars: source.chars().collect(),
             errors: Vec::new(),
             tokens: Vec::new(),
@@ -51,7 +49,7 @@ impl Scanner {
     }
 
     fn at_end(&self) -> bool {
-        self.current >= self.source.len()
+        self.current >= self.chars.len()
     }
 
     fn add_token(&mut self, token_type: TokenType) {
@@ -268,7 +266,7 @@ impl Scanner {
     }
 
     fn peek_twice(&self) -> char {
-        if self.current + 1 >= self.source.len() {
+        if self.current + 1 >= self.chars.len() {
             return '\0';
         }
 

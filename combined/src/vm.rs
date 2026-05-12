@@ -40,6 +40,9 @@ pub struct VirtualMachine {
     frame: *mut CallFrame,
     stack: Vec<ValuePtr>,
     globals: HashMap<String, ValuePtr>,
+    global_slots: HashMap<String, usize>,
+    global_names: Vec<String>,
+    global_values: Vec<ValuePtr>,
     upvalues: Vec<UpValuePtr>,
     heap: Heap,
 
@@ -71,6 +74,9 @@ impl VirtualMachine {
             frame: std::ptr::null_mut(),
             stack: Vec::with_capacity(STACK_MAX),
             globals: HashMap::with_capacity_and_hasher(STACK_MAX, LoxBuildHasher::default()),
+            global_slots: HashMap::with_capacity_and_hasher(STACK_MAX, LoxBuildHasher::default()),
+            global_names: Vec::with_capacity(STACK_MAX),
+            global_values: Vec::with_capacity(STACK_MAX),
             upvalues: Vec::with_capacity(STACK_MAX),
             heap: Heap::new(),
             init_string: "init",
@@ -113,13 +119,6 @@ impl VirtualMachine {
         for frame in &self.frames {
             frame.closure.trace(&mut self.heap);
         }
-
-        // Current frame
-        if !self.frame.is_null() {
-            unsafe {
-                (*self.frame).closure.trace(&mut self.heap);
-            }
-        }
     }
 
     fn build_native(&mut self, name: &str, function: NativeFn, arity: usize) -> ValuePtr {
@@ -135,61 +134,94 @@ impl VirtualMachine {
     }
 
     fn define_native(&mut self, name: &str, function: NativeFn, arity: usize) {
+        if self.globals.contains_key(name) {
+            return;
+        }
+
         let function = self.build_native(name, function, arity);
-        self.globals.insert(String::from(name), function);
+        self.define_global_value(String::from(name), function);
     }
 
-    pub fn interpret(&mut self, input: &str) -> LoxResult<()> {
-        let mut scanner = Scanner::new(input.into());
-        let (tokens, errors) = scanner.scan_tokens();
-        let mut parser = Parser::new(tokens);
-        let parse_output = parser.parse();
-
-        match parse_output {
-            Ok(output) => {
-                let mut compiler = Compiler::new(&mut self.heap);
-
-                let function = compiler.compile(output)?;
-
-                let closure = Value::new(obj!(
-                    self,
-                    Closure,
-                    Closure {
-                        upvalues: Vec::with_capacity(STACK_MAX),
-                        function,
-                    }
-                ));
-
-                self.stack.push(closure);
-                self.call(closure, 0)?;
-
-                self.define_native("len", builtin::_len, 1);
-                self.define_native("pow", builtin::_pow, 2);
-                self.define_native("range", builtin::_range, 2);
-                self.define_native("sqrt", builtin::_sqrt, 1);
-                self.define_native("str", builtin::_str, 1);
-                self.define_native("time", builtin::_time, 0);
-                self.define_native("type", builtin::_type, 1);
-
-                let colors_module = self.build_colors();
-                self.globals.insert("colors".into(), colors_module);
-
-                self.run()?;
+    fn define_global_value(&mut self, name: String, value: ValuePtr) -> usize {
+        let slot = match self.global_slots.get(&name) {
+            Some(slot) => {
+                self.global_values[*slot] = value;
+                *slot
             },
-            Err(e) => {
-                println!("parse errors:");
-                println!(" - {}", e);
+            None => {
+                let slot = self.global_values.len();
+                self.global_slots.insert(name.clone(), slot);
+                self.global_names.push(name.clone());
+                self.global_values.push(value);
+                slot
             },
         };
 
-        if !errors.is_empty() {
-            println!("syntax errors:");
-            for error in errors.iter() {
-                println!(" - {}", error);
-            }
+        self.globals.insert(name, value);
+        slot
+    }
+
+    fn get_global_slot(&self, slot: usize) -> ValuePtr {
+        self.global_values[slot]
+    }
+
+    fn lookup_global_slot(&self, name: &str) -> Option<usize> {
+        self.global_slots.get(name).copied()
+    }
+
+    fn set_global_slot(&mut self, slot: usize, value: ValuePtr) {
+        self.global_values[slot] = value;
+        let name = self.global_names[slot].clone();
+        self.globals.insert(name, value);
+    }
+
+    fn compile_source(&mut self, input: &str) -> LoxResult<ValuePtr> {
+        let mut scanner = Scanner::new(input.into());
+        let (tokens, errors) = scanner.scan_tokens();
+        if let Some(error) = errors.first() {
+            return Err(error.clone());
         }
 
-        Ok(())
+        let mut parser = Parser::new(tokens);
+        let output = parser.parse()?;
+        let mut compiler = Compiler::new(&mut self.heap);
+        let function = compiler.compile(output)?;
+
+        Ok(Value::new(obj!(
+            self,
+            Closure,
+            Closure {
+                upvalues: Vec::with_capacity(STACK_MAX),
+                function,
+            }
+        )))
+    }
+
+    fn install_builtins(&mut self) {
+        self.define_native("len", builtin::_len, 1);
+        self.define_native("pow", builtin::_pow, 2);
+        self.define_native("range", builtin::_range, 2);
+        self.define_native("sqrt", builtin::_sqrt, 1);
+        self.define_native("str", builtin::_str, 1);
+        self.define_native("time", builtin::_time, 0);
+        self.define_native("type", builtin::_type, 1);
+
+        if !self.globals.contains_key("colors") {
+            let colors_module = self.build_colors();
+            self.define_global_value("colors".into(), colors_module);
+        }
+    }
+
+    fn execute_source(&mut self, input: &str) -> LoxResult<()> {
+        let closure = self.compile_source(input)?;
+        self.stack.push(closure);
+        self.call(closure, 0)?;
+        self.run()
+    }
+
+    pub fn interpret(&mut self, input: &str) -> LoxResult<()> {
+        self.install_builtins();
+        self.execute_source(input)
     }
 
     fn build_colors(&mut self) -> ValuePtr {
@@ -236,11 +268,13 @@ impl VirtualMachine {
 
     #[inline(always)]
     fn frame(&self) -> &CallFrame {
+        debug_assert!(!self.frame.is_null());
         unsafe { &*self.frame }
     }
 
     #[inline(always)]
     fn frame_mut(&mut self) -> &mut CallFrame {
+        debug_assert!(!self.frame.is_null());
         unsafe { &mut *self.frame }
     }
 
@@ -257,6 +291,18 @@ impl VirtualMachine {
 
     fn stack_push_value(&mut self, value: Value) {
         self.stack.push(Value::new(value));
+    }
+
+    fn patch_current_instruction(&mut self, opcode: OpCode) {
+        let pos = self.frame().pos;
+        let Value::Obj(mut closure_ptr) = self.frame().closure else {
+            unreachable!()
+        };
+        let Object::Closure(closure) = &mut closure_ptr.obj else {
+            unreachable!();
+        };
+
+        closure.function.chunk.code[pos] = opcode;
     }
 
     fn _convert_index(&self, len: usize, number: i32) -> usize {
@@ -289,13 +335,23 @@ impl VirtualMachine {
     }
 
     fn _extract_index(&self, len: usize, number: f64) -> usize {
-        let index = if number < 0.0f64 {
-            (len as f64 + number) as usize
+        let index = if number < 0.0 {
+            len as i64 + number as i64
         } else {
-            number as usize
+            number as i64
         };
 
-        index.min(len)
+        index.clamp(0, len as i64) as usize
+    }
+
+    fn _checked_index(&self, len: usize, number: f64) -> Option<usize> {
+        let index = if number < 0.0 {
+            len as i64 + number as i64
+        } else {
+            number as i64
+        };
+
+        (0..len as i64).contains(&index).then_some(index as usize)
     }
 
     pub fn run(&mut self) -> LoxResult<()> {
@@ -378,6 +434,8 @@ impl VirtualMachine {
             }};
         }
 
+        let frame_depth = self.frames.len();
+
         loop {
             let code = {
                 let frame = self.frame();
@@ -399,6 +457,8 @@ impl VirtualMachine {
 
                 unsafe { &*closure.function.chunk.code.as_ptr().add(frame.pos) }
             };
+
+            let mut patch_current = None;
 
             match code {
                 OpCode::Constant(index) => self.stack.push(*global!(*index)),
@@ -426,38 +486,48 @@ impl VirtualMachine {
                         _ => unreachable!(),
                     };
                     let val = self.pop_stack()?;
-                    self.globals.insert(key, val);
+                    self.define_global_value(key, val);
                 },
                 OpCode::GetGlobal(index) => {
                     let key = match global!(*index) {
                         Value::Obj(ptr) => match &ptr.obj {
-                            Object::String(string) => *string.clone(),
+                            Object::String(string) => string.as_str(),
                             _ => unreachable!(),
                         },
                         _ => unreachable!(),
                     };
 
-                    match self.globals.get(&key) {
-                        Some(val) => self.stack_push_value(*val),
+                    let slot = match self.lookup_global_slot(key) {
+                        Some(slot) => slot,
                         None => err!(&format!("undefined variable: {key}")),
-                    }
+                    };
+                    patch_current = Some(OpCode::GetGlobalSlot(slot));
+                    self.stack_push_value(self.get_global_slot(slot));
+                },
+                OpCode::GetGlobalSlot(slot) => {
+                    self.stack_push_value(self.get_global_slot(*slot));
+                },
+                OpCode::SetGlobalSlot(slot) => {
+                    let val = *self.stack.last().unwrap();
+                    self.set_global_slot(*slot, val);
                 },
                 OpCode::SetGlobal(index) => {
                     let key = match global!(*index) {
                         Value::Obj(ptr) => match &ptr.obj {
-                            Object::String(string) => *string.clone(),
+                            Object::String(string) => string.as_str(),
                             _ => unreachable!(),
                         },
                         _ => unreachable!(),
                     };
 
-                    if !self.globals.contains_key(&key) {
-                        err!(&format!("undefined variable: {key}"))
-                    }
+                    let slot = match self.lookup_global_slot(key) {
+                        Some(slot) => slot,
+                        None => err!(&format!("undefined variable: {key}")),
+                    };
 
                     let val = *self.stack.last().unwrap();
-
-                    self.globals.insert(key, val);
+                    self.set_global_slot(slot, val);
+                    patch_current = Some(OpCode::SetGlobalSlot(slot));
                 },
                 OpCode::GetUpValue(index) => {
                     let upvalue_ptr = match &self.frame().closure {
@@ -505,7 +575,7 @@ impl VirtualMachine {
                     let name_constant = global!(*index);
                     let prop_name = match name_constant {
                         Value::Obj(ptr) => match &ptr.obj {
-                            Object::String(prop_name) => prop_name.clone(),
+                            Object::String(prop_name) => prop_name.as_str(),
                             _ => unreachable!(),
                         },
                         _ => unreachable!(),
@@ -514,7 +584,7 @@ impl VirtualMachine {
                     match instance {
                         Value::Obj(ptr) => match &ptr.obj {
                             Object::Instance(instance) => {
-                                match instance.fields.get(&*prop_name) {
+                                match instance.fields.get(prop_name) {
                                     Some(value) => {
                                         let value = *value;
                                         self.pop_stack()?;
@@ -528,11 +598,11 @@ impl VirtualMachine {
                                             },
                                             _ => unreachable!(),
                                         };
-                                        self.bind_method(&instance.class, &prop_name)?;
+                                        self.bind_method(&instance.class, prop_name)?;
                                     },
                                 };
                             },
-                            Object::Module(module) => match module.map.get(&*prop_name) {
+                            Object::Module(module) => match module.map.get(prop_name) {
                                 Some(value) => {
                                     let value = *value;
                                     self.pop_stack()?;
@@ -549,7 +619,7 @@ impl VirtualMachine {
                     let name_constant = global!(*index);
                     let prop_name = match name_constant {
                         Value::Obj(ptr) => match &ptr.obj {
-                            Object::String(prop_name) => prop_name.clone(),
+                            Object::String(prop_name) => prop_name.as_str(),
                             _ => unreachable!(),
                         },
                         _ => unreachable!(),
@@ -561,7 +631,7 @@ impl VirtualMachine {
                     match instance_ptr {
                         Value::Obj(mut ptr) => match &mut ptr.obj {
                             Object::Instance(instance) => {
-                                instance.fields.insert(*prop_name, value);
+                                instance.fields.insert(prop_name.to_string(), value);
                                 *self.stack.last_mut().unwrap() = value;
                             },
                             _ => err!("only instances have fields"),
@@ -573,7 +643,7 @@ impl VirtualMachine {
                     let name_constant = global!(*index);
                     let prop_name = match name_constant {
                         Value::Obj(ptr) => match &ptr.obj {
-                            Object::String(prop_name) => prop_name.clone(),
+                            Object::String(prop_name) => prop_name.as_str(),
                             _ => unreachable!(),
                         },
                         _ => unreachable!(),
@@ -582,7 +652,7 @@ impl VirtualMachine {
                     let super_class = self.pop_stack()?;
                     let _instance = *self.stack.last().unwrap();
 
-                    self.bind_method(&super_class, &prop_name)?;
+                    self.bind_method(&super_class, prop_name)?;
                 },
                 OpCode::GetIndex => {
                     let index = self.pop_stack()?;
@@ -609,7 +679,7 @@ impl VirtualMachine {
                             Object::String(string) => {
                                 let index = match index {
                                     Value::Number(number) => {
-                                        self._extract_index(string.len(), number)
+                                        self._extract_index(string.chars().count(), number)
                                     },
                                     _ => err!("only numbers can be used to index strings"),
                                 };
@@ -635,7 +705,13 @@ impl VirtualMachine {
                         Value::Obj(mut ptr) => match &mut ptr.obj {
                             Object::List(list) => match index {
                                 Value::Number(number) => {
-                                    let index_usize = self._extract_index(list.len(), number);
+                                    let index_usize = self
+                                        ._checked_index(list.len(), number)
+                                        .ok_or_else(|| {
+                                            LoxError::RuntimeError(format!(
+                                                "list assignment index {number} out of bounds"
+                                            ))
+                                        })?;
                                     list[index_usize] = value;
                                 },
                                 _ => err!("lists can only be indexed with integers"),
@@ -656,7 +732,13 @@ impl VirtualMachine {
                         Value::Obj(mut ptr) => match &mut ptr.obj {
                             Object::List(list) => match index {
                                 Value::Number(number) => {
-                                    let index_usize = self._extract_index(list.len(), number);
+                                    let index_usize = self
+                                        ._checked_index(list.len(), number)
+                                        .ok_or_else(|| {
+                                            LoxError::RuntimeError(format!(
+                                                "list deletion index {number} out of bounds"
+                                            ))
+                                        })?;
                                     list.remove(index_usize);
                                 },
                                 _ => err!("lists can only be indexed with integers"),
@@ -687,11 +769,11 @@ impl VirtualMachine {
                             },
                             Object::String(string) => {
                                 let (left, right) =
-                                    self._get_slice_range(string.len(), left, right);
+                                    self._get_slice_range(string.chars().count(), left, right);
                                 let tmp_value = if left > right {
                                     "".to_string()
                                 } else {
-                                    string[left..right].to_string()
+                                    string.chars().skip(left).take(right - left).collect()
                                 };
 
                                 obj!(self, String, tmp_value)
@@ -882,13 +964,13 @@ impl VirtualMachine {
                     let name_constant = global!(*index);
                     let method_name = match name_constant {
                         Value::Obj(ptr) => match &ptr.obj {
-                            Object::String(method_name) => method_name.clone(),
+                            Object::String(method_name) => method_name.as_str(),
                             _ => unreachable!(),
                         },
                         _ => unreachable!(),
                     };
 
-                    self.invoke(&method_name, *arg_count)?;
+                    self.invoke(method_name, *arg_count)?;
                     continue;
                 },
                 OpCode::Closure(index, upvalues) => {
@@ -970,12 +1052,10 @@ impl VirtualMachine {
                 },
                 OpCode::Import(path, index) => {
                     let path = *path.clone();
+                    let globals_before = self.globals.clone();
                     let source = fs::read_to_string(&path).ok().ok_or_else(|| {
                         LoxError::RuntimeError(format!("unable to import file '{path}'"))
                     })?;
-
-                    let mut vm = VirtualMachine::new();
-                    vm.interpret(&source)?;
 
                     let key = match global!(*index) {
                         Value::Obj(ptr) => match &ptr.obj {
@@ -985,32 +1065,38 @@ impl VirtualMachine {
                         _ => unreachable!(),
                     };
 
-                    for (key, val) in vm.globals.clone() {
-                        self.globals.insert(key, val);
-                    }
+                    self.execute_source(&source)?;
+                    let module_globals = HashMap::from_iter(
+                        self.globals
+                            .iter()
+                            .filter(|(name, value)| globals_before.get(*name) != Some(*value))
+                            .map(|(name, value)| (name.clone(), *value)),
+                    );
 
                     let module_obj = obj!(
                         self,
                         Module,
                         Module {
                             name: *key.clone(),
-                            map: vm.globals,
+                            map: module_globals,
                         }
                     );
-                    self.globals.insert(*key, Value::new(module_obj));
+                    self.define_global_value(*key, Value::new(module_obj));
                 },
                 OpCode::Return => {
                     let result = self.pop_stack()?;
                     let old_frame = self.pop_frame()?;
                     self.close_upvalues(old_frame.stack_offset);
 
-                    if self.frames.is_empty() {
+                    if self.frames.len() < frame_depth {
                         self.pop_stack()?;
                         return Ok(());
                     }
 
                     self.stack.truncate(old_frame.stack_offset + 1);
                     *self.stack.last_mut().unwrap() = result;
+                    self.frame_mut().pos += 1;
+                    continue;
                 },
                 OpCode::Class(index) => {
                     let class_name = self.read_string(*index)?;
@@ -1046,6 +1132,10 @@ impl VirtualMachine {
                 },
             };
 
+            if let Some(opcode) = patch_current {
+                self.patch_current_instruction(opcode);
+            }
+
             self.frame_mut().pos += 1;
         }
 
@@ -1079,21 +1169,40 @@ impl VirtualMachine {
     }
 
     fn pop_frame(&mut self) -> LoxResult<CallFrame> {
-        let frame = self.frames.pop().unwrap();
+        let len = self.frames.len();
+        if len == 0 {
+            err!("call frame stack empty");
+        }
 
-        self.frame = unsafe {
-            match self.frames.is_empty() {
-                true => std::ptr::null_mut(),
-                false => self.frames.as_mut_ptr().add(self.frames.len() - 1),
-            }
+        let new_len = len - 1;
+        let frame = unsafe {
+            let frame = self.frames.as_ptr().add(new_len).read();
+            self.frames.set_len(new_len);
+            frame
+        };
+
+        self.frame = if self.frames.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) }
         };
 
         Ok(frame)
     }
 
-    fn push_frame(&mut self, frame: CallFrame) {
-        self.frames.push(frame);
-        self.frame = unsafe { self.frames.as_mut_ptr().add(self.frames.len() - 1) };
+    fn push_frame(&mut self, frame: CallFrame) -> LoxResult<()> {
+        let len = self.frames.len();
+        if len >= FRAMES_MAX {
+            err!("stack overflow");
+        }
+
+        self.frame = unsafe {
+            let frame_ptr = self.frames.as_mut_ptr().add(len);
+            frame_ptr.write(frame);
+            self.frames.set_len(len + 1);
+            frame_ptr
+        };
+        Ok(())
     }
 
     fn call(&mut self, callee: ValuePtr, arg_count: usize) -> LoxResult<()> {
@@ -1103,9 +1212,7 @@ impl VirtualMachine {
             pos: 0,
         };
 
-        self.push_frame(frame);
-
-        Ok(())
+        self.push_frame(frame)
     }
 
     fn call_value(&mut self, arg_count: usize) -> LoxResult<()> {
@@ -1297,6 +1404,10 @@ impl VirtualMachine {
     }
 
     fn close_upvalues(&mut self, position: usize) {
+        if self.upvalues.is_empty() {
+            return;
+        }
+
         // We need to iterate and modify, so we can't use retain directly if we want to modify the dropped ones.
         // Instead, we can partition or iterate.
         // Since `upvalues` contains ObjPtr, we can clone the ptrs we want to close.
@@ -1342,5 +1453,163 @@ impl VirtualMachine {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{env, fs, process};
+
+    use crate::{
+        chunk::{Chunk, OpCode},
+        object::{Closure, Function, FunctionType, Object},
+    };
+
+    use super::*;
+
+    fn string_value(value: &ValuePtr) -> &str {
+        match value {
+            Value::Obj(ptr) => match &ptr.obj {
+                Object::String(string) => string,
+                _ => panic!("expected string value, got {value:?}"),
+            },
+            _ => panic!("expected object value, got {value:?}"),
+        }
+    }
+
+    fn global_string<'a>(vm: &'a VirtualMachine, name: &str) -> &'a str {
+        string_value(vm.globals.get(name).expect("missing global"))
+    }
+
+    #[test]
+    fn interpret_returns_scanner_errors() {
+        let mut vm = VirtualMachine::new();
+        let err = vm.interpret("@").expect_err("scanner error was ignored");
+
+        assert!(matches!(err, LoxError::SyntaxError(_, _)));
+    }
+
+    #[test]
+    fn interpret_returns_parser_errors() {
+        let mut vm = VirtualMachine::new();
+        let err = vm
+            .interpret("var value = ; println value;")
+            .expect_err("parser error was ignored");
+
+        assert!(matches!(err, LoxError::ParseError(_, _)));
+    }
+
+    #[test]
+    fn list_assignment_out_of_bounds_returns_runtime_error() {
+        let mut vm = VirtualMachine::new();
+        let err = vm
+            .interpret("var values = [1]; values[1] = 2;")
+            .expect_err("out-of-bounds assignment should fail");
+
+        assert_eq!(
+            err,
+            LoxError::RuntimeError("list assignment index 1 out of bounds".into())
+        );
+    }
+
+    #[test]
+    fn list_delete_out_of_bounds_returns_runtime_error() {
+        let mut vm = VirtualMachine::new();
+        let err = vm
+            .interpret("var values = [1]; delete values[-2];")
+            .expect_err("out-of-bounds deletion should fail");
+
+        assert_eq!(
+            err,
+            LoxError::RuntimeError("list deletion index -2 out of bounds".into())
+        );
+    }
+
+    #[test]
+    fn strings_are_indexed_and_sliced_by_character() {
+        let mut vm = VirtualMachine::new();
+
+        vm.interpret(
+            r#"
+                var value = "éß";
+                var len_value = len(value);
+                var first = value[0];
+                var second = value[1];
+                var last = value[-1];
+                var slice = value[0:1];
+                var wide = value[-100:100];
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(vm.globals.get("len_value"), Some(&Value::Number(2.0)));
+        assert_eq!(global_string(&vm, "first"), "é");
+        assert_eq!(global_string(&vm, "second"), "ß");
+        assert_eq!(global_string(&vm, "last"), "ß");
+        assert_eq!(global_string(&vm, "slice"), "é");
+        assert_eq!(global_string(&vm, "wide"), "éß");
+    }
+
+    #[test]
+    fn recursive_calls_return_stack_overflow_error() {
+        let mut vm = VirtualMachine::new();
+        let err = vm
+            .interpret(
+                r#"
+                    fun recurse() {
+                        recurse();
+                    }
+                    recurse();
+                "#,
+            )
+            .expect_err("unbounded recursion should fail");
+
+        assert_eq!(err, LoxError::RuntimeError("stack overflow".into()));
+    }
+
+    #[test]
+    fn import_uses_parent_heap_and_captures_imported_globals() {
+        let mut vm = VirtualMachine::new();
+        vm.install_builtins();
+
+        let path = env::temp_dir().join(format!("rust_lox_import_{}.lox", process::id()));
+        fs::write(&path, r#"var imported = "ok";"#).unwrap();
+
+        let module_name = vm.allocate(Object::String(Box::new("imported_module".into())));
+        let function = Function {
+            function_type: FunctionType::Script,
+            arity: 0,
+            chunk: Chunk {
+                code: vec![
+                    OpCode::Import(Box::new(path.to_string_lossy().into_owned()), 0),
+                    OpCode::Nil,
+                    OpCode::Return,
+                ],
+                constants: vec![Value::Obj(module_name)],
+                lines: vec![1, 1, 1],
+            },
+            name: "<script>".into(),
+        };
+        let closure = Value::Obj(vm.allocate(Object::Closure(Box::new(Closure {
+            upvalues: Vec::new(),
+            function,
+        }))));
+
+        vm.stack.push(closure);
+        vm.call(closure, 0).unwrap();
+        let result = vm.run();
+        let _ = fs::remove_file(&path);
+        result.unwrap();
+
+        let module = vm.globals.get("imported_module").expect("missing module");
+        let Value::Obj(ptr) = module else {
+            panic!("expected module object, got {module:?}");
+        };
+        let Object::Module(module) = &ptr.obj else {
+            panic!("expected module object, got {:?}", ptr.obj);
+        };
+
+        assert_eq!(string_value(module.map.get("imported").unwrap()), "ok");
+        assert_eq!(global_string(&vm, "imported"), "ok");
     }
 }

@@ -1129,7 +1129,7 @@ mod tests {
         assert_eq!(
             function.chunk.code,
             [
-                OpCode::Closure(1, Box::new(vec![])),
+                OpCode::Closure(1, Box::default()),
                 OpCode::DefineGlobal(0),
                 OpCode::GetGlobal(0),
                 OpCode::Call(0),
@@ -1216,7 +1216,7 @@ mod tests {
                 continue;
             }
         "#;
-        let output = _generate_function(&mut heap, &input);
+        let output = _generate_function(&mut heap, input);
         assert_eq!(
             output.expect_err("didn't fail as expected"),
             LoxError::CompileError("ending scope without correcting a break or continue".into())

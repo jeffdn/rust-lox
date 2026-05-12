@@ -56,7 +56,7 @@ pub fn _len(_: &mut Heap, input: &[ValuePtr]) -> LoxResult<Value> {
         Value::Obj(ptr) => match &ptr.obj {
             Object::List(list) => Ok(Value::Number(list.len() as f64)),
             Object::Map(hmap) => Ok(Value::Number(hmap.map.len() as f64)),
-            Object::String(string) => Ok(Value::Number(string.len() as f64)),
+            Object::String(string) => Ok(Value::Number(string.chars().count() as f64)),
             _ => Err(LoxError::RuntimeError(
                 "len() only accepts strings, lists, and maps".into(),
             )),
@@ -97,7 +97,7 @@ pub fn _sqrt(_: &mut Heap, input: &[ValuePtr]) -> LoxResult<Value> {
     match &input[0] {
         Value::Number(number) => Ok(Value::Number(number.sqrt())),
         _ => Err(LoxError::RuntimeError(
-            "sqrt() only operates on numbers".into(),
+            "pow() only operates on numbers".into(),
         )),
     }
 }

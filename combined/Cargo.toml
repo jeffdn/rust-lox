@@ -11,7 +11,7 @@ rustc-hash = "1.1"
 tikv-jemallocator = "0.5"
 
 [features]
-default = ["debug"]
+default = []
 debug = []
 
 [profile.release]
