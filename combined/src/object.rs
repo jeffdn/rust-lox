@@ -167,7 +167,19 @@ pub type NativeFn = fn(&mut Heap, &[ValuePtr]) -> LoxResult<Value>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Closure {
     pub upvalues: Vec<UpValuePtr>,
-    pub function: Function,
+    pub function: ObjPtr,
+}
+
+impl Closure {
+    pub fn function(&self) -> &Function {
+        // GC objects remain at stable addresses, and tracing this closure keeps the function alive.
+        unsafe {
+            match &(*self.function.as_ptr()).obj {
+                Object::Function(function) => function,
+                _ => unreachable!(),
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -223,11 +235,12 @@ impl fmt::Display for Object {
 
                 format!(
                     "<method {} on {} instance>",
-                    closure.function.name, class.name,
+                    closure.function().name,
+                    class.name,
                 )
             },
             Object::Class(class) => class.name.clone(),
-            Object::Closure(closure) => format!("<closure: {}>", closure.function.name),
+            Object::Closure(closure) => format!("<closure: {}>", closure.function().name),
             Object::Function(function) => format!("<function: {}>", function.name),
             Object::Instance(instance) => {
                 let Value::Obj(class_ptr) = instance.class else {
@@ -292,7 +305,7 @@ impl Trace for Object {
                 for upvalue in &closure.upvalues {
                     heap.mark_object(*upvalue);
                 }
-                closure.function.trace(heap);
+                heap.mark_object(closure.function);
             },
             Object::Function(function) => {
                 function.trace(heap);

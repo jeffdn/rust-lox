@@ -978,7 +978,7 @@ impl<'h> StatementVisitor for Compiler<'h> {
         let last_code = self.chunk().len();
         for code in self.chunk().code[loop_start..last_code].iter_mut() {
             match code {
-                OpCode::Break(initial) => *code = OpCode::Jump(last_code - *initial),
+                OpCode::Break(initial) => *code = OpCode::Jump(last_code - *initial - 1),
                 OpCode::Continue(initial) => {
                     let jump = pop_pos - *initial - 1;
                     *code = OpCode::Jump(jump);
@@ -986,9 +986,8 @@ impl<'h> StatementVisitor for Compiler<'h> {
                 _ => {},
             };
         }
-
         self.patch_jump(loop_start + 1)?;
-        self.emit_byte(OpCode::Pop)?;
+        self.patch_jump(loop_start + 1)?;
 
         self.end_scope()
     }
